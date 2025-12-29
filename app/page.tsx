@@ -7,7 +7,7 @@ import { getFinancialData, saveFinancialData } from "@/lib/finance";
 
 
 export default function FinancialPlanner() {
-  const genMonths = (c) => Array(c).fill(0).map((_, i) => {
+  const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
     const d = new Date(2025, 11, 25);
     d.setMonth(d.getMonth() + i);
     return { name: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }), date: d, day: 25 };
