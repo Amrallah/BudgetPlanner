@@ -5,31 +5,98 @@ import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { getFinancialData, saveFinancialData } from "@/lib/finance";
 
+// -- Types
+type MonthItem = { name: string; date: Date; day: number };
+
+type Split = { save: number; groc: number; ent: number };
+
+type Change = {
+  type?: 'delete' | 'amount';
+  scope: 'month' | 'future' | 'forever';
+  idx: number;
+  monthIdx?: number;
+  newAmt?: number;
+  oldAmt?: number;
+  amt?: number;
+  split: Split;
+};
+
+type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[] };
+
+type DataItem = {
+  inc: number;
+  prev: number | null;
+  prevManual: boolean;
+  save: number;
+  defSave: number;
+  extraInc: number;
+  grocBonus: number;
+  entBonus: number;
+  grocExtra?: number;
+  entExtra?: number;
+  saveExtra?: number;
+  rolloverProcessed: boolean;
+  entBudgBase: number | null;
+  entBudgLocked: boolean;
+};
+
+type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
+
+type MonthlyCalcItem = {
+  month: string;
+  date: Date;
+  inc: number;
+  prev: number;
+  save: number;
+  actSave: number;
+  totSave: number;
+  bal: number;
+  fixExp: number;
+  fixSpent: number;
+  grocBudg: number;
+  grocSpent: number;
+  grocRem: number;
+  entBudg: number;
+  entSpent: number;
+  entRem: number;
+  over: number;
+  extraInc: number;
+  extra: number;
+  passed: boolean;
+  prevManual: boolean;
+  overspendWarning: string;
+  criticalOverspend: boolean;
+  prevGrocRem?: number;
+  prevEntRem?: number;
+  hasRollover?: boolean;
+  rolloverDaysRemaining?: number | null;
+};
+
 
 export default function FinancialPlanner() {
-  const genMonths = (c) => Array(c).fill(0).map((_, i) => {
+  const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
     const d = new Date(2025, 11, 25);
     d.setMonth(d.getMonth() + i);
     return { name: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }), date: d, day: 25 };
   });
 
-  const [months] = useState(genMonths(60));
+  const [months] = useState<MonthItem[]>(genMonths(60));
   const [sel, setSel] = useState(0);
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
   const [adj, setAdj] = useState({ groc: 0, ent: 0 });
   const [editPrev, setEditPrev] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
-  const [pendingChanges, setPendingChanges] = useState([]);
-  const [changeModal, setChangeModal] = useState(null);
-  const [deleteModal, setDeleteModal] = useState(null);
-  const [newTrans, setNewTrans] = useState({ groc: '', ent: '' });
+  const [pendingChanges, setPendingChanges] = useState<Change[]>([]);
+  const [changeModal, setChangeModal] = useState<Change | null>(null);
+  const [deleteModal, setDeleteModal] = useState<Change | null>(null);
+  const [newTrans, setNewTrans] = useState<Record<'groc'|'ent', string>>({ groc: '', ent: '' });
   const [showRollover, setShowRollover] = useState(false);
   const [editSpent, setEditSpent] = useState({ groc: false, ent: false });
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
-  const [applySavingsForward, setApplySavingsForward] = useState(null);
-  const [extraAdj, setExtraAdj] = useState({ groc: 0, ent: 0, save: 0 });
+  const [applySavingsForward, setApplySavingsForward] = useState<number | null>(null);
+  const [extraAdj, setExtraAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
   const [extraSplitActive, setExtraSplitActive] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [extraSplitError, setExtraSplitError] = useState('');
@@ -39,9 +106,9 @@ export default function FinancialPlanner() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const { user, loading } = useAuth();
-  const [data, setData] = useState(
+  const [data, setData] = useState<DataItem[]>(
     Array(60).fill(0).map((_, i) => ({
       inc: i === 0 ? 35100 : 34450,
       prev: i === 0 ? 16177 : null,
@@ -60,7 +127,7 @@ export default function FinancialPlanner() {
     }))
   );
 
-  const [fixed, setFixed] = useState([
+    const [fixed, setFixed] = useState<FixedExpense[]>([
     { id: 1, name: 'Rent', amts: Array(60).fill(0).map((_, i) => i === 0 ? 11013 : 11000), spent: Array(60).fill(false).map((_, i) => i === 0) },
     { id: 2, name: 'Egypt', amts: Array(60).fill(0).map((_, i) => i === 0 ? 2626 : 2500), spent: Array(60).fill(false).map((_, i) => i === 0) },
     { id: 3, name: 'Vastrafik', amts: Array(60).fill(1720), spent: Array(60).fill(false) },
@@ -74,7 +141,7 @@ export default function FinancialPlanner() {
     { id: 11, name: 'ZEN', amts: Array(60).fill(75), spent: Array(60).fill(false).map((_, i) => i === 0) }
   ]);
 
-  const [varExp, setVarExp] = useState({
+  const [varExp, setVarExp] = useState<VarExp>({
     grocBudg: Array(60).fill(0).map((_, i) => i === 0 ? 6160 : 6000),
     grocSpent: Array(60).fill(0).map((_, i) => i === 0 ? 425 : 0),
     entSpent: Array(60).fill(0).map((_, i) => i === 0 ? 250 : 0)
@@ -132,7 +199,7 @@ useEffect(() => {
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
-    const handleBeforeUnload = (e) => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasChanges) {
         e.preventDefault();
         e.returnValue = '';
@@ -154,21 +221,21 @@ useEffect(() => {
     setWithdrawAmount(0);
   }, [sel]);
 
-  const isPassed = (i) => new Date() >= months[i].date;
+  const isPassed = (i: number) => new Date() >= months[i].date;
 
-  const getRolloverDaysRemaining = (monthIndex) => {
+  const getRolloverDaysRemaining = (monthIndex: number): number | null => {
     if (monthIndex === 0) return null;
     const rolloverDate = new Date(months[monthIndex].date);
     rolloverDate.setDate(rolloverDate.getDate() + 5);
     const now = new Date();
-    const diffTime = rolloverDate - now;
+    const diffTime = rolloverDate.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
   };
 
   const calc = useMemo(() => {
-    const res = [];
-    let prevTotSave = data[0].prev || 0;
+    const res: MonthlyCalcItem[] = [];
+    let prevTotSave = data[0].prev ?? 0;
     
     for (let i = 0; i < months.length; i++) {
       const m = months[i];
@@ -214,11 +281,11 @@ useEffect(() => {
         }
       }
       
-      let prevSave;
+      let prevSave: number;
       if (i === 0) {
-        prevSave = d.prev || 0;
+        prevSave = d.prev ?? 0;
       } else if (d.prevManual) {
-        prevSave = d.prev;
+        prevSave = d.prev ?? 0;
         const calculated = prevTotSave;
         if (Math.abs(prevSave - calculated) > 1) {
           overspendWarning = (overspendWarning ? overspendWarning + ' | ' : '') + 
@@ -293,16 +360,16 @@ useEffect(() => {
     pendingChanges.forEach(c => {
       if (c.type === 'delete') {
         if (c.scope === 'month') {
-          result[c.idx].amts[c.monthIdx] = 0;
+          result[c.idx].amts[c.monthIdx ?? 0] = 0;
         } else if (c.scope === 'future') {
-          for (let i = c.monthIdx; i < 60; i++) result[c.idx].amts[i] = 0;
+          for (let i = c.monthIdx ?? 0; i < 60; i++) result[c.idx].amts[i] = 0;
         } else {
           result.splice(c.idx, 1);
         }
       }
       if (c.type === 'amount') {
-        if (c.scope === 'month') result[c.idx].amts[c.monthIdx] = c.newAmt;
-        else for (let i = c.monthIdx; i < 60; i++) result[c.idx].amts[i] = c.newAmt;
+        if (c.scope === 'month') result[c.idx].amts[c.monthIdx ?? 0] = c.newAmt ?? 0;
+        else for (let i = c.monthIdx ?? 0; i < 60; i++) result[c.idx].amts[i] = c.newAmt ?? 0;
       }
     });
     return result;
@@ -332,19 +399,19 @@ useEffect(() => {
             if (f.spent.length > 60) f.spent = f.spent.slice(0, 60);
           });
         }
-        else if (c.scope === 'month') nf[c.idx].amts[c.monthIdx] = 0;
-        else for (let i = c.monthIdx; i < 60; i++) nf[c.idx].amts[i] = 0;
-        const end = c.scope === 'month' ? c.monthIdx + 1 : 60;
-        for (let i = c.monthIdx; i < end; i++) {
+        else if (c.scope === 'month') nf[c.idx].amts[c.monthIdx ?? 0] = 0;
+        else for (let i = c.monthIdx ?? 0; i < 60; i++) nf[c.idx].amts[i] = 0;
+        const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : 60;
+        for (let i = c.monthIdx ?? 0; i < end; i++) {
           nd[i].save += c.split.save;
           nd[i].grocBonus += c.split.groc;
           nd[i].entBonus += c.split.ent;
         }
       } else if (c.type === 'amount') {
-        if (c.scope === 'month') nf[c.idx].amts[c.monthIdx] = c.newAmt;
-        else for (let i = c.monthIdx; i < 60; i++) nf[c.idx].amts[i] = c.newAmt;
-        const end = c.scope === 'month' ? c.monthIdx + 1 : 60;
-        for (let i = c.monthIdx; i < end; i++) {
+        if (c.scope === 'month') nf[c.idx].amts[c.monthIdx ?? 0] = c.newAmt ?? 0;
+        else for (let i = c.monthIdx ?? 0; i < 60; i++) nf[c.idx].amts[i] = c.newAmt ?? 0;
+        const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : 60;
+        for (let i = c.monthIdx ?? 0; i < end; i++) {
           nd[i].save += c.split.save;
           nd[i].grocBonus += c.split.groc;
           nd[i].entBonus += c.split.ent;
@@ -361,18 +428,27 @@ useEffect(() => {
     alert('All changes saved successfully!');
   };
 
-  const validateSplit = (split, total) => {
+  
+  const validateSplit = (split: Split, total: number) => {
     const sum = split.save + split.groc + split.ent;
     return Math.abs(sum - total) < 0.01;
   };
 
-  const sanitizeNumberInput = (value) => {
-    const num = parseFloat(value);
+  const sanitizeNumberInput = (value: string | number) => {
+    const num = parseFloat(String(value));
     if (isNaN(num) || !isFinite(num)) return 0;
     return Math.max(0, Math.min(1000000, num));
   };
 
-  const Card = ({label, value, icon: Icon, color, sub}) => {
+  type CardProps = {
+    label: string;
+    value: number;
+    icon: React.ComponentType<any>;
+    color: 'blue' | 'green' | 'purple' | 'orange';
+    sub?: string;
+  };
+
+  const Card: React.FC<CardProps> = ({ label, value, icon: Icon, color, sub }) => {
     const colorClasses = {
       blue: 'bg-gradient-to-br from-blue-500 to-blue-700',
       green: 'bg-gradient-to-br from-green-500 to-green-700',
@@ -491,13 +567,13 @@ return (
                 <PiggyBank className="w-5 h-5" />
                 Unspent from Last Month
               </h3>
-              <p className="text-sm text-green-800">
-                You have {(cur.prevGrocRem + cur.prevEntRem).toFixed(0)} SEK unused budget
+                <p className="text-sm text-green-800">
+                You have {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK unused budget
               </p>
-              {cur.rolloverDaysRemaining !== null && cur.rolloverDaysRemaining > 0 && (
+              {(cur.rolloverDaysRemaining ?? 0) > 0 && (
                 <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {autoRollover ? `Auto-rollover in ${cur.rolloverDaysRemaining} days` : `Available in ${cur.rolloverDaysRemaining} days`}
+                  {autoRollover ? `Auto-rollover in ${cur.rolloverDaysRemaining ?? 0} days` : `Available in ${cur.rolloverDaysRemaining ?? 0} days`}
                 </p>
               )}
             </div>
@@ -509,13 +585,13 @@ return (
 
         {showRollover && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
-            <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {(cur.prevGrocRem + cur.prevEntRem).toFixed(0)} SEK to savings?</h3>
+            <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK to savings?</h3>
             <p className="text-sm text-green-800 mb-3">This will move your unused budget from last month into savings.</p>
             <div className="flex flex-col sm:flex-row gap-2">
               <button 
-                onClick={() => { 
+                  onClick={() => { 
                   const n = [...data]; 
-                  n[sel].save += cur.prevGrocRem + cur.prevEntRem; 
+                  n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0); 
                   n[sel].rolloverProcessed = true;
                   setData(n); 
                   setShowRollover(false); 
@@ -990,16 +1066,10 @@ return (
                       value={e.amts[sel]} 
                       onBlur={(ev) => {
                         const newAmt = sanitizeNumberInput(ev.target.value);
-                        if (newAmt !== e.amts[sel]) {
-                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                          setChangeModal({
-                            idx: originalIndex,
-                            newAmt,
-                            oldAmt: e.amts[sel],
-                            scope: 'month',
-                            split: { save: 0, groc: 0, ent: 0 }
-                          });
-                        }
+                          if (newAmt !== e.amts[sel]) {
+                            setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
+                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
+                          }
                       }} 
                       onChange={(ev) => {
                         const val = sanitizeNumberInput(ev.target.value);
@@ -1014,12 +1084,7 @@ return (
                     <button 
                       onClick={() => {
                         setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'delete')));
-                        setDeleteModal({
-                          idx: originalIndex,
-                          amt: e.amts[sel],
-                          scope: 'month',
-                          split: { save: 0, groc: 0, ent: 0 }
-                        });
+                        setDeleteModal(prev => prev ? { ...prev, idx: originalIndex, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                       }}
                       className="text-red-600 p-2 rounded-xl hover:bg-red-50 active:bg-red-100 transition-all"
                     >
@@ -1038,10 +1103,11 @@ return (
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-2 text-gray-700">Scope</label>
                 <select 
-                  value={(deleteModal||changeModal).scope} 
+                  value={(deleteModal ?? changeModal)?.scope ?? 'month'} 
                   onChange={(e)=>{
-                    if(deleteModal) setDeleteModal({...deleteModal,scope:e.target.value});
-                    else setChangeModal({...changeModal,scope:e.target.value});
+                    const val = e.target.value as Change['scope'];
+                    if(deleteModal) setDeleteModal(prev => prev ? { ...prev, scope: val } : prev);
+                    else setChangeModal(prev => prev ? { ...prev, scope: val } : prev);
                   }} 
                   className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                 >
@@ -1053,7 +1119,7 @@ return (
               
               <h4 className="font-semibold mb-2 text-gray-800">Split freed amount</h4>
               <p className="text-sm text-gray-600 mb-3">
-                Total to split: {(deleteModal ? deleteModal.amt : (changeModal.oldAmt - changeModal.newAmt)).toFixed(0)} SEK
+                Total to split: {(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
               </p>
               
               {splitError && (
@@ -1064,7 +1130,7 @@ return (
               )}
               
               <div className="space-y-3 mb-4">
-                {['save','groc','ent'].map(k=>(
+                {(['save','groc','ent'] as (keyof Split)[]).map(k=>(
                   <div key={k}>
                     <label className="block text-sm mb-2 font-medium text-gray-700">
                       {k==='save'?'Savings':k==='groc'?'Groceries':'Entertainment'}
@@ -1072,27 +1138,27 @@ return (
                     <input 
                       type="number" 
                       min="0"
-                      max={deleteModal ? deleteModal.amt : (changeModal.oldAmt - changeModal.newAmt)}
+                      max={ (deleteModal ? deleteModal.amt : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))) }
                       placeholder="0" 
-                      value={(deleteModal || changeModal).split[k] || ''} 
+                      value={((deleteModal ?? changeModal)?.split[k] ?? '') as any} 
                       onChange={(e) => {
                         const v = sanitizeNumberInput(e.target.value);
-                        const total = deleteModal ? deleteModal.amt : (changeModal.oldAmt - changeModal.newAmt);
-                        const s = (deleteModal || changeModal).split;
+                        const total = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
+                        const s = (deleteModal ?? changeModal)?.split ?? { save:0, groc:0, ent:0 };
                         
                         if (k === 'save') {
-                          const remaining = total - v;
+                          const remaining = (total ?? 0) - v;
                           if (deleteModal) {
-                            setDeleteModal({ ...deleteModal, split: { save: v, groc: 0, ent: remaining } });
+                            setDeleteModal(prev => prev ? { ...prev, split: { save: v, groc: 0, ent: remaining } } : prev);
                           } else {
-                            setChangeModal({ ...changeModal, split: { save: v, groc: 0, ent: remaining } });
+                            setChangeModal(prev => prev ? { ...prev, split: { save: v, groc: 0, ent: remaining } } : prev);
                           }
                         } else if (k === 'groc') {
-                          const remaining = total - s.save - v;
+                          const remaining = (total ?? 0) - s.save - v;
                           if (deleteModal) {
-                            setDeleteModal({ ...deleteModal, split: { ...s, groc: v, ent: Math.max(0, remaining) } });
+                            setDeleteModal(prev => prev ? { ...prev, split: { ...s, groc: v, ent: Math.max(0, remaining) } } : prev);
                           } else {
-                            setChangeModal({ ...changeModal, split: { ...s, groc: v, ent: Math.max(0, remaining) } });
+                            setChangeModal(prev => prev ? { ...prev, split: { ...s, groc: v, ent: Math.max(0, remaining) } } : prev);
                           }
                         }
                         setSplitError('');
@@ -1105,21 +1171,22 @@ return (
               </div>
               
               <div className="text-sm text-gray-600 mb-4">
-                Allocated: {((deleteModal||changeModal).split.save + (deleteModal||changeModal).split.groc + (deleteModal||changeModal).split.ent).toFixed(0)} / {(deleteModal ? deleteModal.amt : (changeModal.oldAmt - changeModal.newAmt)).toFixed(0)} SEK
+                Allocated: {(((deleteModal ?? changeModal)?.split.save ?? 0) + ((deleteModal ?? changeModal)?.split.groc ?? 0) + ((deleteModal ?? changeModal)?.split.ent ?? 0)).toFixed(0)} / {( deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)) ) ).toFixed(0)} SEK
               </div>
               
               <div className="flex flex-col sm:flex-row gap-2">
                 <button 
                   onClick={()=>{
-                    const modal = deleteModal || changeModal;
-                    const total = deleteModal ? deleteModal.amt : (changeModal.oldAmt - changeModal.newAmt);
-                    
-                    if(!validateSplit(modal.split, total)) {
-                      setSplitError(`Total must equal ${total.toFixed(0)} SEK. Current total: ${(modal.split.save + modal.split.groc + modal.split.ent).toFixed(0)} SEK`);
+                    const modal = deleteModal ?? changeModal;
+                    if (!modal) return;
+                    const totalNum = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
+
+                    if(!validateSplit(modal.split, totalNum)) {
+                      setSplitError(`Total must equal ${totalNum.toFixed(0)} SEK. Current total: ${((modal.split.save + modal.split.groc + modal.split.ent) ).toFixed(0)} SEK`);
                       return;
                     }
-                    
-                    setPendingChanges([...pendingChanges,{...modal,type:deleteModal?'delete':'amount',monthIdx:sel}]);
+
+                    setPendingChanges(prev => [...prev, { ...modal, type: deleteModal ? 'delete' : 'amount', monthIdx: sel }]);
                     setDeleteModal(null);
                     setChangeModal(null);
                     setSplitError('');
@@ -1147,18 +1214,18 @@ return (
         <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
           <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
           <div className="space-y-4">
-            {['groc','ent'].map(type=>(
+            {(['groc','ent'] as ('groc'|'ent')[]).map(type=>(
               <div key={type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
                 <div className="font-semibold mb-3 text-gray-800 text-lg">{type==='groc'?'🛒 Groceries':'🎭 Entertainment'}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
                   <div>
                     <label className="text-xs font-medium text-gray-700 block mb-1">
                       Total Budget
-                      {type==='groc' && (data[sel].grocBonus > 0 || data[sel].grocExtra > 0) && (
+                      {type==='groc' && (data[sel].grocBonus > 0 || (data[sel].grocExtra ?? 0) > 0) && (
                         <span className="text-green-600 ml-1 block text-xs">
                           (Base: {varExp.grocBudg[sel].toFixed(0)}
                           {data[sel].grocBonus > 0 && ` +${data[sel].grocBonus.toFixed(0)} freed`}
-                          {data[sel].grocExtra > 0 && ` +${data[sel].grocExtra.toFixed(0)} extra`})
+                          {(data[sel].grocExtra ?? 0) > 0 && ` +${(data[sel].grocExtra ?? 0).toFixed(0)} extra`})
                         </span>
                       )}
                     </label>
