@@ -1507,6 +1507,9 @@ return (
                             n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
                             n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
                             n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
+                            // Also reduce permanent inc by the total allocation amount
+                            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
+                            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
                             setData(n);
                             setHasChanges(true);
                           }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
