@@ -98,7 +98,7 @@ export default function FinancialPlanner() {
     ent: Array(60).fill(0).map(()=>[] as Tx[]),
     extra: Array(60).fill(0).map(()=>[] as ExtraAlloc[])
   }));
-  const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number }; idx: number }>(null);
+  const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; idx: number }>(null);
   const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
 
@@ -914,11 +914,13 @@ return (
                       const prevEntExtra = n[sel].entExtra ?? 0;
                       const prevSaveExtra = n[sel].saveExtra ?? 0;
                       const prevExtraInc = n[sel].extraInc;
+                      const prevInc = n[sel].inc;
                       
                       n[sel].grocExtra = prevGrocExtra + extraAdj.groc;
                       n[sel].entExtra = prevEntExtra + extraAdj.ent;
                       n[sel].saveExtra = prevSaveExtra + extraAdj.save;
-                      // clear the extraInc since we've applied it
+                      // Move extraInc to permanent inc and clear extraInc
+                      n[sel].inc = prevInc + (prevExtraInc || 0);
                       n[sel].extraInc = 0;
                       setData(n);
                       // record the allocation in transactions.extra for history
@@ -927,7 +929,7 @@ return (
                       tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
                       setTransactions(tcopy);
                       // store undo info (index of pushed entry)
-                      setLastExtraApply({ sel, prev: { grocExtra: prevGrocExtra, entExtra: prevEntExtra, saveExtra: prevSaveExtra, extraInc: prevExtraInc }, idx: tcopy.extra[sel].length - 1 });
+                      setLastExtraApply({ sel, prev: { grocExtra: prevGrocExtra, entExtra: prevEntExtra, saveExtra: prevSaveExtra, extraInc: prevExtraInc, inc: prevInc }, idx: tcopy.extra[sel].length - 1 });
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -951,6 +953,7 @@ return (
                       n[la.sel].entExtra = la.prev.entExtra;
                       n[la.sel].saveExtra = la.prev.saveExtra;
                       n[la.sel].extraInc = la.prev.extraInc;
+                      n[la.sel].inc = la.prev.inc;
                       setData(n);
                       setTransactions(tcopy);
                       setLastExtraApply(null);
