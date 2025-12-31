@@ -45,8 +45,6 @@ type DataItem = {
   rolloverProcessed: boolean;
   entBudgBase: number | null;
   entBudgLocked: boolean;
-  balOverride?: number | null;
-  balManual?: boolean;
 };
 
 type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
@@ -75,7 +73,6 @@ export default function FinancialPlanner() {
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
   const [adj, setAdj] = useState({ groc: 0, ent: 0 });
   const [editPrev, setEditPrev] = useState(false);
-  const [editBal, setEditBal] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Change[]>([]);
   const [changeModal, setChangeModal] = useState<Change | null>(null);
@@ -646,7 +643,7 @@ return (
               {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
               {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
               {l:'Previous',v:cur.prev,k:'prev',e:editPrev,btn:<button onClick={()=>setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800"><Edit2 size={14}/></button>},
-              {l:'Balance',v:cur.bal,k:'bal',e:editBal,btn:<button onClick={()=>setEditBal(!editBal)} className="text-blue-600 hover:text-blue-800"><Edit2 size={14}/></button>},
+              {l:'Balance',v:cur.bal,k:'bal',e:false},
               {l:'Savings',v:data[sel].save,k:'save',e:true,adj:true},
               {l:'Actual',v:cur.actSave,k:'act',e:false}
             ].map((f,i)=>(
@@ -683,12 +680,6 @@ return (
                       const n=[...data];
                       n[sel].prev = val;
                       n[sel].prevManual = true;
-                      setData(n);
-                    }
-                    else if (f.k === 'bal') {
-                      const n=[...data];
-                      n[sel].balOverride = val;
-                      n[sel].balManual = true;
                       setData(n);
                     }
                     else if (f.k === 'save') {

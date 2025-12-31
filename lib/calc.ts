@@ -31,8 +31,6 @@ export type DataItem = {
   rolloverProcessed: boolean;
   entBudgBase: number | null;
   entBudgLocked: boolean;
-  balOverride?: number | null;
-  balManual?: boolean;
 };
 
 export type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
@@ -158,16 +156,7 @@ export function calculateMonthly(params: {
     }
 
     // Calculate balance: income + extra income + previous savings - spending
-    const balCalculated = d.inc + d.extraInc + prevSave - grocSpent - entSpent - fixSpent;
-    const bal = (d.balManual && d.balOverride !== null && d.balOverride !== undefined) ? d.balOverride : balCalculated;
-    
-    // Show warning if manual balance differs from calculated
-    if (d.balManual && d.balOverride !== null && d.balOverride !== undefined) {
-      if (Math.abs(bal - balCalculated) > 1) {
-        overspendWarning = (overspendWarning ? overspendWarning + ' | ' : '') +
-          `Manual Balance (${bal.toFixed(0)}) differs from calculated (${balCalculated.toFixed(0)})`;
-      }
-    }
+    const bal = d.inc + d.extraInc + prevSave - grocSpent - entSpent - fixSpent;
     
     const totSave = prevSave + actSave;
 
