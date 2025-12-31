@@ -3,7 +3,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
-import { getFinancialData, saveFinancialData } from "@/lib/finance";
+import { getFinancialData } from "@/lib/finance";
+import { saveFinancialDataSafe } from '@/lib/financeSafe';
+import { applySaveChanges } from '@/lib/saveChanges';
+import { calculateMonthly } from "@/lib/calc";
+import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
+
+ 
 
 // -- Types
 type MonthItem = { name: string; date: Date; day: number };
@@ -107,6 +113,8 @@ export default function FinancialPlanner() {
   const [isLoading, setIsLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
+  const [saveConflict, setSaveConflict] = useState(false);
   const { user, loading } = useAuth();
   const [data, setData] = useState<DataItem[]>(
     Array(60).fill(0).map((_, i) => ({
@@ -165,6 +173,7 @@ export default function FinancialPlanner() {
         setVarExp(saved.varExp);
         setAutoRollover(saved.autoRollover ?? false);
         setLastSaved(saved.updatedAt?.toDate?.() ?? null);
+        setBaseUpdatedAt(saved.updatedAt ?? null);
       }
     } catch (err) {
       console.error("Failed to load from Firestore", err);
@@ -181,20 +190,26 @@ useEffect(() => {
   if (!user || !hydrated) return;
 
   const timeout = setTimeout(() => {
-    saveFinancialData(user.uid, {
-      data,
-      fixed,
-      varExp,
-      autoRollover,
-    }).then(() => {
-      setLastSaved(new Date());
-    }).catch(err => {
-      console.error("Failed to save to Firestore", err);
-    });
+    (async () => {
+      try {
+        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover }, baseUpdatedAt);
+        // Refresh remote timestamp
+        const saved = await getFinancialData(user.uid);
+        setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
+        setBaseUpdatedAt(saved?.updatedAt ?? null);
+        setSaveConflict(false);
+      } catch (err: any) {
+        if (err && err.message === 'conflict') {
+          setSaveConflict(true);
+        } else {
+          console.error('Failed to save to Firestore', err);
+        }
+      }
+    })();
   }, 1000);
 
   return () => clearTimeout(timeout);
-}, [data, fixed, varExp, autoRollover, user, hydrated]);
+}, [data, fixed, varExp, autoRollover, user, hydrated, baseUpdatedAt]);
 
 
   // Warn before leaving with unsaved changes
@@ -232,101 +247,28 @@ useEffect(() => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
   };
+  const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
+  const calc = calcResult.items;
 
-  const calc = useMemo(() => {
-    const res: MonthlyCalcItem[] = [];
-    let prevTotSave = data[0].prev ?? 0;
-    
-    for (let i = 0; i < months.length; i++) {
-      const m = months[i];
-      const d = data[i];
-      const fixExp = fixed.reduce((s, e) => s + e.amts[i], 0);
-      const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
-      const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
-      const grocSpent = varExp.grocSpent[i];
-      let entBudg;
-      if (d.entBudgLocked && d.entBudgBase !== null) {
-        entBudg = d.entBudgBase;
-      } else {
-        entBudg = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
-        // Auto-lock when month becomes passed
-        if (isPassed(i) && !d.entBudgLocked) {
-          d.entBudgBase = entBudg;
-          d.entBudgLocked = true;
-        }
-      }
-      const entSpent = varExp.entSpent[i];
-      const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
-      
-      let actSave = d.save + (d.saveExtra || 0) - over;
-      let overspendWarning = '';
-      let criticalOverspend = false;
-      
-      // Handle overspending cascade
-      if (over > 0) {
-        if (over > d.save + (d.saveExtra || 0)) {
-          const deficit = over - (d.save + (d.saveExtra || 0));
-          if (prevTotSave >= deficit) {
-            overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Current savings insufficient, consuming ${deficit.toFixed(0)} SEK from previous savings.`;
-            actSave = 0;
-            prevTotSave -= deficit;
-          } else {
-            criticalOverspend = true;
-            overspendWarning = `CRITICAL: Overspending by ${over.toFixed(0)} SEK exceeds all available savings!`;
-            actSave = -(over - (d.save + (d.saveExtra || 0)) - prevTotSave);
-            prevTotSave = 0;
-          }
-        } else {
-          overspendWarning = `Overspending by ${over.toFixed(0)} SEK, reducing savings.`;
-        }
-      }
-      
-      let prevSave: number;
-      if (i === 0) {
-        prevSave = d.prev ?? 0;
-      } else if (d.prevManual) {
-        prevSave = d.prev ?? 0;
-        const calculated = prevTotSave;
-        if (Math.abs(prevSave - calculated) > 1) {
-          overspendWarning = (overspendWarning ? overspendWarning + ' | ' : '') + 
-            `Manual Previous (${prevSave.toFixed(0)}) differs from calculated (${calculated.toFixed(0)})`;
-        }
-      } else {
-        prevSave = prevTotSave;
-      }
-      
-      const bal = d.inc + d.extraInc + prevSave - grocSpent - entSpent - fixSpent;
-      const totSave = prevSave + actSave;
-      
-      // Prevent negative total savings
-      if (totSave < 0 && !criticalOverspend) {
-        criticalOverspend = true;
-        overspendWarning = `CRITICAL: Total savings cannot be negative (${totSave.toFixed(0)} SEK)`;
-      }
-      
-      res.push({
-        month: m.name, date: m.date, inc: d.inc, prev: prevSave, save: d.save, actSave, totSave, bal,
-        fixExp, fixSpent, grocBudg, grocSpent, grocRem: grocBudg - grocSpent, entBudg, entSpent,
-        entRem: entBudg - entSpent, over, extraInc: d.extraInc, extra: Math.max(0, d.defSave - d.save), 
-        passed: isPassed(i), prevManual: d.prevManual, overspendWarning, criticalOverspend
-      });
-      
-      prevTotSave = totSave;
-    }
-    
-    res.forEach((r, i) => {
-      if (i > 0) {
-        r.prevGrocRem = Math.max(0, res[i-1].grocBudg - res[i-1].grocSpent);
-        r.prevEntRem = Math.max(0, res[i-1].entBudg - res[i-1].entSpent);
-        const daysRemaining = getRolloverDaysRemaining(i);
-        r.hasRollover = r.passed && !data[i].rolloverProcessed && (r.prevGrocRem > 0 || r.prevEntRem > 0);
-        r.rolloverDaysRemaining = daysRemaining;
-      } else {
-        r.prevGrocRem = 0; r.prevEntRem = 0; r.hasRollover = false; r.rolloverDaysRemaining = null;
+  // Apply entBudg locks recorded by the pure calculator in a controlled effect
+  useEffect(() => {
+    if (!calcResult.locks || calcResult.locks.length === 0) return;
+    const n = [...data];
+    let changed = false;
+    calcResult.locks.forEach(l => {
+      if (!n[l.idx].entBudgLocked) {
+        n[l.idx].entBudgBase = l.entBudgBase;
+        n[l.idx].entBudgLocked = true;
+        changed = true;
       }
     });
-    return res;
-  }, [data, fixed, varExp, months]);
+    if (changed) {
+      setData(n);
+      setHasChanges(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcResult]);
+  
 
   // Auto-rollover logic (must be after calc is defined)
   useEffect(() => {
@@ -355,69 +297,10 @@ useEffect(() => {
 
   const cur = calc[sel];
 
-  const previewFixed = useMemo(() => {
-    let result = fixed.map(f => ({ ...f, amts: [...f.amts] }));
-    pendingChanges.forEach(c => {
-      if (c.type === 'delete') {
-        if (c.scope === 'month') {
-          result[c.idx].amts[c.monthIdx ?? 0] = 0;
-        } else if (c.scope === 'future') {
-          for (let i = c.monthIdx ?? 0; i < 60; i++) result[c.idx].amts[i] = 0;
-        } else {
-          result.splice(c.idx, 1);
-        }
-      }
-      if (c.type === 'amount') {
-        if (c.scope === 'month') result[c.idx].amts[c.monthIdx ?? 0] = c.newAmt ?? 0;
-        else for (let i = c.monthIdx ?? 0; i < 60; i++) result[c.idx].amts[i] = c.newAmt ?? 0;
-      }
-    });
-    return result;
-  }, [fixed, pendingChanges]);
+  const previewFixed = useMemo(() => applyPendingToFixed(fixed, pendingChanges), [fixed, pendingChanges]);
 
   const saveChanges = () => {
-    const nf = [...fixed], nd = [...data];
-    if (applySavingsForward !== null) {
-      const src = nd[applySavingsForward];
-      for (let i = applySavingsForward + 1; i < 60; i++) {
-        nd[i].save = src.save;
-        if (src.save < src.defSave) {
-          nd[i].grocBonus = src.grocBonus;
-          nd[i].entBonus = src.entBonus;
-        } else {
-          nd[i].grocBonus = 0;
-          nd[i].entBonus = 0;
-        }
-      }
-    }
-    pendingChanges.forEach(c => {
-      if (c.type === 'delete') {
-        if (c.scope === 'forever') {
-          nf.splice(c.idx, 1);
-          // Clean spent array
-          nf.forEach(f => {
-            if (f.spent.length > 60) f.spent = f.spent.slice(0, 60);
-          });
-        }
-        else if (c.scope === 'month') nf[c.idx].amts[c.monthIdx ?? 0] = 0;
-        else for (let i = c.monthIdx ?? 0; i < 60; i++) nf[c.idx].amts[i] = 0;
-        const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : 60;
-        for (let i = c.monthIdx ?? 0; i < end; i++) {
-          nd[i].save += c.split.save;
-          nd[i].grocBonus += c.split.groc;
-          nd[i].entBonus += c.split.ent;
-        }
-      } else if (c.type === 'amount') {
-        if (c.scope === 'month') nf[c.idx].amts[c.monthIdx ?? 0] = c.newAmt ?? 0;
-        else for (let i = c.monthIdx ?? 0; i < 60; i++) nf[c.idx].amts[i] = c.newAmt ?? 0;
-        const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : 60;
-        for (let i = c.monthIdx ?? 0; i < end; i++) {
-          nd[i].save += c.split.save;
-          nd[i].grocBonus += c.split.groc;
-          nd[i].entBonus += c.split.ent;
-        }
-      }
-    });
+    const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });
     setFixed(nf);
     setData(nd);
     setPendingChanges([]);
@@ -425,21 +308,60 @@ useEffect(() => {
     setApplyFuture(false);
     setApplySavingsForward(null);
     setSavingEdited(false);
-    alert('All changes saved successfully!');
+    (async () => {
+      try {
+        if (user) {
+          await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover }, baseUpdatedAt);
+          const saved = await getFinancialData(user.uid);
+          setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
+          setBaseUpdatedAt(saved?.updatedAt ?? null);
+          setSaveConflict(false);
+          alert('All changes saved successfully!');
+        }
+      } catch (err: any) {
+        if (err && err.message === 'conflict') setSaveConflict(true);
+        else console.error('Failed to save changes', err);
+      }
+    })();
+  };
+  const handleReloadRemote = async () => {
+    if (!user) return;
+    try {
+      const saved = await getFinancialData(user.uid);
+      if (saved) {
+        setData(saved.data);
+        setFixed(saved.fixed);
+        setVarExp(saved.varExp);
+        setAutoRollover(saved.autoRollover ?? false);
+        setLastSaved(saved.updatedAt?.toDate?.() ?? new Date());
+        setBaseUpdatedAt(saved.updatedAt ?? null);
+        setPendingChanges([]);
+        setHasChanges(false);
+      }
+    } catch (err) {
+      console.error('Failed to reload remote data', err);
+    } finally {
+      setSaveConflict(false);
+    }
+  };
+
+  const handleForceSave = async () => {
+    if (!user) return;
+    try {
+      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover }, null);
+      const saved = await getFinancialData(user.uid);
+      setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
+      setBaseUpdatedAt(saved?.updatedAt ?? null);
+      setSaveConflict(false);
+      setHasChanges(false);
+    } catch (err) {
+      console.error('Failed to force save', err);
+    }
   };
 
   
-  const validateSplit = (split: Split, total: number) => {
-    const sum = split.save + split.groc + split.ent;
-    return Math.abs(sum - total) < 0.01;
-  };
-
-  const sanitizeNumberInput = (value: string | number) => {
-    const num = parseFloat(String(value));
-    if (isNaN(num) || !isFinite(num)) return 0;
-    return Math.max(0, Math.min(1000000, num));
-  };
-
+  // use `validateSplit` and `sanitizeNumberInput` from `lib/uiHelpers`
+ 
   type CardProps = {
     label: string;
     value: number;
@@ -498,6 +420,14 @@ return (
     <div className="text-xs text-gray-500 flex items-center gap-1">
       <Check className="w-3 h-3 text-green-600" />
       Saved {lastSaved.toLocaleTimeString()}
+    </div>
+  )}
+  {saveConflict && (
+    <div className="flex items-center gap-2 bg-red-100 px-3 py-2 rounded-lg">
+      <AlertTriangle className="w-4 h-4 text-red-700" />
+      <div className="text-sm font-medium text-red-700">Save conflict detected — remote changes exist.</div>
+      <button onClick={handleReloadRemote} className="ml-2 bg-white text-red-700 px-3 py-1 rounded-md shadow-sm">Reload Remote</button>
+      <button onClick={handleForceSave} className="ml-2 bg-red-700 text-white px-3 py-1 rounded-md shadow-sm">Force Save</button>
     </div>
   )}
   {pendingChanges.length > 0 && (
