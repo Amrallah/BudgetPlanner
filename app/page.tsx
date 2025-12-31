@@ -111,6 +111,8 @@ export default function FinancialPlanner() {
   const [withdrawAmount, setWithdrawAmount] = useState(0);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingEnt, setEditingEnt] = useState(false);
+  const [entInput, setEntInput] = useState('');
   const [hydrated, setHydrated] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
@@ -1166,35 +1168,45 @@ return (
                         </span>
                       )}
                     </label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min="0"
                       max="1000000"
-                      placeholder="0" 
-                      value={type==='groc' ? (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)) : cur.entBudg.toFixed(0)} 
-onChange={(e)=>{
-                        if(type==='groc'){
+                      placeholder="0"
+                      value={type==='groc' ? (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
+                      onFocus={() => {
+                        if (!editingEnt) {
+                          setEditingEnt(true);
+                          setEntInput(String(data[sel].entBudgBase ?? Math.round(cur.entBudg)));
+                        }
+                      }}
+                      onChange={(e) => {
+                        if (type === 'groc') {
                           const val = sanitizeNumberInput(e.target.value);
                           const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
                           const difference = currentTotal - val;
-                          
-                          const n={...varExp};
+
+                          const n = { ...varExp };
                           // User edits total, we adjust base
-                          n.grocBudg[sel]=Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                          n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
                           setVarExp(n);
-                          
+
                           // Adjust current month savings
                           const nd = [...data];
                           nd[sel].save = Math.max(0, nd[sel].save + difference);
                           setData(nd);
-                          
+
                           setHasChanges(true);
-                        } else if(type==='ent') {
-                          // Allow manual override for entertainment
-                          const val = sanitizeNumberInput(e.target.value);
+                        } else if (type === 'ent') {
+                          // buffer raw input while editing to avoid calc overwrites
+                          setEntInput(e.target.value);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (type === 'ent') {
+                          const val = sanitizeNumberInput(entInput);
                           const currentTotal = cur.entBudg;
                           const difference = currentTotal - val;
-                          
                           const n = [...data];
                           n[sel].entBudgBase = val;
                           n[sel].entBudgLocked = true;
@@ -1202,9 +1214,10 @@ onChange={(e)=>{
                           n[sel].save = Math.max(0, n[sel].save + difference);
                           setData(n);
                           setHasChanges(true);
+                          setEditingEnt(false);
                         }
-                      }} 
-                      disabled={false} 
+                      }}
+                      disabled={false}
                       className={`w-full p-2 sm:p-3 border-2 ${type==='ent' && data[sel].entBudgLocked ? 'border-orange-400' : 'border-gray-300'} rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
                     />
                   </div>
