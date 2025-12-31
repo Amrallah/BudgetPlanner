@@ -707,10 +707,8 @@ return (
                       setData(n);
                     } else if (f.k === 'save') {
                       n[sel].save = val;
-                      if (val >= n[sel].defSave) {
-                        n[sel].grocBonus = 0;
-                        n[sel].entBonus = 0;
-                      }
+                      // Do not clear bonuses when savings changes - bonuses are allocations from budget reductions
+                      // and should persist regardless of savings amount
                       setAdj({ groc: 0, ent: 0 });
                       setApplyFuture(false);
                       setApplySavingsForward(null);
