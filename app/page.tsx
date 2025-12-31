@@ -696,11 +696,12 @@ return (
                   }}
                   onBlur={(e)=>{
                     if(!f.e)return;
-                    const n=[...data];
                     const val=sanitizeNumberInput(e.target.value);
                     
                     if (f.k === 'extraInc') {
-                      const oldVal = n[sel].extraInc;
+                      // Capture old value BEFORE modifying data array
+                      const oldVal = data[sel].extraInc;
+                      const n=[...data];
                       n[sel].extraInc = val;
                       // Only trigger split if value is positive and changed
                       if (val > 0 && val !== oldVal) {
@@ -716,6 +717,7 @@ return (
                       }
                       setData(n);
                     } else if (f.k === 'save') {
+                      const n=[...data];
                       n[sel].save = val;
                       // Do not clear bonuses when savings changes - bonuses are allocations from budget reductions
                       // and should persist regardless of savings amount
