@@ -100,7 +100,6 @@ export default function FinancialPlanner() {
   }));
   const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number }; idx: number }>(null);
   const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
-  const [extraEdit, setExtraEdit] = useState<{ idx: number | null; groc: string; ent: string; save: string }>({ idx: null, groc: '', ent: '', save: '' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
 
   const serializeTransactions = useCallback((t: Transactions): SerializedTransactions => {
@@ -911,13 +910,15 @@ return (
                         return;
                       }
                       const n = [...data];
-                      n[sel].grocExtra = extraAdj.groc;
-                      n[sel].entExtra = extraAdj.ent;
-                      // apply save portion into actual savings so balance reflects the extra income
-                      n[sel].save = (n[sel].save || 0) + extraAdj.save;
-                      n[sel].saveExtra = extraAdj.save;
+                      const prevGrocExtra = n[sel].grocExtra ?? 0;
+                      const prevEntExtra = n[sel].entExtra ?? 0;
+                      const prevSaveExtra = n[sel].saveExtra ?? 0;
+                      const prevExtraInc = n[sel].extraInc;
+                      
+                      n[sel].grocExtra = prevGrocExtra + extraAdj.groc;
+                      n[sel].entExtra = prevEntExtra + extraAdj.ent;
+                      n[sel].saveExtra = prevSaveExtra + extraAdj.save;
                       // clear the extraInc since we've applied it
-                      const prevExtra = n[sel].extraInc;
                       n[sel].extraInc = 0;
                       setData(n);
                       // record the allocation in transactions.extra for history
@@ -926,7 +927,7 @@ return (
                       tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
                       setTransactions(tcopy);
                       // store undo info (index of pushed entry)
-                      setLastExtraApply({ sel, prev: { grocExtra: (n[sel].grocExtra ?? 0) - extraAdj.groc, entExtra: (n[sel].entExtra ?? 0) - extraAdj.ent, saveExtra: (n[sel].save || 0) - extraAdj.save, extraInc: prevExtra }, idx: tcopy.extra[sel].length - 1 });
+                      setLastExtraApply({ sel, prev: { grocExtra: prevGrocExtra, entExtra: prevEntExtra, saveExtra: prevSaveExtra, extraInc: prevExtraInc }, idx: tcopy.extra[sel].length - 1 });
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -938,6 +939,7 @@ return (
                   </button>
                   {lastExtraApply && lastExtraApply.sel === sel && (
                     <button onClick={() => {
+                      if (!confirm('Undo the last extra income split? This will restore the extra income and remove the allocated amounts.')) return;
                       // undo: restore data and remove the last recorded extra allocation
                       const n = [...data];
                       const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
@@ -1489,42 +1491,10 @@ return (
                     transactions.extra[sel].map((ex, i) => (
                       <div key={i} className="flex items-center justify-between border-b py-2">
                         <div className="flex items-center gap-4">
-                          {extraEdit.idx === i ? (
-                            <div className="flex items-center gap-2">
-                              <input value={extraEdit.groc} onChange={(e)=>setExtraEdit({...extraEdit, groc: e.target.value})} className="p-2 border rounded w-20" />
-                              <input value={extraEdit.ent} onChange={(e)=>setExtraEdit({...extraEdit, ent: e.target.value})} className="p-2 border rounded w-20" />
-                              <input value={extraEdit.save} onChange={(e)=>setExtraEdit({...extraEdit, save: e.target.value})} className="p-2 border rounded w-20" />
-                              <button onClick={() => {
-                                // save edit
-                                const newG = sanitizeNumberInput(extraEdit.groc);
-                                const newE = sanitizeNumberInput(extraEdit.ent);
-                                const newS = sanitizeNumberInput(extraEdit.save);
-                                const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                                const old = tcopy.extra[sel][i];
-                                if (!old) return;
-                                tcopy.extra[sel][i] = { groc: newG, ent: newE, save: newS, ts: old.ts };
-                                setTransactions(tcopy);
-                                // apply deltas to data
-                                const n = [...data];
-                                n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - old.groc + newG);
-                                n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - old.ent + newE);
-                                // adjust save: remove old.save then add newS
-                                n[sel].save = Math.max(0, (n[sel].save || 0) - old.save + newS);
-                                setData(n);
-                                setExtraEdit({ idx: null, groc: '', ent: '', save: '' });
-                                setHasChanges(true);
-                              }} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                              <button onClick={()=>setExtraEdit({ idx: null, groc: '', ent: '', save: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                              <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                            </>
-                          )}
+                          <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
+                          <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={()=>setExtraEdit({ idx: i, groc: String(ex.groc), ent: String(ex.ent), save: String(ex.save) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
                           <button onClick={() => {
                             if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
                             const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
@@ -1533,7 +1503,7 @@ return (
                             const n = [...data];
                             n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
                             n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
-                            n[sel].save = Math.max(0, (n[sel].save || 0) - (removed?.save || 0));
+                            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
                             setData(n);
                             setHasChanges(true);
                           }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
