@@ -17,6 +17,7 @@ export type FixedExpense = { id: number; name: string; amts: number[]; spent: bo
 
 export type DataItem = {
   inc: number;
+  baseSalary?: number;
   prev: number | null;
   prevManual: boolean;
   save: number;

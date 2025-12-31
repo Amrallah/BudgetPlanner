@@ -31,6 +31,7 @@ type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[]
 
 type DataItem = {
   inc: number;
+  baseSalary?: number;
   prev: number | null;
   prevManual: boolean;
   save: number;
@@ -540,7 +541,7 @@ return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4">
           <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
           <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
-          <Card label="Income" value={cur.inc} icon={Calendar} color="purple" />
+          <Card label="Income" value={data[sel].baseSalary ?? cur.inc} icon={Calendar} color="purple" />
           <Card label="Groceries" value={cur.grocRem} icon={ShoppingCart} color="green" sub={`of ${cur.grocBudg.toFixed(0)} SEK`} />
           <Card 
             label="Entertainment" 
@@ -636,7 +637,7 @@ return (
           <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {cur.month}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             {[
-              {l:'Income',v:data[sel].inc,k:'inc',e:true},
+              {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
               {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
               {l:'Previous',v:cur.prev,k:'prev',e:editPrev,btn:<button onClick={()=>setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800"><Edit2 size={14}/></button>},
               {l:'Savings',v:data[sel].save,k:'save',e:true,adj:true},
@@ -655,7 +656,10 @@ return (
                     const n=[...data];
                     const val=sanitizeNumberInput(e.target.value);
                     
-                    if (f.k === 'inc') n[sel].inc = val;
+                    if (f.k === 'inc') {
+                      n[sel].inc = val;
+                      n[sel].baseSalary = val;
+                    }
                     else if (f.k === 'extraInc') {
                       const oldVal = n[sel].extraInc;
                       n[sel].extraInc = val;
@@ -920,6 +924,10 @@ return (
                       n[sel].entExtra = prevEntExtra + extraAdj.ent;
                       n[sel].saveExtra = prevSaveExtra + extraAdj.save;
                       // Move extraInc to permanent inc and clear extraInc
+                      // Track base salary if not already set
+                      if (!n[sel].baseSalary) {
+                        n[sel].baseSalary = prevInc;
+                      }
                       n[sel].inc = prevInc + (prevExtraInc || 0);
                       n[sel].extraInc = 0;
                       setData(n);
@@ -1321,17 +1329,21 @@ return (
                           const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
                           const difference = currentTotal - val;
 
-                          const n = { ...varExp };
-                          // User edits total, we adjust base
-                          n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
-                          setVarExp(n);
-
-                          // Adjust current month savings
-                          const nd = [...data];
-                          nd[sel].save = Math.max(0, nd[sel].save + difference);
-                          setData(nd);
-
-                          setHasChanges(true);
+                          // If increasing budget, just update it
+                          if (difference <= 0) {
+                            const n = { ...varExp };
+                            n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                            setVarExp(n);
+                            setHasChanges(true);
+                          } else {
+                            // If reducing budget, show split modal for the freed amount
+                            const n = { ...varExp };
+                            n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                            setVarExp(n);
+                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setSplitError('');
+                            setHasChanges(true);
+                          }
                         } else if (type === 'ent') {
                           // buffer raw input while editing to avoid calc overwrites
                           setEntInput(e.target.value);
