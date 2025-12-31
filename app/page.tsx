@@ -93,6 +93,7 @@ export default function FinancialPlanner() {
   const [isLoading, setIsLoading] = useState(true);
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
+  const [grocInput, setGrocInput] = useState('');
   const [hydrated, setHydrated] = useState(false);
   const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => ({
     groc: Array(60).fill(0).map(()=>[] as Tx[]),
@@ -653,16 +654,44 @@ return (
                   value={f.v === 0 ? '' : f.v.toFixed(0)} 
                   onChange={(e)=>{
                     if(!f.e)return;
-                    const n=[...data];
                     const val=sanitizeNumberInput(e.target.value);
                     
                     if (f.k === 'inc') {
+                      const n=[...data];
                       n[sel].inc = val;
                       n[sel].baseSalary = val;
+                      setData(n);
                     }
                     else if (f.k === 'extraInc') {
+                      // Just buffer input while typing - split logic deferred to onBlur
+                      const n=[...data];
+                      n[sel].extraInc = val;
+                      setData(n);
+                    }
+                    else if (f.k === 'prev') {
+                      const n=[...data];
+                      n[sel].prev = val;
+                      n[sel].prevManual = true;
+                      setData(n);
+                    }
+                    else if (f.k === 'save') {
+                      // Just buffer input while typing - split logic deferred to onBlur
+                      setSavingEdited(true);
+                      const n=[...data];
+                      n[sel].save = val;
+                      setData(n);
+                    }
+                    setHasChanges(true);
+                  }}
+                  onBlur={(e)=>{
+                    if(!f.e)return;
+                    const n=[...data];
+                    const val=sanitizeNumberInput(e.target.value);
+                    
+                    if (f.k === 'extraInc') {
                       const oldVal = n[sel].extraInc;
                       n[sel].extraInc = val;
+                      // Only trigger split if value is positive and changed
                       if (val > 0 && val !== oldVal) {
                         setExtraSplitActive(true);
                         setExtraAdj({ groc: 0, ent: 0, save: 0 });
@@ -674,13 +703,8 @@ return (
                         setExtraSplitActive(false);
                         setExtraSplitError('');
                       }
-                    }
-                    else if (f.k === 'prev') {
-                      n[sel].prev = val;
-                      n[sel].prevManual = true;
-                    }
-                    else if (f.k === 'save') {
-                      setSavingEdited(true);
+                      setData(n);
+                    } else if (f.k === 'save') {
                       n[sel].save = val;
                       if (val >= n[sel].defSave) {
                         n[sel].grocBonus = 0;
@@ -689,10 +713,9 @@ return (
                       setAdj({ groc: 0, ent: 0 });
                       setApplyFuture(false);
                       setApplySavingsForward(null);
+                      setData(n);
                     }
-                    setData(n);
-                    setHasChanges(true);
-                  }} 
+                  }}
                   disabled={!f.e} 
                   className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                 />
@@ -1142,10 +1165,21 @@ return (
                       value={e.amts[sel]} 
                       onBlur={(ev) => {
                         const newAmt = sanitizeNumberInput(ev.target.value);
-                          if (newAmt !== e.amts[sel]) {
+                        const oldAmt = e.amts[sel];
+                        if (newAmt !== oldAmt) {
+                          // Only show split modal if amount decreased
+                          if (newAmt < oldAmt) {
+                            const difference = oldAmt - newAmt;
                             setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
+                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: difference, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                          } else {
+                            // Amount increased, just update it
+                            const n = [...fixed];
+                            n[originalIndex].amts[sel] = newAmt;
+                            setFixed(n);
+                            setHasChanges(true);
                           }
+                        }
                       }} 
                       onChange={(ev) => {
                         const val = sanitizeNumberInput(ev.target.value);
@@ -1316,42 +1350,46 @@ return (
                       min="0"
                       max="1000000"
                       placeholder="0"
-                      value={type==='groc' ? (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
+                      value={type==='groc' ? (editingEnt ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0))) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
                       onFocus={() => {
-                        if (!editingEnt) {
+                        if (type === 'groc') {
+                          setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
+                        } else if (!editingEnt) {
                           setEditingEnt(true);
                           setEntInput(String(data[sel].entBudgBase ?? Math.round(cur.entBudg)));
                         }
                       }}
                       onChange={(e) => {
                         if (type === 'groc') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
-                          const difference = currentTotal - val;
-
-                          // If increasing budget, just update it
-                          if (difference <= 0) {
-                            const n = { ...varExp };
-                            n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
-                            setVarExp(n);
-                            setHasChanges(true);
-                          } else {
-                            // If reducing budget, show split modal for the freed amount
-                            const n = { ...varExp };
-                            n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
-                            setVarExp(n);
-                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
-                            setSplitError('');
-                            setHasChanges(true);
-                          }
+                          // Just buffer the input while typing
+                          setGrocInput(e.target.value);
                         } else if (type === 'ent') {
                           // buffer raw input while editing to avoid calc overwrites
                           setEntInput(e.target.value);
                         }
                       }}
-                      onBlur={() => {
-                        if (type === 'ent') {
-                          const val = sanitizeNumberInput(entInput);
+                      onBlur={(e) => {
+                        if (type === 'groc') {
+                          const val = sanitizeNumberInput(e.target.value);
+                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+                          const difference = currentTotal - val;
+
+                          const n = { ...varExp };
+                          n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                          setVarExp(n);
+                          setGrocInput('');
+                          setHasChanges(true);
+
+                          // Only show split modal if budget decreased
+                          if (difference > 0) {
+                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setSplitError('');
+                          }
+                        } else if (type === 'ent') {
+                          const val = sanitizeNumberInput(e.target.value);
+                          const currentTotal = cur.entBudg;
+                          const difference = currentTotal - val;
+                          
                           const n = [...data];
                           const entExtra = n[sel].entExtra || 0;
                           const entBonus = n[sel].entBonus || 0;
@@ -1361,11 +1399,15 @@ return (
                           n[sel].entExtra = 0;
                           n[sel].entBonus = 0;
                           n[sel].entBudgLocked = true;
-                          // Do NOT auto-adjust current month `save` here — manual ent override should not silently
-                          // consume or add to savings. If you want an explicit adjustment, require user action.
                           setData(n);
                           setHasChanges(true);
                           setEditingEnt(false);
+                          
+                          // Show split modal if budget decreased
+                          if (difference > 0) {
+                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setSplitError('');
+                          }
                         }
                       }}
                       disabled={false}
