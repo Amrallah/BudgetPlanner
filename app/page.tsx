@@ -940,7 +940,8 @@ return (
                     return;
                   }
                   // Check for duplicate names
-                  if(fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase())) {
+                  const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && f.amts.some(a => (a || 0) > 0));
+                  if (existsActive) {
                     if(!confirm(`An expense named "${trimmedName}" already exists. Add anyway?`)) {
                       return;
                     }
