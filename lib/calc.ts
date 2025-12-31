@@ -101,14 +101,18 @@ export function calculateMonthly(params: {
     const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
     const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
     const grocSpent = varExp.grocSpent[i];
+    const entExtra = d.entExtra || 0;
+    const entBonus = d.entBonus || 0;
+    let entBudgBaseComputed = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
+    // If locked, use stored base and add only explicit extras/bonuses so incidental changes don't alter it
     let entBudg: number;
     if (d.entBudgLocked && d.entBudgBase !== null) {
-      entBudg = d.entBudgBase;
+      entBudg = d.entBudgBase + entExtra + entBonus;
     } else {
-      entBudg = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
+      entBudg = entBudgBaseComputed + entExtra + entBonus;
       // do not mutate here; record that we should lock when passed
       if (isPassed(m.date, now) && !d.entBudgLocked) {
-        locks.push({ idx: i, entBudgBase: entBudg, entBudgLocked: true });
+        locks.push({ idx: i, entBudgBase: entBudgBaseComputed, entBudgLocked: true });
       }
     }
     const entSpent = varExp.entSpent[i];

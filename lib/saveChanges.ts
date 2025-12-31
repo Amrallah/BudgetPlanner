@@ -54,5 +54,8 @@ export function applySaveChanges(params: {
     }
   });
 
-  return { fixed: nf, data: nd };
+  // Remove fixed expenses that are fully zeroed out (treated as deleted)
+  const cleanedFixed = nf.filter(f => f.amts.some(a => (a || 0) > 0));
+
+  return { fixed: cleanedFixed, data: nd };
 }
