@@ -98,6 +98,7 @@ export default function FinancialPlanner() {
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
   const [grocInput, setGrocInput] = useState('');
+  const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
   const [hydrated, setHydrated] = useState(false);
   const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => ({
     groc: Array(60).fill(0).map(()=>[] as Tx[]),
@@ -656,7 +657,12 @@ return (
                   min="0" 
                   max="1000000"
                   placeholder="0" 
-                  value={f.v === 0 ? '' : f.v.toFixed(0)} 
+                  value={f.v === 0 ? '' : f.v.toFixed(0)}
+                  onFocus={()=>{
+                    if(f.k === 'extraInc') {
+                      setExtraIncInitial(data[sel].extraInc);
+                    }
+                  }}
                   onChange={(e)=>{
                     if(!f.e)return;
                     const val=sanitizeNumberInput(e.target.value);
@@ -699,8 +705,8 @@ return (
                     const val=sanitizeNumberInput(e.target.value);
                     
                     if (f.k === 'extraInc') {
-                      // Capture old value BEFORE modifying data array
-                      const oldVal = data[sel].extraInc;
+                      // Use the initial value captured on focus
+                      const oldVal = extraIncInitial;
                       const n=[...data];
                       n[sel].extraInc = val;
                       // Only trigger split if value is positive and changed
