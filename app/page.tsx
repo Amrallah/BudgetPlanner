@@ -114,6 +114,10 @@ export default function FinancialPlanner() {
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
   const [hydrated, setHydrated] = useState(false);
+  const [transactions, setTransactions] = useState<{ groc: number[][]; ent: number[][] }>(() => ({
+    groc: Array(60).fill(0).map(()=>[] as number[]),
+    ent: Array(60).fill(0).map(()=>[] as number[])
+  }));
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
   const [saveConflict, setSaveConflict] = useState(false);
@@ -176,6 +180,7 @@ export default function FinancialPlanner() {
         setAutoRollover(saved.autoRollover ?? false);
         setLastSaved(saved.updatedAt?.toDate?.() ?? null);
         setBaseUpdatedAt(saved.updatedAt ?? null);
+          setTransactions(saved.transactions ?? { groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]) });
       }
     } catch (err) {
       console.error("Failed to load from Firestore", err);
@@ -194,7 +199,7 @@ useEffect(() => {
   const timeout = setTimeout(() => {
     (async () => {
       try {
-        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover }, baseUpdatedAt);
+        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions }, baseUpdatedAt);
         // Refresh remote timestamp
         const saved = await getFinancialData(user.uid);
         setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
@@ -312,7 +317,7 @@ useEffect(() => {
     (async () => {
       try {
         if (user) {
-          await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover }, baseUpdatedAt);
+            await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover, transactions }, baseUpdatedAt);
           const saved = await getFinancialData(user.uid);
           setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
           setBaseUpdatedAt(saved?.updatedAt ?? null);
@@ -338,6 +343,7 @@ useEffect(() => {
         setBaseUpdatedAt(saved.updatedAt ?? null);
         setPendingChanges([]);
         setHasChanges(false);
+        setTransactions(saved.transactions ?? { groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]) });
       }
     } catch (err) {
       console.error('Failed to reload remote data', err);
@@ -349,7 +355,7 @@ useEffect(() => {
   const handleForceSave = async () => {
     if (!user) return;
     try {
-      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover }, null);
+      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions }, null);
       const saved = await getFinancialData(user.uid);
       setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
       setBaseUpdatedAt(saved?.updatedAt ?? null);
@@ -1216,8 +1222,8 @@ return (
                           n[sel].entExtra = 0;
                           n[sel].entBonus = 0;
                           n[sel].entBudgLocked = true;
-                          // Adjust current month savings
-                          n[sel].save = Math.max(0, n[sel].save + difference);
+                          // Do NOT auto-adjust current month `save` here — manual ent override should not silently
+                          // consume or add to savings. If you want an explicit adjustment, require user action.
                           setData(n);
                           setHasChanges(true);
                           setEditingEnt(false);
@@ -1286,6 +1292,10 @@ return (
                       const n={...varExp};
                       n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
                       setVarExp(n);
+                      // record transaction in transactions state
+                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()) };
+                      if(type==='groc') nt.groc[sel].push(amt); else nt.ent[sel].push(amt);
+                      setTransactions(nt);
                       setNewTrans({...newTrans,[type]:''});
                       setHasChanges(true);
                     }} 
@@ -1293,6 +1303,11 @@ return (
                   >
                     +
                   </button>
+                </div>
+                <div className="text-sm text-gray-600 mt-2">
+                  Recent: {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
+                    <span key={i} className="inline-block mr-2">{t.toFixed(0)} SEK</span>
+                  ))}
                 </div>
               </div>
             ))}
