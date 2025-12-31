@@ -525,7 +525,12 @@ export default function FinancialPlanner() {
       entBudgLocked: false
     };
     const nf = fixed.map(f => ({...f, amts: f.amts.map((amt, i) => i === sel ? 0 : amt)}));
-    const nv = {...varExp, grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b)};
+    const nv = {
+      ...varExp,
+      grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b),
+      grocSpent: varExp.grocSpent.map((s, i) => i === sel ? 0 : s),
+      entSpent: varExp.entSpent.map((s, i) => i === sel ? 0 : s)
+    };
     setData(n);
     setFixed(nf);
     setVarExp(nv);
@@ -552,7 +557,12 @@ export default function FinancialPlanner() {
       entBudgLocked: false
     }));
     const nf = fixed.map(f => ({...f, amts: Array(60).fill(0)}));
-    const nv = {...varExp, grocBudg: Array(60).fill(0)};
+    const nv = {
+      ...varExp,
+      grocBudg: Array(60).fill(0),
+      grocSpent: Array(60).fill(0),
+      entSpent: Array(60).fill(0)
+    };
     setData(n);
     setFixed(nf);
     setVarExp(nv);
