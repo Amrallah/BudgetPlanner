@@ -105,6 +105,17 @@ export default function FinancialPlanner() {
   const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; idx: number }>(null);
   const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
+  
+  // Setup wizard state
+  const [showSetup, setShowSetup] = useState(false);
+  const [setupStep, setSetupStep] = useState<'prev'|'salary'|'budgets'>('prev');
+  const [setupPrev, setSetupPrev] = useState('');
+  const [setupSalary, setSetupSalary] = useState('');
+  const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
+  const [setupSave, setSetupSave] = useState('');
+  const [setupGroc, setSetupGroc] = useState('');
+  const [setupEnt, setSetupEnt] = useState('');
+  const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
 
   const serializeTransactions = useCallback((t: Transactions): SerializedTransactions => {
     const grocObj: Record<string, Tx[]> = {};
@@ -293,6 +304,79 @@ export default function FinancialPlanner() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
 
+  // Check if user needs initial setup
+  useEffect(() => {
+    if (!user || !hydrated) return;
+    const hasAnyData = data.some(d => d.inc > 0 || d.save > 0 || (d.prev !== null && d.prev !== undefined && d.prev > 0));
+    if (!hasAnyData && !showSetup) {
+      setShowSetup(true);
+      setSetupStep('prev');
+    }
+  }, [user, hydrated, data, showSetup]);
+
+  const handleSetupNext = () => {
+    if (setupStep === 'prev') {
+      const prevVal = parseFloat(setupPrev || '0');
+      if (prevVal < 0) {
+        alert('Previous savings must be a positive number');
+        return;
+      }
+      const n = [...data];
+      n[0].prev = prevVal;
+      n[0].prevManual = true;
+      setData(n);
+      setSetupStep('salary');
+      setHasChanges(true);
+    } else if (setupStep === 'salary') {
+      const salVal = parseFloat(setupSalary || '0');
+      if (salVal < 0) {
+        alert('Salary must be a positive number');
+        return;
+      }
+      const n = [...data];
+      n[0].inc = salVal;
+      n[0].baseSalary = salVal;
+      if (setupSalaryApplyAll) {
+        for (let i = 1; i < 60; i++) {
+          n[i].inc = salVal;
+          n[i].baseSalary = salVal;
+        }
+      }
+      setData(n);
+      setSetupStep('budgets');
+      setHasChanges(true);
+    } else if (setupStep === 'budgets') {
+      const saveVal = parseFloat(setupSave || '0');
+      const grocVal = parseFloat(setupGroc || '0');
+      const entVal = parseFloat(setupEnt || '0');
+      if (saveVal < 0 || grocVal < 0 || entVal < 0) {
+        alert('All budgets must be positive numbers');
+        return;
+      }
+      const n = [...data];
+      n[0].save = saveVal;
+      n[0].defSave = saveVal;
+      const nv = {...varExp, grocBudg: varExp.grocBudg.slice()};
+      nv.grocBudg[0] = grocVal;
+      const nf = fixed.map(f => ({...f, amts: f.amts.slice()}));
+      nf[1].amts[0] = entVal; // Entertainment budget is in fixed[1]
+      
+      if (setupBudgetsApplyAll) {
+        for (let i = 1; i < 60; i++) {
+          n[i].save = saveVal;
+          n[i].defSave = saveVal;
+          nv.grocBudg[i] = grocVal;
+          nf[1].amts[i] = entVal;
+        }
+      }
+      setData(n);
+      setVarExp(nv);
+      setFixed(nf);
+      setShowSetup(false);
+      setHasChanges(true);
+    }
+  };
+
   // Reset split-related states on month change
   useEffect(() => {
     setSavingEdited(false);
@@ -384,6 +468,63 @@ export default function FinancialPlanner() {
       }
     })();
   };
+
+  const deleteCurrentMonth = () => {
+    if (!confirm(`Are you sure? This will erase all financial data for ${months[sel].name}.`)) return;
+    const n = [...data];
+    n[sel] = {
+      inc: 0,
+      prev: null,
+      prevManual: false,
+      save: 0,
+      defSave: 0,
+      extraInc: 0,
+      grocBonus: 0,
+      entBonus: 0,
+      grocExtra: 0,
+      entExtra: 0,
+      saveExtra: 0,
+      rolloverProcessed: false,
+      entBudgBase: null,
+      entBudgLocked: false
+    };
+    const nf = fixed.map(f => ({...f, amts: f.amts.map((amt, i) => i === sel ? 0 : amt)}));
+    const nv = {...varExp, grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b)};
+    setData(n);
+    setFixed(nf);
+    setVarExp(nv);
+    setHasChanges(true);
+  };
+
+  const deleteAllMonths = () => {
+    if (!confirm('Are you sure? This will erase ALL financial data from all months. This cannot be undone.')) return;
+    if (!confirm('This is your last chance. Really delete everything?')) return;
+    const n = Array(60).fill(0).map(() => ({
+      inc: 0,
+      prev: null,
+      prevManual: false,
+      save: 0,
+      defSave: 0,
+      extraInc: 0,
+      grocBonus: 0,
+      entBonus: 0,
+      grocExtra: 0,
+      entExtra: 0,
+      saveExtra: 0,
+      rolloverProcessed: false,
+      entBudgBase: null,
+      entBudgLocked: false
+    }));
+    const nf = fixed.map(f => ({...f, amts: Array(60).fill(0)}));
+    const nv = {...varExp, grocBudg: Array(60).fill(0)};
+    setData(n);
+    setFixed(nf);
+    setVarExp(nv);
+    setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
+    setHasChanges(true);
+    setSel(0);
+  };
+
   const handleReloadRemote = async () => {
     if (!user) return;
     try {
@@ -538,6 +679,12 @@ return (
                 <Save size={20} />Save Changes
               </button>
             )}
+            <button onClick={deleteCurrentMonth} className="w-full sm:w-auto bg-orange-600 text-white px-4 py-3 rounded-xl hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-lg transition-all text-sm">
+              <Trash2 size={18} />Delete Month
+            </button>
+            <button onClick={deleteAllMonths} className="w-full sm:w-auto bg-red-700 text-white px-4 py-3 rounded-xl hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-lg transition-all text-sm">
+              <Trash2 size={18} />Delete All Data
+            </button>
           </div>
         </div>
 
@@ -1598,6 +1745,109 @@ return (
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Setup Wizard Modal */}
+        {showSetup && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-8 w-full max-w-md shadow-2xl">
+              <h2 className="text-2xl font-bold mb-4 text-gray-900">Financial Setup</h2>
+              
+              {setupStep === 'prev' && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2 text-gray-700">Current Previous Savings (SEK)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0"
+                    value={setupPrev}
+                    onChange={(e) => setSetupPrev(e.target.value)}
+                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
+                  />
+                  <p className="text-sm text-gray-600 mb-6">Enter the amount of savings you had at the end of the previous month.</p>
+                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {setupStep === 'salary' && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2 text-gray-700">Monthly Salary (SEK)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0"
+                    value={setupSalary}
+                    onChange={(e) => setSetupSalary(e.target.value)}
+                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
+                  />
+                  <label className="flex items-center gap-2 mb-6 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      checked={setupSalaryApplyAll}
+                      onChange={(e) => setSetupSalaryApplyAll(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Apply this salary to all months in the planner</span>
+                  </label>
+                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                    Next
+                  </button>
+                </div>
+              )}
+
+              {setupStep === 'budgets' && (
+                <div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Monthly Savings Budget (SEK)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupSave}
+                      onChange={(e) => setSetupSave(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Groceries Budget (SEK)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupGroc}
+                      onChange={(e) => setSetupGroc(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Entertainment Budget (SEK)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupEnt}
+                      onChange={(e) => setSetupEnt(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 mb-6 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      checked={setupBudgetsApplyAll}
+                      onChange={(e) => setSetupBudgetsApplyAll(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Apply these budgets to all months in the planner</span>
+                  </label>
+                  <button onClick={handleSetupNext} className="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 font-semibold">
+                    Complete Setup
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
