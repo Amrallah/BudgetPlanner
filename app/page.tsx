@@ -1208,7 +1208,13 @@ return (
                           const currentTotal = cur.entBudg;
                           const difference = currentTotal - val;
                           const n = [...data];
-                          n[sel].entBudgBase = val;
+                          const entExtra = n[sel].entExtra || 0;
+                          const entBonus = n[sel].entBonus || 0;
+                          // store base such that base + extras/bonuses = val
+                          n[sel].entBudgBase = Math.max(0, val - entExtra - entBonus);
+                          // clear explicit extras/bonuses because user included them in manual total
+                          n[sel].entExtra = 0;
+                          n[sel].entBonus = 0;
                           n[sel].entBudgLocked = true;
                           // Adjust current month savings
                           n[sel].save = Math.max(0, n[sel].save + difference);
