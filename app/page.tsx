@@ -1075,7 +1075,7 @@ return (
                         const v = sanitizeNumberInput(e.target.value);
                         const total = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
                         const s = (deleteModal ?? changeModal)?.split ?? { save:0, groc:0, ent:0 };
-                        
+
                         if (k === 'save') {
                           const remaining = (total ?? 0) - v;
                           if (deleteModal) {
@@ -1090,11 +1090,17 @@ return (
                           } else {
                             setChangeModal(prev => prev ? { ...prev, split: { ...s, groc: v, ent: Math.max(0, remaining) } } : prev);
                           }
+                        } else if (k === 'ent') {
+                          const remaining = (total ?? 0) - s.save - v;
+                          if (deleteModal) {
+                            setDeleteModal(prev => prev ? { ...prev, split: { ...s, groc: Math.max(0, remaining), ent: v } } : prev);
+                          } else {
+                            setChangeModal(prev => prev ? { ...prev, split: { ...s, groc: Math.max(0, remaining), ent: v } } : prev);
+                          }
                         }
                         setSplitError('');
                       }} 
-                      disabled={k === 'ent'} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                     />
                   </div>
                 ))}
