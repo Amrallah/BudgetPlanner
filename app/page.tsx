@@ -108,14 +108,17 @@ export default function FinancialPlanner() {
   
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
-  const [setupStep, setSetupStep] = useState<'prev'|'extraInc'|'fixedExpenses'|'budgets'>('prev');
+  const [setupStep, setSetupStep] = useState<'prev'|'salary'|'extraInc'|'fixedExpenses'|'budgets'>('prev');
   const [setupPrev, setSetupPrev] = useState('');
-  const [setupExtraInc, setSetupExtraInc] = useState('0');
-  const [setupFixedTotal, setSetupFixedTotal] = useState('');
   const [setupSalary, setSetupSalary] = useState('');
   const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
+  const [setupExtraInc, setSetupExtraInc] = useState('0');
+  const [setupFixedExpenses, setSetupFixedExpenses] = useState<{name: string; amt: string}[]>([]);
+  const [setupFixedName, setSetupFixedName] = useState('');
+  const [setupFixedAmt, setSetupFixedAmt] = useState('');
   const [setupSave, setSetupSave] = useState('');
   const [setupGroc, setSetupGroc] = useState('');
+  const [setupEnt, setSetupEnt] = useState('');
   const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
   const [setupError, setSetupError] = useState('');
 
@@ -316,6 +319,26 @@ export default function FinancialPlanner() {
     }
   }, [user, hydrated, data, showSetup]);
 
+  const handleAddFixedExpense = () => {
+    if (!setupFixedName.trim()) {
+      setSetupError('Expense name is required');
+      return;
+    }
+    const amt = parseFloat(setupFixedAmt || '0');
+    if (amt < 0) {
+      setSetupError('Amount must be a positive number');
+      return;
+    }
+    setSetupFixedExpenses([...setupFixedExpenses, { name: setupFixedName, amt: setupFixedAmt }]);
+    setSetupFixedName('');
+    setSetupFixedAmt('');
+    setSetupError('');
+  };
+
+  const handleRemoveFixedExpense = (index: number) => {
+    setSetupFixedExpenses(setupFixedExpenses.filter((_, i) => i !== index));
+  };
+
   const handleSetupNext = () => {
     setSetupError('');
     if (setupStep === 'prev') {
@@ -327,6 +350,24 @@ export default function FinancialPlanner() {
       const n = [...data];
       n[0].prev = prevVal;
       n[0].prevManual = true;
+      setData(n);
+      setSetupStep('salary');
+      setHasChanges(true);
+    } else if (setupStep === 'salary') {
+      const salVal = parseFloat(setupSalary || '0');
+      if (salVal < 0) {
+        setSetupError('Salary must be a positive number');
+        return;
+      }
+      const n = [...data];
+      n[0].inc = salVal;
+      n[0].baseSalary = salVal;
+      if (setupSalaryApplyAll) {
+        for (let i = 1; i < 60; i++) {
+          n[i].inc = salVal;
+          n[i].baseSalary = salVal;
+        }
+      }
       setData(n);
       setSetupStep('extraInc');
       setHasChanges(true);
@@ -342,30 +383,26 @@ export default function FinancialPlanner() {
       setSetupStep('fixedExpenses');
       setHasChanges(true);
     } else if (setupStep === 'fixedExpenses') {
-      const fixedVal = parseFloat(setupFixedTotal || '0');
-      if (fixedVal < 0) {
-        setSetupError('Fixed expenses must be a positive number');
-        return;
-      }
       // Fixed expenses validation passed, move to next step
       setSetupStep('budgets');
       setHasChanges(true);
     } else if (setupStep === 'budgets') {
       const salVal = parseFloat(setupSalary || '0');
       const extraVal = parseFloat(setupExtraInc || '0');
-      const fixedVal = parseFloat(setupFixedTotal || '0');
+      const fixedTotal = setupFixedExpenses.reduce((sum, f) => sum + parseFloat(f.amt || '0'), 0);
       const saveVal = parseFloat(setupSave || '0');
       const grocVal = parseFloat(setupGroc || '0');
+      const entVal = parseFloat(setupEnt || '0');
       
-      if (saveVal < 0 || grocVal < 0) {
+      if (saveVal < 0 || grocVal < 0 || entVal < 0) {
         setSetupError('All budgets must be positive numbers');
         return;
       }
       
-      const available = salVal + extraVal - fixedVal;
-      const needed = saveVal + grocVal;
+      const available = salVal + extraVal - fixedTotal;
+      const needed = saveVal + grocVal + entVal;
       if (needed > available) {
-        setSetupError(`Budgets (${needed.toFixed(0)} SEK) exceed available after fixed expenses (${available.toFixed(0)} SEK). Entertainment will be the remainder.`);
+        setSetupError(`Total budgets (${needed.toFixed(0)} SEK) exceed available funds (${available.toFixed(0)} SEK)`);
         return;
       }
       
@@ -379,29 +416,31 @@ export default function FinancialPlanner() {
       const nv = {...varExp, grocBudg: varExp.grocBudg.slice()};
       nv.grocBudg[0] = grocVal;
       
-      const nf = fixed.map(f => ({...f, amts: f.amts.slice()}));
-      // Set first month fixed expenses to the total specified
-      const currentFixed = nf.reduce((sum, f) => sum + (f.amts[0] || 0), 0);
-      const diff = fixedVal - currentFixed;
-      // Adjust first fixed item (Rent) by the difference
-      if (nf.length > 0) {
-        nf[0].amts[0] = Math.max(0, nf[0].amts[0] + diff);
-      }
+      // Create fixed expenses from user input
+      const nf = setupFixedExpenses.map((f, idx) => ({
+        id: idx + 1,
+        name: f.name,
+        amts: Array(60).fill(0).map((_, i) => i === 0 ? parseFloat(f.amt) : 0),
+        spent: Array(60).fill(false)
+      }));
       
-      if (setupSalaryApplyAll) {
-        for (let i = 1; i < 60; i++) {
-          n[i].inc = salVal;
-          n[i].baseSalary = salVal;
-        }
-      }
+      // Add entertainment as a fixed expense
+      nf.push({
+        id: nf.length + 1,
+        name: 'Entertainment',
+        amts: Array(60).fill(0).map((_, i) => i === 0 ? entVal : 0),
+        spent: Array(60).fill(false)
+      });
       
       if (setupBudgetsApplyAll) {
         for (let i = 1; i < 60; i++) {
           n[i].save = saveVal;
           n[i].defSave = saveVal;
           nv.grocBudg[i] = grocVal;
-          // Apply fixed to all months
-          nf[0].amts[i] = Math.max(0, nf[0].amts[0]);
+          // Apply fixed expenses to all months
+          nf.forEach(f => {
+            f.amts[i] = f.amts[0];
+          });
         }
       }
       
@@ -1825,6 +1864,32 @@ return (
                 </div>
               )}
 
+              {setupStep === 'salary' && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2 text-gray-700">Monthly Salary (SEK)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0"
+                    value={setupSalary}
+                    onChange={(e) => setSetupSalary(e.target.value)}
+                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
+                  />
+                  <label className="flex items-center gap-2 mb-6 cursor-pointer">
+                    <input 
+                      type="checkbox"
+                      checked={setupSalaryApplyAll}
+                      onChange={(e) => setSetupSalaryApplyAll(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Apply to all months</span>
+                  </label>
+                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
+                    Next
+                  </button>
+                </div>
+              )}
+
               {setupStep === 'extraInc' && (
                 <div>
                   <label className="block text-sm font-semibold mb-2 text-gray-700">Extra Income (SEK) - Optional</label>
@@ -1845,71 +1910,102 @@ return (
 
               {setupStep === 'fixedExpenses' && (
                 <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Fixed Monthly Expenses (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupFixedTotal}
-                    onChange={(e) => setSetupFixedTotal(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
-                  <p className="text-sm text-gray-600 mb-6">Total of recurring expenses (rent, insurance, subscriptions, etc.). You can adjust individual items later.</p>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Fixed Monthly Expenses</h3>
+                  <p className="text-sm text-gray-600 mb-4">Add your recurring monthly expenses (rent, insurance, subscriptions, etc.)</p>
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Expense Name</label>
+                    <input 
+                      type="text"
+                      placeholder="e.g., Rent"
+                      value={setupFixedName}
+                      onChange={(e) => setSetupFixedName(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-2"
+                    />
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Amount (SEK)</label>
+                    <input 
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={setupFixedAmt}
+                      onChange={(e) => setSetupFixedAmt(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-2"
+                    />
+                    <button onClick={handleAddFixedExpense} className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 font-semibold">
+                      Add Expense
+                    </button>
+                  </div>
+                  
+                  {setupFixedExpenses.length > 0 && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <h4 className="text-sm font-semibold mb-2">Added Expenses:</h4>
+                      {setupFixedExpenses.map((exp, idx) => (
+                        <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
+                          <span className="text-sm">{exp.name}: {parseFloat(exp.amt).toFixed(0)} SEK</span>
+                          <button onClick={() => handleRemoveFixedExpense(idx)} className="text-red-600 text-xs hover:text-red-800">Remove</button>
+                        </div>
+                      ))}
+                      <div className="mt-2 pt-2 border-t font-semibold text-sm">
+                        Total: {setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0).toFixed(0)} SEK
+                      </div>
+                    </div>
+                  )}
+                  
                   <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                    Next
+                    {setupFixedExpenses.length > 0 ? 'Next' : 'Skip (No Fixed Expenses)'}
                   </button>
                 </div>
               )}
 
               {setupStep === 'budgets' && (
                 <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Monthly Salary (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupSalary}
-                    onChange={(e) => setSetupSalary(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
-                  <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Savings Budget (SEK)</label>
                     <input 
-                      type="checkbox"
-                      checked={setupSalaryApplyAll}
-                      onChange={(e) => setSetupSalaryApplyAll(e.target.checked)}
-                      className="w-4 h-4 rounded"
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupSave}
+                      onChange={(e) => setSetupSave(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                     />
-                    <span className="text-sm text-gray-700">Apply to all months</span>
-                  </label>
+                  </div>
 
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Savings Budget (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupSave}
-                    onChange={(e) => setSetupSave(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Groceries Budget (SEK)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupGroc}
+                      onChange={(e) => setSetupGroc(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
 
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Groceries Budget (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupGroc}
-                    onChange={(e) => setSetupGroc(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-gray-700">Entertainment Budget (SEK)</label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      value={setupEnt}
+                      onChange={(e) => setSetupEnt(e.target.value)}
+                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
                   
-                  <p className="text-xs text-gray-600 mb-4">
-                    Available: {(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - parseFloat(setupFixedTotal || '0')).toFixed(0)} SEK 
-                    (Salary + Extra Income - Fixed Expenses)
-                    <br />
-                    Allocated: {(parseFloat(setupSave || '0') + parseFloat(setupGroc || '0')).toFixed(0)} SEK
-                    <br />
-                    <strong>Entertainment will auto-calculate as remainder</strong>
-                  </p>
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg text-xs">
+                    <div className="mb-1">
+                      <strong>Available:</strong> {(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0)).toFixed(0)} SEK
+                    </div>
+                    <div className="mb-1">
+                      <strong>Allocated:</strong> {(parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0')).toFixed(0)} SEK
+                    </div>
+                    <div className="text-gray-600">
+                      (Salary + Extra Income - Fixed Expenses)
+                    </div>
+                  </div>
 
                   <label className="flex items-center gap-2 mb-6 cursor-pointer">
                     <input 
