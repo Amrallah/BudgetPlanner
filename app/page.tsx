@@ -118,6 +118,31 @@ export default function FinancialPlanner() {
     groc: Array(60).fill(0).map(()=>[] as number[]),
     ent: Array(60).fill(0).map(()=>[] as number[])
   }));
+
+  const serializeTransactions = (t: { groc: number[][]; ent: number[][] }) => {
+    const grocObj: Record<string, number[]> = {};
+    const entObj: Record<string, number[]> = {};
+    for (let i = 0; i < 60; i++) {
+      if (t.groc[i] && t.groc[i].length) grocObj[String(i)] = t.groc[i].slice();
+      if (t.ent[i] && t.ent[i].length) entObj[String(i)] = t.ent[i].slice();
+    }
+    return { groc: grocObj, ent: entObj };
+  };
+
+  const deserializeTransactions = (stored: any) => {
+    const empty = Array.from({ length: 60 }, () => [] as number[]);
+    if (!stored) return { groc: empty.map(a=>a.slice()), ent: empty.map(a=>a.slice()) };
+    // old format: arrays-of-arrays
+    if (Array.isArray(stored.groc) || Array.isArray(stored.ent)) {
+      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.groc?.[i]) ? stored.groc[i].slice() : []));
+      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.ent?.[i]) ? stored.ent[i].slice() : []));
+      return { groc, ent };
+    }
+    // new format: object mapping monthIndex -> array
+    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.groc?.[String(i)]) ? stored.groc[String(i)].slice() : []);
+    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.ent?.[String(i)]) ? stored.ent[String(i)].slice() : []);
+    return { groc, ent };
+  };
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
   const [saveConflict, setSaveConflict] = useState(false);
@@ -180,7 +205,21 @@ export default function FinancialPlanner() {
         setAutoRollover(saved.autoRollover ?? false);
         setLastSaved(saved.updatedAt?.toDate?.() ?? null);
         setBaseUpdatedAt(saved.updatedAt ?? null);
-          setTransactions(saved.transactions ?? { groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]) });
+        const des = deserializeTransactions(saved.transactions);
+        setTransactions(des);
+
+        // Migrate old nested-array docs (or array-of-arrays) to object-mapping format to avoid Firestore nested-array errors
+        if (saved.transactions && (Array.isArray(saved.transactions.groc) || Array.isArray(saved.transactions.ent))) {
+          try {
+            await saveFinancialDataSafe(user.uid, { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) }, saved.updatedAt ?? null);
+            // refresh last saved
+            const refreshed = await getFinancialData(user.uid);
+            setLastSaved(refreshed?.updatedAt?.toDate?.() ?? new Date());
+            setBaseUpdatedAt(refreshed?.updatedAt ?? null);
+          } catch (err) {
+            console.warn('Transaction migration failed', err);
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to load from Firestore", err);
@@ -199,7 +238,7 @@ useEffect(() => {
   const timeout = setTimeout(() => {
     (async () => {
       try {
-        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions }, baseUpdatedAt);
+        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) }, baseUpdatedAt);
         // Refresh remote timestamp
         const saved = await getFinancialData(user.uid);
         setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
@@ -317,7 +356,7 @@ useEffect(() => {
     (async () => {
       try {
         if (user) {
-            await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover, transactions }, baseUpdatedAt);
+            await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) }, baseUpdatedAt);
           const saved = await getFinancialData(user.uid);
           setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
           setBaseUpdatedAt(saved?.updatedAt ?? null);
@@ -355,7 +394,7 @@ useEffect(() => {
   const handleForceSave = async () => {
     if (!user) return;
     try {
-      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions }, null);
+      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) }, null);
       const saved = await getFinancialData(user.uid);
       setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
       setBaseUpdatedAt(saved?.updatedAt ?? null);
