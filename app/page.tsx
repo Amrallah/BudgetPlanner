@@ -264,7 +264,6 @@ useEffect(() => {
     });
     if (changed) {
       setData(n);
-      setHasChanges(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calcResult]);
@@ -939,10 +938,11 @@ return (
                     alert('Please enter an amount greater than 0');
                     return;
                   }
-                  // Check for duplicate names
-                  const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && f.amts.some(a => (a || 0) > 0));
+                  // Check for duplicate names only for the same month start
+                  const startIdx = newExp.start ?? sel;
+                  const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && ((f.amts[startIdx] || 0) > 0));
                   if (existsActive) {
-                    if(!confirm(`An expense named "${trimmedName}" already exists. Add anyway?`)) {
+                    if(!confirm(`An expense named \"${trimmedName}\" already exists. Add anyway?`)) {
                       return;
                     }
                   }
