@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
@@ -8,8 +8,8 @@ import { saveFinancialDataSafe } from '@/lib/financeSafe';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
+import { Timestamp } from 'firebase/firestore';
 
- 
 
 // -- Types
 type MonthItem = { name: string; date: Date; day: number };
@@ -47,36 +47,16 @@ type DataItem = {
 };
 
 type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
-
-type MonthlyCalcItem = {
-  month: string;
-  date: Date;
-  inc: number;
-  prev: number;
-  save: number;
-  actSave: number;
-  totSave: number;
-  bal: number;
-  fixExp: number;
-  fixSpent: number;
-  grocBudg: number;
-  grocSpent: number;
-  grocRem: number;
-  entBudg: number;
-  entSpent: number;
-  entRem: number;
-  over: number;
-  extraInc: number;
-  extra: number;
-  passed: boolean;
-  prevManual: boolean;
-  overspendWarning: string;
-  criticalOverspend: boolean;
-  prevGrocRem?: number;
-  prevEntRem?: number;
-  hasRollover?: boolean;
-  rolloverDaysRemaining?: number | null;
+type Tx = { amt: number; ts: string };
+type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
+type Transactions = { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+type SerializedTransactions = {
+  groc?: Record<string, Tx[]>;
+  ent?: Record<string, Tx[]>;
+  extra?: Record<string, ExtraAlloc[]>;
 };
+type LegacyTransactions = { groc?: number[][]; ent?: number[][] };
+type FirestoreSafe = null | boolean | number | string | FirestoreSafe[] | { [k: string]: FirestoreSafe };
 
 
 export default function FinancialPlanner() {
@@ -109,51 +89,49 @@ export default function FinancialPlanner() {
   const [autoRollover, setAutoRollover] = useState(false);
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
-  const [showWithdraw, setShowWithdraw] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
   const [hydrated, setHydrated] = useState(false);
-  type Tx = { amt: number; ts: string };
-  type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
   const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => ({
     groc: Array(60).fill(0).map(()=>[] as Tx[]),
     ent: Array(60).fill(0).map(()=>[] as Tx[]),
     extra: Array(60).fill(0).map(()=>[] as ExtraAlloc[])
   }));
   const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number }; idx: number }>(null);
-  const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent' }>({ open:false, type:'groc' });
+  const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
+  const [extraEdit, setExtraEdit] = useState<{ idx: number | null; groc: string; ent: string; save: string }>({ idx: null, groc: '', ent: '', save: '' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
 
-  const serializeTransactions = (t: { groc: Tx[][]; ent: Tx[][] }) => {
+  const serializeTransactions = useCallback((t: Transactions): SerializedTransactions => {
     const grocObj: Record<string, Tx[]> = {};
     const entObj: Record<string, Tx[]> = {};
     const extraObj: Record<string, ExtraAlloc[]> = {};
     for (let i = 0; i < 60; i++) {
       if (t.groc[i] && t.groc[i].length) grocObj[String(i)] = t.groc[i].slice();
       if (t.ent[i] && t.ent[i].length) entObj[String(i)] = t.ent[i].slice();
-      if ((t as any).extra?.[i] && (t as any).extra[i].length) extraObj[String(i)] = (t as any).extra[i].slice();
+      if (t.extra[i] && t.extra[i].length) extraObj[String(i)] = t.extra[i].slice();
     }
     return { groc: grocObj, ent: entObj, extra: extraObj };
-  };
+  }, []);
 
-  const sanitizeForFirestore = (v: any): any => {
-    if (v === undefined) return null;
-    if (v === null) return null;
-    if (Array.isArray(v)) return v.map(sanitizeForFirestore);
+  const sanitizeForFirestore = useCallback((v: unknown): FirestoreSafe => {
+    if (v === undefined || v === null) return null;
+    if (Array.isArray(v)) return v.map(sanitizeForFirestore) as FirestoreSafe[];
     if (typeof v === 'object') {
-      const out: Record<string, any> = {};
-      Object.keys(v).forEach(k => {
-        out[k] = sanitizeForFirestore(v[k]);
+      const out: Record<string, FirestoreSafe> = {};
+      Object.entries(v as Record<string, unknown>).forEach(([k, val]) => {
+        out[k] = sanitizeForFirestore(val);
       });
       return out;
     }
-    return v;
-  };
+    if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
+    return null;
+  }, []);
 
-  const findUndefinedPaths = (v: any) => {
+  const findUndefinedPaths = useCallback((v: unknown) => {
     const out: string[] = [];
-    const walk = (val: any, path = '') => {
+    const walk = (val: unknown, path = '') => {
       if (val === undefined) {
         out.push(path || '(root)');
         return;
@@ -164,32 +142,32 @@ export default function FinancialPlanner() {
         return;
       }
       if (typeof val === 'object') {
-        Object.keys(val).forEach(k => walk(val[k], path ? `${path}.${k}` : k));
+        Object.keys(val as Record<string, unknown>).forEach(k => walk((val as Record<string, unknown>)[k], path ? `${path}.${k}` : k));
       }
     };
     walk(v, '');
     return out;
-  };
+  }, []);
 
-  const deserializeTransactions = (stored: any) => {
+  const deserializeTransactions = useCallback((stored?: SerializedTransactions | LegacyTransactions | null): Transactions => {
     const emptyTx = Array.from({ length: 60 }, () => [] as Tx[]);
     const emptyExtra = Array.from({ length: 60 }, () => [] as ExtraAlloc[]);
     if (!stored) return { groc: emptyTx.map(a=>a.slice()), ent: emptyTx.map(a=>a.slice()), extra: emptyExtra.map(a=>a.slice()) };
-    // old format: arrays-of-arrays of numbers -> convert to Tx with current timestamp
-    if (Array.isArray(stored.groc) || Array.isArray(stored.ent)) {
+    if (Array.isArray((stored as LegacyTransactions).groc) || Array.isArray((stored as LegacyTransactions).ent)) {
+      const legacy = stored as LegacyTransactions;
       const now = new Date().toISOString();
-      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.groc?.[i]) ? (stored.groc[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
-      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.ent?.[i]) ? (stored.ent[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
+      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.groc?.[i]) ? (legacy.groc[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
+      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.ent?.[i]) ? (legacy.ent[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
       return { groc, ent, extra: emptyExtra.map(a=>a.slice()) };
     }
-    // new format: object mapping monthIndex -> array of Tx / ExtraAlloc
-    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.groc?.[String(i)]) ? (stored.groc[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.ent?.[String(i)]) ? (stored.ent[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const extra = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.extra?.[String(i)]) ? (stored.extra[String(i)] as ExtraAlloc[]).map(x=>({ groc: x.groc, ent: x.ent, save: x.save, ts: x.ts })) : []);
+    const structured = stored as SerializedTransactions;
+    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.groc?.[String(i)]) ? (structured.groc[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
+    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.ent?.[String(i)]) ? (structured.ent[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
+    const extra = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.extra?.[String(i)]) ? (structured.extra[String(i)] as ExtraAlloc[]).map(x=>({ groc: x.groc, ent: x.ent, save: x.save, ts: x.ts })) : []);
     return { groc, ent, extra };
-  };
+  }, []);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<Timestamp | null>(null);
   const [saveConflict, setSaveConflict] = useState(false);
   const { user, loading } = useAuth();
   const [data, setData] = useState<DataItem[]>(
@@ -231,54 +209,45 @@ export default function FinancialPlanner() {
     entSpent: Array(60).fill(0).map((_, i) => i === 0 ? 250 : 0)
   });
 
-    useEffect(() => {
-  if (loading) return;
-
-  const loadFromFirestore = async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const saved = await getFinancialData(user.uid);
-
-      if (saved) {
-        setData(saved.data);
-        setFixed(saved.fixed);
-        setVarExp(saved.varExp);
-        setAutoRollover(saved.autoRollover ?? false);
-        setLastSaved(saved.updatedAt?.toDate?.() ?? null);
-        setBaseUpdatedAt(saved.updatedAt ?? null);
-        const des = deserializeTransactions(saved.transactions);
-        setTransactions(des);
-
-        // Migrate old nested-array docs (or array-of-arrays) to object-mapping format to avoid Firestore nested-array errors
-        if (saved.transactions && (Array.isArray(saved.transactions.groc) || Array.isArray(saved.transactions.ent))) {
-          try {
-            await saveFinancialDataSafe(user.uid, sanitizeForFirestore({ data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) }), saved.updatedAt ?? null);
-            // refresh last saved
-            const refreshed = await getFinancialData(user.uid);
-                const payload = { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) };
-                const undef = findUndefinedPaths(payload);
-                if (undef.length) console.warn('Undefined fields before save (migration):', undef, payload);
-                await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), saved.updatedAt ?? null);
-            setBaseUpdatedAt(refreshed?.updatedAt ?? null);
-          } catch (err) {
-            console.warn('Transaction migration failed', err);
+  useEffect(() => {
+    const loadFromFirestore = async () => {
+      if (!user) return;
+      try {
+        const saved = await getFinancialData(user.uid);
+        if (saved) {
+          const des = deserializeTransactions(saved.transactions);
+          setTransactions(des);
+          const savedData = saved.data as DataItem[];
+          const savedFixed = saved.fixed as FixedExpense[];
+          setData(savedData);
+          setFixed(savedFixed);
+          setVarExp(saved.varExp as VarExp);
+          setAutoRollover(saved.autoRollover ?? false);
+          setLastSaved(saved.updatedAt?.toDate?.() ?? null);
+          setBaseUpdatedAt(saved.updatedAt ?? null);
+          if (!saved.transactions || (saved.transactions && (Array.isArray(saved.transactions) || saved.transactions.groc || saved.transactions.ent))) {
+            try {
+              const payload = { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) };
+              const undef = findUndefinedPaths(payload);
+              if (undef.length) console.warn('Undefined fields before save (migration):', undef, payload);
+              await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), saved.updatedAt ?? null);
+              const refreshed = await getFinancialData(user.uid);
+              setBaseUpdatedAt(refreshed?.updatedAt ?? null);
+            } catch (err) {
+              console.warn('Transaction migration failed', err);
+            }
           }
         }
+      } catch (err) {
+        console.error("Failed to load from Firestore", err);
+      } finally {
+        setIsLoading(false);
+        setHydrated(true);
       }
-    } catch (err) {
-      console.error("Failed to load from Firestore", err);
-    } finally {
-      setIsLoading(false);
-      setHydrated(true);
-    }
-  };
+    };
 
-  loadFromFirestore();
-}, [user, loading]);
+    loadFromFirestore();
+  }, [user, loading, deserializeTransactions, findUndefinedPaths, sanitizeForFirestore, serializeTransactions]);
 
   useEffect(() => {
     if (!user || !hydrated) return;
@@ -295,8 +264,8 @@ export default function FinancialPlanner() {
           setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
           setBaseUpdatedAt(saved?.updatedAt ?? null);
           setSaveConflict(false);
-        } catch (err: any) {
-          if (err && err.message === 'conflict') {
+        } catch (err: unknown) {
+          if (err && err instanceof Error && err.message === 'conflict') {
             setSaveConflict(true);
           } else {
             console.error('Failed to save to Firestore', err);
@@ -306,7 +275,7 @@ export default function FinancialPlanner() {
     }, 1000);
 
     return () => clearTimeout(timeout);
-  }, [data, fixed, varExp, months, autoRollover, user, hydrated, baseUpdatedAt]);
+  }, [autoRollover, baseUpdatedAt, data, findUndefinedPaths, fixed, hydrated, sanitizeForFirestore, serializeTransactions, transactions, user, varExp]);
 
 
   // Warn before leaving with unsaved changes
@@ -329,21 +298,10 @@ export default function FinancialPlanner() {
     setExtraAdj({ groc: 0, ent: 0, save: 0 });
     setSplitError('');
     setExtraSplitError('');
-    setShowWithdraw(false);
     setWithdrawAmount(0);
   }, [sel]);
 
   const isPassed = (i: number) => new Date() >= months[i].date;
-
-  const getRolloverDaysRemaining = (monthIndex: number): number | null => {
-    if (monthIndex === 0) return null;
-    const rolloverDate = new Date(months[monthIndex].date);
-    rolloverDate.setDate(rolloverDate.getDate() + 5);
-    const now = new Date();
-    const diffTime = rolloverDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 0;
-  };
   const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
   const calc = calcResult.items;
 
@@ -417,8 +375,8 @@ export default function FinancialPlanner() {
           setSaveConflict(false);
           alert('All changes saved successfully!');
         }
-      } catch (err: any) {
-        if (err && err.message === 'conflict') setSaveConflict(true);
+      } catch (err: unknown) {
+        if (err && err instanceof Error && err.message === 'conflict') setSaveConflict(true);
         else console.error('Failed to save changes', err);
       }
     })();
@@ -457,13 +415,13 @@ export default function FinancialPlanner() {
       setBaseUpdatedAt(saved?.updatedAt ?? null);
       setSaveConflict(false);
       setHasChanges(false);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to force save', err);
     }
   };
 
   const handleDeleteTransaction = (type: 'groc' | 'ent', monthIdx: number, txIdx: number) => {
-    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: any[][] };
+    const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
     const removed = txs[type][monthIdx][txIdx];
     if (!removed) return;
     txs[type][monthIdx].splice(txIdx, 1);
@@ -482,7 +440,7 @@ export default function FinancialPlanner() {
       alert('Please enter a valid amount');
       return;
     }
-    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: any[][] };
+    const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
     const old = txs[type][monthIdx][txIdx];
     if (!old) return;
     const delta = newAmt - old.amt;
@@ -496,13 +454,12 @@ export default function FinancialPlanner() {
     setHasChanges(true);
   };
 
-  
   // use `validateSplit` and `sanitizeNumberInput` from `lib/uiHelpers`
- 
+
   type CardProps = {
     label: string;
     value: number;
-    icon: React.ComponentType<any>;
+    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     color: 'blue' | 'green' | 'purple' | 'orange';
     sub?: string;
   };
@@ -736,6 +693,11 @@ return (
                   disabled={!f.e} 
                   className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                 />
+                {f.k === 'extraInc' && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={() => setTransModal({ open: true, type: 'extra' })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Extra Allocations History</button>
+                  </div>
+                )}
                 {f.k==='save'&& savingEdited &&(
                   <label className="flex items-center gap-2 mt-2 text-sm text-gray-700">
                     <input 
@@ -951,8 +913,11 @@ return (
                       const n = [...data];
                       n[sel].grocExtra = extraAdj.groc;
                       n[sel].entExtra = extraAdj.ent;
+                      // apply save portion into actual savings so balance reflects the extra income
+                      n[sel].save = (n[sel].save || 0) + extraAdj.save;
                       n[sel].saveExtra = extraAdj.save;
                       // clear the extraInc since we've applied it
+                      const prevExtra = n[sel].extraInc;
                       n[sel].extraInc = 0;
                       setData(n);
                       // record the allocation in transactions.extra for history
@@ -961,8 +926,7 @@ return (
                       tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
                       setTransactions(tcopy);
                       // store undo info (index of pushed entry)
-                      const prevExtra = n[sel].extraInc;
-                      setLastExtraApply({ sel, prev: { grocExtra: n[sel].grocExtra ?? 0, entExtra: n[sel].entExtra ?? 0, saveExtra: n[sel].saveExtra ?? 0, extraInc: prevExtra }, idx: tcopy.extra[sel].length - 1 });
+                      setLastExtraApply({ sel, prev: { grocExtra: (n[sel].grocExtra ?? 0) - extraAdj.groc, entExtra: (n[sel].entExtra ?? 0) - extraAdj.ent, saveExtra: (n[sel].save || 0) - extraAdj.save, extraInc: prevExtra }, idx: tcopy.extra[sel].length - 1 });
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -1134,7 +1098,7 @@ return (
           )}
 
           <div className="space-y-2">
-            {previewFixed.map((e, i) => {
+            {previewFixed.map((e) => {
               if (e.amts[sel] <= 0) return null;
               const originalIndex = fixed.findIndex(f => f.id === e.id);
               return (
@@ -1239,7 +1203,7 @@ return (
                       min="0"
                       max={ (deleteModal ? deleteModal.amt : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))) }
                       placeholder="0" 
-                      value={((deleteModal ?? changeModal)?.split[k] ?? '') as any} 
+                      value={(deleteModal ?? changeModal)?.split[k] ?? ''} 
                       onChange={(e) => {
                         const v = sanitizeNumberInput(e.target.value);
                         const total = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
@@ -1371,8 +1335,6 @@ return (
                       onBlur={() => {
                         if (type === 'ent') {
                           const val = sanitizeNumberInput(entInput);
-                          const currentTotal = cur.entBudg;
-                          const difference = currentTotal - val;
                           const n = [...data];
                           const entExtra = n[sel].entExtra || 0;
                           const entBonus = n[sel].entBonus || 0;
@@ -1483,37 +1445,104 @@ return (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-lg">Transactions — {transModal.type === 'groc' ? 'Groceries' : 'Entertainment'} — {months[sel].name}</h3>
+                <h3 className="font-bold text-lg">
+                  Transactions — {transModal.type === 'groc' ? 'Groceries' : transModal.type === 'ent' ? 'Entertainment' : 'Extra Allocations'} — {months[sel].name}
+                </h3>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
                 </div>
               </div>
               <div className="space-y-2">
-                {transactions[transModal.type][sel].length === 0 ? (
-                  <div className="text-sm text-gray-500">No transactions for this month.</div>
-                ) : (
-                  transactions[transModal.type][sel].map((t, i) => (
-                    <div key={i} className="flex items-center justify-between border-b py-2">
-                      <div className="flex items-center gap-4">
-                        {transEdit.idx === i ? (
-                          <div className="flex items-center gap-2">
-                            <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
-                            <button onClick={()=>handleSaveTransactionEdit(transModal.type, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                            <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
+                {transModal.type !== 'extra' ? (
+                  (transactions[transModal.type][sel].length === 0 ? (
+                    <div className="text-sm text-gray-500">No transactions for this month.</div>
+                  ) : (
+                    transactions[transModal.type][sel].map((t, i) => {
+                      const txType = transModal.type as 'groc' | 'ent';
+                      return (
+                        <div key={i} className="flex items-center justify-between border-b py-2">
+                          <div className="flex items-center gap-4">
+                            {transEdit.idx === i ? (
+                              <div className="flex items-center gap-2">
+                                <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
+                                <button onClick={()=>handleSaveTransactionEdit(txType, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
+                                <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
+                                <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
+                              </>
+                            )}
                           </div>
-                        ) : (
-                          <>
-                                    <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
-                                    <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
-                          </>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
-                        <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(transModal.type, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                      </div>
-                    </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
+                            <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(txType, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
+                          </div>
+                        </div>
+                      );
+                    })
                   ))
+                ) : (
+                  // extra allocations view (with edit/delete)
+                  (transactions.extra[sel] && transactions.extra[sel].length > 0) ? (
+                    transactions.extra[sel].map((ex, i) => (
+                      <div key={i} className="flex items-center justify-between border-b py-2">
+                        <div className="flex items-center gap-4">
+                          {extraEdit.idx === i ? (
+                            <div className="flex items-center gap-2">
+                              <input value={extraEdit.groc} onChange={(e)=>setExtraEdit({...extraEdit, groc: e.target.value})} className="p-2 border rounded w-20" />
+                              <input value={extraEdit.ent} onChange={(e)=>setExtraEdit({...extraEdit, ent: e.target.value})} className="p-2 border rounded w-20" />
+                              <input value={extraEdit.save} onChange={(e)=>setExtraEdit({...extraEdit, save: e.target.value})} className="p-2 border rounded w-20" />
+                              <button onClick={() => {
+                                // save edit
+                                const newG = sanitizeNumberInput(extraEdit.groc);
+                                const newE = sanitizeNumberInput(extraEdit.ent);
+                                const newS = sanitizeNumberInput(extraEdit.save);
+                                const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                                const old = tcopy.extra[sel][i];
+                                if (!old) return;
+                                tcopy.extra[sel][i] = { groc: newG, ent: newE, save: newS, ts: old.ts };
+                                setTransactions(tcopy);
+                                // apply deltas to data
+                                const n = [...data];
+                                n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - old.groc + newG);
+                                n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - old.ent + newE);
+                                // adjust save: remove old.save then add newS
+                                n[sel].save = Math.max(0, (n[sel].save || 0) - old.save + newS);
+                                setData(n);
+                                setExtraEdit({ idx: null, groc: '', ent: '', save: '' });
+                                setHasChanges(true);
+                              }} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
+                              <button onClick={()=>setExtraEdit({ idx: null, groc: '', ent: '', save: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
+                              <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={()=>setExtraEdit({ idx: i, groc: String(ex.groc), ent: String(ex.ent), save: String(ex.save) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
+                          <button onClick={() => {
+                            if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
+                            const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                            const removed = tcopy.extra[sel].splice(i, 1)[0];
+                            setTransactions(tcopy);
+                            const n = [...data];
+                            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
+                            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
+                            n[sel].save = Math.max(0, (n[sel].save || 0) - (removed?.save || 0));
+                            setData(n);
+                            setHasChanges(true);
+                          }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+                  )
                 )}
                 <div className="mt-4">
                   <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>

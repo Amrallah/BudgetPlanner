@@ -1,7 +1,7 @@
-import { doc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { doc, serverTimestamp, runTransaction, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 
-export async function saveFinancialDataSafe(uid: string, data: any, baseUpdatedAt: any = null) {
+export async function saveFinancialDataSafe(uid: string, data: unknown, baseUpdatedAt: Timestamp | null = null) {
   const ref = doc(db, 'users', uid, 'financial', 'data');
 
   await runTransaction(db, async (tx) => {
@@ -16,7 +16,8 @@ export async function saveFinancialDataSafe(uid: string, data: any, baseUpdatedA
       }
     }
 
-    tx.set(ref, { ...data, updatedAt: serverTimestamp() });
+    const payload = (data && typeof data === 'object') ? data as Record<string, unknown> : {};
+    tx.set(ref, { ...payload, updatedAt: serverTimestamp() });
   });
 }
 

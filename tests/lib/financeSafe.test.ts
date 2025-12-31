@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi } from 'vitest';
 
 // We'll import the module under test via relative path
@@ -11,7 +12,7 @@ vi.mock('firebase/firestore', () => {
     runTransaction: vi.fn(async (db, updateFn) => {
       // default: invoke the update function with a mock transaction object
       const tx = {
-        get: vi.fn(async (ref) => ({ exists: () => false })),
+        get: vi.fn(async () => ({ exists: () => false })),
         set: vi.fn(),
       };
       return updateFn(tx);

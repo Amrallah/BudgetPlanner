@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
 import { calculateMonthly } from '../../lib/calc';
 
@@ -74,7 +75,6 @@ describe('pendingChanges and applySavingsForward transformations', () => {
   });
 
   it('applies future-scoped deletion across months', () => {
-    const months = mkMonths(4);
     const fixed = [ { id:1, name:'A', amts: [100,100,100,100], spent: [false,false,false,false] } ];
     const data = Array(4).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
 
@@ -90,7 +90,6 @@ describe('pendingChanges and applySavingsForward transformations', () => {
   });
 
   it('applies applySavingsForward behavior for both branches', () => {
-    const months = mkMonths(4);
     const data = Array(4).fill(0).map((_,i) => ({ inc:1000, prev:null, prevManual:false, save: i===0?80:100, defSave:100, extraInc:0, grocBonus: i===0?10:0, entBonus: i===0?5:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
 
     // branch: src.save < src.defSave -> propagate bonuses

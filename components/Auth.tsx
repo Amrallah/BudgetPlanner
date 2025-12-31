@@ -20,8 +20,9 @@ export default function Auth() {
     setError("");
     try {
       await signInWithEmailAndPassword(auth, email, password);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      if (e instanceof Error) setError(e.message);
+      else setError("Login failed");
     }
   };
 
@@ -29,8 +30,9 @@ export default function Auth() {
     setError("");
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      if (e instanceof Error) setError(e.message);
+      else setError("Registration failed");
     }
   };
 

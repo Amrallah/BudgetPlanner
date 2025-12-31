@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
 import { applySaveChanges } from '@/lib/saveChanges';
 import type { FixedExpense, DataItem, Change } from '@/lib/calc';

@@ -8,7 +8,7 @@ export async function getFinancialData(uid: string) {
   return snap.data();
 }
 
-export async function saveFinancialData(uid: string, data: any) {
+export async function saveFinancialData(uid: string, data: Record<string, unknown>) {
   const ref = doc(db, "users", uid, "financial", "data");
   await setDoc(ref, {
     ...data,

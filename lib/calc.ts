@@ -103,7 +103,7 @@ export function calculateMonthly(params: {
     const grocSpent = varExp.grocSpent[i];
     const entExtra = d.entExtra || 0;
     const entBonus = d.entBonus || 0;
-    let entBudgBaseComputed = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
+    const entBudgBaseComputed = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
     // If locked, use stored base and add only explicit extras/bonuses so incidental changes don't alter it
     let entBudg: number;
     if (d.entBudgLocked && d.entBudgBase !== null) {
