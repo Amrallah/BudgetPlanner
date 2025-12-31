@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect } from 'react';
-import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet } from 'lucide-react';
+import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { getFinancialData } from "@/lib/finance";
@@ -114,34 +114,78 @@ export default function FinancialPlanner() {
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
   const [hydrated, setHydrated] = useState(false);
-  const [transactions, setTransactions] = useState<{ groc: number[][]; ent: number[][] }>(() => ({
-    groc: Array(60).fill(0).map(()=>[] as number[]),
-    ent: Array(60).fill(0).map(()=>[] as number[])
+  type Tx = { amt: number; ts: string };
+  type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
+  const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => ({
+    groc: Array(60).fill(0).map(()=>[] as Tx[]),
+    ent: Array(60).fill(0).map(()=>[] as Tx[]),
+    extra: Array(60).fill(0).map(()=>[] as ExtraAlloc[])
   }));
+  const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent' }>({ open:false, type:'groc' });
+  const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
 
-  const serializeTransactions = (t: { groc: number[][]; ent: number[][] }) => {
-    const grocObj: Record<string, number[]> = {};
-    const entObj: Record<string, number[]> = {};
+  const serializeTransactions = (t: { groc: Tx[][]; ent: Tx[][] }) => {
+    const grocObj: Record<string, Tx[]> = {};
+    const entObj: Record<string, Tx[]> = {};
+    const extraObj: Record<string, ExtraAlloc[]> = {};
     for (let i = 0; i < 60; i++) {
       if (t.groc[i] && t.groc[i].length) grocObj[String(i)] = t.groc[i].slice();
       if (t.ent[i] && t.ent[i].length) entObj[String(i)] = t.ent[i].slice();
+      if ((t as any).extra?.[i] && (t as any).extra[i].length) extraObj[String(i)] = (t as any).extra[i].slice();
     }
-    return { groc: grocObj, ent: entObj };
+    return { groc: grocObj, ent: entObj, extra: extraObj };
+  };
+
+  const sanitizeForFirestore = (v: any): any => {
+    if (v === undefined) return null;
+    if (v === null) return null;
+    if (Array.isArray(v)) return v.map(sanitizeForFirestore);
+    if (typeof v === 'object') {
+      const out: Record<string, any> = {};
+      Object.keys(v).forEach(k => {
+        out[k] = sanitizeForFirestore(v[k]);
+      });
+      return out;
+    }
+    return v;
+  };
+
+  const findUndefinedPaths = (v: any) => {
+    const out: string[] = [];
+    const walk = (val: any, path = '') => {
+      if (val === undefined) {
+        out.push(path || '(root)');
+        return;
+      }
+      if (val === null) return;
+      if (Array.isArray(val)) {
+        val.forEach((it, i) => walk(it, `${path}[${i}]`));
+        return;
+      }
+      if (typeof val === 'object') {
+        Object.keys(val).forEach(k => walk(val[k], path ? `${path}.${k}` : k));
+      }
+    };
+    walk(v, '');
+    return out;
   };
 
   const deserializeTransactions = (stored: any) => {
-    const empty = Array.from({ length: 60 }, () => [] as number[]);
-    if (!stored) return { groc: empty.map(a=>a.slice()), ent: empty.map(a=>a.slice()) };
-    // old format: arrays-of-arrays
+    const emptyTx = Array.from({ length: 60 }, () => [] as Tx[]);
+    const emptyExtra = Array.from({ length: 60 }, () => [] as ExtraAlloc[]);
+    if (!stored) return { groc: emptyTx.map(a=>a.slice()), ent: emptyTx.map(a=>a.slice()), extra: emptyExtra.map(a=>a.slice()) };
+    // old format: arrays-of-arrays of numbers -> convert to Tx with current timestamp
     if (Array.isArray(stored.groc) || Array.isArray(stored.ent)) {
-      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.groc?.[i]) ? stored.groc[i].slice() : []));
-      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.ent?.[i]) ? stored.ent[i].slice() : []));
-      return { groc, ent };
+      const now = new Date().toISOString();
+      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.groc?.[i]) ? (stored.groc[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
+      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(stored.ent?.[i]) ? (stored.ent[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
+      return { groc, ent, extra: emptyExtra.map(a=>a.slice()) };
     }
-    // new format: object mapping monthIndex -> array
-    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.groc?.[String(i)]) ? stored.groc[String(i)].slice() : []);
-    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.ent?.[String(i)]) ? stored.ent[String(i)].slice() : []);
-    return { groc, ent };
+    // new format: object mapping monthIndex -> array of Tx / ExtraAlloc
+    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.groc?.[String(i)]) ? (stored.groc[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
+    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.ent?.[String(i)]) ? (stored.ent[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
+    const extra = Array.from({ length: 60 }, (_, i) => Array.isArray(stored.extra?.[String(i)]) ? (stored.extra[String(i)] as ExtraAlloc[]).map(x=>({ groc: x.groc, ent: x.ent, save: x.save, ts: x.ts })) : []);
+    return { groc, ent, extra };
   };
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<any>(null);
@@ -211,10 +255,13 @@ export default function FinancialPlanner() {
         // Migrate old nested-array docs (or array-of-arrays) to object-mapping format to avoid Firestore nested-array errors
         if (saved.transactions && (Array.isArray(saved.transactions.groc) || Array.isArray(saved.transactions.ent))) {
           try {
-            await saveFinancialDataSafe(user.uid, { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) }, saved.updatedAt ?? null);
+            await saveFinancialDataSafe(user.uid, sanitizeForFirestore({ data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) }), saved.updatedAt ?? null);
             // refresh last saved
             const refreshed = await getFinancialData(user.uid);
-            setLastSaved(refreshed?.updatedAt?.toDate?.() ?? new Date());
+                const payload = { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) };
+                const undef = findUndefinedPaths(payload);
+                if (undef.length) console.warn('Undefined fields before save (migration):', undef, payload);
+                await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), saved.updatedAt ?? null);
             setBaseUpdatedAt(refreshed?.updatedAt ?? null);
           } catch (err) {
             console.warn('Transaction migration failed', err);
@@ -232,30 +279,33 @@ export default function FinancialPlanner() {
   loadFromFirestore();
 }, [user, loading]);
 
-useEffect(() => {
-  if (!user || !hydrated) return;
+  useEffect(() => {
+    if (!user || !hydrated) return;
 
-  const timeout = setTimeout(() => {
-    (async () => {
-      try {
-        await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) }, baseUpdatedAt);
-        // Refresh remote timestamp
-        const saved = await getFinancialData(user.uid);
-        setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
-        setBaseUpdatedAt(saved?.updatedAt ?? null);
-        setSaveConflict(false);
-      } catch (err: any) {
-        if (err && err.message === 'conflict') {
-          setSaveConflict(true);
-        } else {
-          console.error('Failed to save to Firestore', err);
+    const timeout = setTimeout(() => {
+      (async () => {
+        try {
+          const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
+          const undef = findUndefinedPaths(payload);
+          if (undef.length) console.warn('Undefined fields before autosave:', undef, payload);
+          await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
+          // Refresh remote timestamp
+          const saved = await getFinancialData(user.uid);
+          setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
+          setBaseUpdatedAt(saved?.updatedAt ?? null);
+          setSaveConflict(false);
+        } catch (err: any) {
+          if (err && err.message === 'conflict') {
+            setSaveConflict(true);
+          } else {
+            console.error('Failed to save to Firestore', err);
+          }
         }
-      }
-    })();
-  }, 1000);
+      })();
+    }, 1000);
 
-  return () => clearTimeout(timeout);
-}, [data, fixed, varExp, autoRollover, user, hydrated, baseUpdatedAt]);
+    return () => clearTimeout(timeout);
+  }, [data, fixed, varExp, months, autoRollover, user, hydrated, baseUpdatedAt]);
 
 
   // Warn before leaving with unsaved changes
@@ -356,7 +406,10 @@ useEffect(() => {
     (async () => {
       try {
         if (user) {
-            await saveFinancialDataSafe(user.uid, { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) }, baseUpdatedAt);
+          const payload = { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) };
+          const undef = findUndefinedPaths(payload);
+          if (undef.length) console.warn('Undefined fields before saveChanges:', undef, payload);
+          await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
           const saved = await getFinancialData(user.uid);
           setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
           setBaseUpdatedAt(saved?.updatedAt ?? null);
@@ -382,7 +435,7 @@ useEffect(() => {
         setBaseUpdatedAt(saved.updatedAt ?? null);
         setPendingChanges([]);
         setHasChanges(false);
-        setTransactions(saved.transactions ?? { groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]) });
+        setTransactions(deserializeTransactions(saved.transactions));
       }
     } catch (err) {
       console.error('Failed to reload remote data', err);
@@ -394,7 +447,10 @@ useEffect(() => {
   const handleForceSave = async () => {
     if (!user) return;
     try {
-      await saveFinancialDataSafe(user.uid, { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) }, null);
+      const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
+      const undef = findUndefinedPaths(payload);
+      if (undef.length) console.warn('Undefined fields before forceSave:', undef, payload);
+      await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), null);
       const saved = await getFinancialData(user.uid);
       setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
       setBaseUpdatedAt(saved?.updatedAt ?? null);
@@ -403,6 +459,40 @@ useEffect(() => {
     } catch (err) {
       console.error('Failed to force save', err);
     }
+  };
+
+  const handleDeleteTransaction = (type: 'groc' | 'ent', monthIdx: number, txIdx: number) => {
+    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+    const removed = txs[type][monthIdx][txIdx];
+    if (!removed) return;
+    txs[type][monthIdx].splice(txIdx, 1);
+    setTransactions(txs);
+    const nv = { ...varExp };
+    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] - removed.amt);
+    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] - removed.amt);
+    setVarExp(nv);
+    setHasChanges(true);
+  };
+
+  const handleSaveTransactionEdit = (type: 'groc' | 'ent', monthIdx: number, txIdx: number) => {
+    if (transEdit.idx === null) return;
+    const newAmt = sanitizeNumberInput(transEdit.value);
+    if (!newAmt || newAmt <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+    const old = txs[type][monthIdx][txIdx];
+    if (!old) return;
+    const delta = newAmt - old.amt;
+    txs[type][monthIdx][txIdx] = { amt: newAmt, ts: old.ts };
+    setTransactions(txs);
+    const nv = { ...varExp };
+    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] + delta);
+    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] + delta);
+    setVarExp(nv);
+    setTransEdit({ idx: null, value: '' });
+    setHasChanges(true);
   };
 
   
@@ -490,10 +580,11 @@ return (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4">
           <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
           <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
           <Card label="Income" value={cur.inc} icon={Calendar} color="purple" />
+          <Card label="Groceries" value={cur.grocRem} icon={ShoppingCart} color="green" sub={`of ${cur.grocBudg.toFixed(0)} SEK`} />
           <Card 
             label="Entertainment" 
             value={cur.entRem} 
@@ -860,7 +951,14 @@ return (
                       n[sel].grocExtra = extraAdj.groc;
                       n[sel].entExtra = extraAdj.ent;
                       n[sel].saveExtra = extraAdj.save;
+                      // clear the extraInc since we've applied it
+                      n[sel].extraInc = 0;
                       setData(n);
+                      // record the allocation in transactions.extra for history
+                      const now = new Date().toISOString();
+                      const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                      tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
+                      setTransactions(tcopy);
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -1331,9 +1429,10 @@ return (
                       const n={...varExp};
                       n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
                       setVarExp(n);
-                      // record transaction in transactions state
-                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()) };
-                      if(type==='groc') nt.groc[sel].push(amt); else nt.ent[sel].push(amt);
+                      // record transaction in transactions state as Tx with timestamp
+                      const now = new Date().toISOString();
+                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+                      if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
                       setTransactions(nt);
                       setNewTrans({...newTrans,[type]:''});
                       setHasChanges(true);
@@ -1343,15 +1442,61 @@ return (
                     +
                   </button>
                 </div>
-                <div className="text-sm text-gray-600 mt-2">
-                  Recent: {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
-                    <span key={i} className="inline-block mr-2">{t.toFixed(0)} SEK</span>
-                  ))}
+                <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
+                  <div>
+                    <span className="font-medium">Recent:</span>
+                    {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
+                      <span key={i} className="inline-block mr-2">{(t?.amt ?? 0).toFixed(0)} SEK <span className="text-xs text-gray-400">({t?.ts ? new Date(t.ts).toLocaleTimeString() : ''})</span></span>
+                    ))}
+                  </div>
+                  <button onClick={()=>setTransModal({ open:true, type })} className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Transactions History</button>
                 </div>
               </div>
             ))}
           </div>
         </div>
+
+        {transModal.open && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-lg">Transactions — {transModal.type === 'groc' ? 'Groceries' : 'Entertainment'} — {months[sel].name}</h3>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {transactions[transModal.type][sel].length === 0 ? (
+                  <div className="text-sm text-gray-500">No transactions for this month.</div>
+                ) : (
+                  transactions[transModal.type][sel].map((t, i) => (
+                    <div key={i} className="flex items-center justify-between border-b py-2">
+                      <div className="flex items-center gap-4">
+                        {transEdit.idx === i ? (
+                          <div className="flex items-center gap-2">
+                            <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
+                            <button onClick={()=>handleSaveTransactionEdit(transModal.type, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
+                            <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
+                          </div>
+                        ) : (
+                          <>
+                                    <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
+                                    <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
+                        <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(transModal.type, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
