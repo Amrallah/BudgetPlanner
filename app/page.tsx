@@ -716,6 +716,7 @@ return (
                         setExtraSplitError('');
                       }
                       setData(n);
+                      setHasChanges(true);
                     } else if (f.k === 'save') {
                       const n=[...data];
                       n[sel].save = val;
