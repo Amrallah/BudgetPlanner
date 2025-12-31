@@ -91,6 +91,7 @@ export default function FinancialPlanner() {
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingGroc, setEditingGroc] = useState(false);
   const [editingEnt, setEditingEnt] = useState(false);
   const [entInput, setEntInput] = useState('');
   const [grocInput, setGrocInput] = useState('');
@@ -1169,9 +1170,8 @@ return (
                         if (newAmt !== oldAmt) {
                           // Only show split modal if amount decreased
                           if (newAmt < oldAmt) {
-                            const difference = oldAmt - newAmt;
                             setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: difference, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                           } else {
                             // Amount increased, just update it
                             const n = [...fixed];
@@ -1350,9 +1350,10 @@ return (
                       min="0"
                       max="1000000"
                       placeholder="0"
-                      value={type==='groc' ? (editingEnt ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0))) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
+                      value={type==='groc' ? (editingGroc ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)).toFixed(0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
                       onFocus={() => {
                         if (type === 'groc') {
+                          setEditingGroc(true);
                           setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
                         } else if (!editingEnt) {
                           setEditingEnt(true);
@@ -1377,12 +1378,13 @@ return (
                           const n = { ...varExp };
                           n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
                           setVarExp(n);
+                          setEditingGroc(false);
                           setGrocInput('');
                           setHasChanges(true);
 
                           // Only show split modal if budget decreased
                           if (difference > 0) {
-                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                             setSplitError('');
                           }
                         } else if (type === 'ent') {
@@ -1405,7 +1407,7 @@ return (
                           
                           // Show split modal if budget decreased
                           if (difference > 0) {
-                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: difference, groc: 0, ent: 0 } });
+                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                             setSplitError('');
                           }
                         }
