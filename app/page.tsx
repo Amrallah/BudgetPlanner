@@ -121,6 +121,7 @@ export default function FinancialPlanner() {
     ent: Array(60).fill(0).map(()=>[] as Tx[]),
     extra: Array(60).fill(0).map(()=>[] as ExtraAlloc[])
   }));
+  const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number }; idx: number }>(null);
   const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent' }>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
 
@@ -462,7 +463,7 @@ export default function FinancialPlanner() {
   };
 
   const handleDeleteTransaction = (type: 'groc' | 'ent', monthIdx: number, txIdx: number) => {
-    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: any[][] };
     const removed = txs[type][monthIdx][txIdx];
     if (!removed) return;
     txs[type][monthIdx].splice(txIdx, 1);
@@ -481,7 +482,7 @@ export default function FinancialPlanner() {
       alert('Please enter a valid amount');
       return;
     }
-    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+    const txs = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: any[][] };
     const old = txs[type][monthIdx][txIdx];
     if (!old) return;
     const delta = newAmt - old.amt;
@@ -959,6 +960,9 @@ return (
                       const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
                       tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
                       setTransactions(tcopy);
+                      // store undo info (index of pushed entry)
+                      const prevExtra = n[sel].extraInc;
+                      setLastExtraApply({ sel, prev: { grocExtra: n[sel].grocExtra ?? 0, entExtra: n[sel].entExtra ?? 0, saveExtra: n[sel].saveExtra ?? 0, extraInc: prevExtra }, idx: tcopy.extra[sel].length - 1 });
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -968,6 +972,25 @@ return (
                   >
                     Apply Extra Income Split
                   </button>
+                  {lastExtraApply && lastExtraApply.sel === sel && (
+                    <button onClick={() => {
+                      // undo: restore data and remove the last recorded extra allocation
+                      const n = [...data];
+                      const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                      const la = lastExtraApply;
+                      if (tcopy.extra[la.sel] && tcopy.extra[la.sel][la.idx]) {
+                        tcopy.extra[la.sel].splice(la.idx, 1);
+                      }
+                      n[la.sel].grocExtra = la.prev.grocExtra;
+                      n[la.sel].entExtra = la.prev.entExtra;
+                      n[la.sel].saveExtra = la.prev.saveExtra;
+                      n[la.sel].extraInc = la.prev.extraInc;
+                      setData(n);
+                      setTransactions(tcopy);
+                      setLastExtraApply(null);
+                      setHasChanges(true);
+                    }} className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200">Undo Last Extra Split</button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1431,7 +1454,7 @@ return (
                       setVarExp(n);
                       // record transaction in transactions state as Tx with timestamp
                       const now = new Date().toISOString();
-                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][] };
+                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
                       if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
                       setTransactions(nt);
                       setNewTrans({...newTrans,[type]:''});
@@ -1492,6 +1515,19 @@ return (
                     </div>
                   ))
                 )}
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
+                  {transactions.extra[sel] && transactions.extra[sel].length > 0 ? (
+                    transactions.extra[sel].map((ex, j) => (
+                      <div key={j} className="flex items-center justify-between border-b py-2">
+                        <div className="text-sm">Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — Savings: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
+                        <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
