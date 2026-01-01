@@ -29,11 +29,9 @@ export type DataItem = {
   entExtra?: number;
   saveExtra?: number;
   rolloverProcessed: boolean;
-  entBudgBase: number | null;
-  entBudgLocked: boolean;
 };
 
-export type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
+export type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
 
 export type MonthlyCalcItem = {
   month: string;
@@ -65,7 +63,9 @@ export type MonthlyCalcItem = {
   rolloverDaysRemaining?: number | null;
 };
 
-export type LockUpdate = { idx: number; entBudgBase: number; entBudgLocked: boolean };
+export type CalculationResult = {
+  items: MonthlyCalcItem[];
+};
 
 function isPassed(monthDate: Date, now: Date) {
   return now >= monthDate;
@@ -86,11 +86,10 @@ export function calculateMonthly(params: {
   varExp: VarExp;
   months: MonthItem[];
   now?: Date;
-}): { items: MonthlyCalcItem[]; locks: LockUpdate[] } {
+}): CalculationResult {
   const { data, fixed, varExp, months } = params;
   const now = params.now ?? new Date();
   const res: MonthlyCalcItem[] = [];
-  const locks: LockUpdate[] = [];
 
   // Make sure we don't mutate inputs; use copies for local calculations only
   let prevTotSave = data[0]?.prev ?? 0;
@@ -98,24 +97,16 @@ export function calculateMonthly(params: {
   for (let i = 0; i < months.length; i++) {
     const m = months[i];
     const d = data[i];
+    const calculatedPrev = prevTotSave; // what the model thinks previous savings are
+    let workingPrev = d.prevManual ? (d.prev ?? prevTotSave) : prevTotSave; // start from manual if provided
     const fixExp = fixed.reduce((s, e) => s + e.amts[i], 0);
     const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
     const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
     const grocSpent = varExp.grocSpent[i];
     const entExtra = d.entExtra || 0;
     const entBonus = d.entBonus || 0;
-    const entBudgBaseComputed = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
-    // If locked, use stored base and add only explicit extras/bonuses so incidental changes don't alter it
-    let entBudg: number;
-    if (d.entBudgLocked && d.entBudgBase !== null) {
-      entBudg = d.entBudgBase + entExtra + entBonus;
-    } else {
-      entBudg = entBudgBaseComputed + entExtra + entBonus;
-      // do not mutate here; record that we should lock when passed
-      if (isPassed(m.date, now) && !d.entBudgLocked) {
-        locks.push({ idx: i, entBudgBase: entBudgBaseComputed, entBudgLocked: true });
-      }
-    }
+    // Use manual entertainment budget from varExp instead of calculating
+    const entBudg = varExp.entBudg[i] + entExtra + entBonus;
     const entSpent = varExp.entSpent[i];
     const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
 
@@ -126,15 +117,15 @@ export function calculateMonthly(params: {
     if (over > 0) {
       if (over > d.save + (d.saveExtra || 0)) {
         const deficit = over - (d.save + (d.saveExtra || 0));
-        if (prevTotSave >= deficit) {
+        if (workingPrev >= deficit) {
           overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Current savings insufficient, consuming ${deficit.toFixed(0)} SEK from previous savings.`;
           actSave = 0;
-          prevTotSave -= deficit;
+          workingPrev -= deficit;
         } else {
           criticalOverspend = true;
           overspendWarning = `CRITICAL: Overspending by ${over.toFixed(0)} SEK exceeds all available savings!`;
-          actSave = -(over - (d.save + (d.saveExtra || 0)) - prevTotSave);
-          prevTotSave = 0;
+          actSave = -(over - (d.save + (d.saveExtra || 0)) - workingPrev);
+          workingPrev = 0;
         }
       } else {
         overspendWarning = `Overspending by ${over.toFixed(0)} SEK, reducing savings.`;
@@ -143,22 +134,23 @@ export function calculateMonthly(params: {
 
     let prevSave: number;
     if (i === 0) {
-      prevSave = d.prev ?? 0;
+      prevSave = d.prev ?? workingPrev;
     } else if (d.prevManual) {
-      prevSave = d.prev ?? 0;
-      const calculated = prevTotSave;
+      prevSave = d.prev ?? workingPrev;
+      const calculated = calculatedPrev;
       if (Math.abs(prevSave - calculated) > 1) {
         overspendWarning = (overspendWarning ? overspendWarning + ' | ' : '') +
           `Manual Previous (${prevSave.toFixed(0)}) differs from calculated (${calculated.toFixed(0)})`;
       }
     } else {
-      prevSave = prevTotSave;
+      prevSave = workingPrev;
     }
 
     // Calculate balance: income + extra income + previous savings - spending
     const bal = d.inc + d.extraInc + prevSave - grocSpent - entSpent - fixSpent;
     
-    const totSave = prevSave + actSave;
+    // totSave should reflect any deficit already removed from workingPrev
+    const totSave = workingPrev + actSave;
 
     if (totSave < 0 && !criticalOverspend) {
       criticalOverspend = true;
@@ -186,5 +178,5 @@ export function calculateMonthly(params: {
     }
   });
 
-  return { items: res, locks };
+  return { items: res };
 }

@@ -43,11 +43,9 @@ type DataItem = {
   entExtra?: number;
   saveExtra?: number;
   rolloverProcessed: boolean;
-  entBudgBase: number | null;
-  entBudgLocked: boolean;
 };
 
-type VarExp = { grocBudg: number[]; grocSpent: number[]; entSpent: number[] };
+type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
 type Tx = { amt: number; ts: string };
 type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
 type Transactions = { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
@@ -97,6 +95,18 @@ export default function FinancialPlanner() {
   const [grocInput, setGrocInput] = useState('');
   const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
   const [hydrated, setHydrated] = useState(false);
+  const [salaryInitial, setSalaryInitial] = useState<number>(0);
+  const [salarySplitActive, setSalarySplitActive] = useState(false);
+  const [salarySplitAdj, setSalarySplitAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
+  const [salarySplitError, setSalarySplitError] = useState('');
+  const [salarySplitApplyFuture, setSalarySplitApplyFuture] = useState(false);
+  const [savingsInitial, setSavingsInitial] = useState<number>(0);
+  const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<{ type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; split: { a: number; b: number } } | null>(null);
+  const [budgetRebalanceError, setBudgetRebalanceError] = useState('');
+  const [budgetRebalanceApplyFuture, setBudgetRebalanceApplyFuture] = useState(false);
+  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<{ idx: number; monthIdx: number; originalAmt: number } | null>(null);
+  const [newExpenseSplit, setNewExpenseSplit] = useState<{ expense: { name: string; amts: number[]; spent: boolean[]; id: number }; split: { save: number; groc: number; ent: number }; applyToAll: boolean } | null>(null);
+  const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
   const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => ({
     groc: Array(60).fill(0).map(()=>[] as Tx[]),
     ent: Array(60).fill(0).map(()=>[] as Tx[]),
@@ -105,6 +115,14 @@ export default function FinancialPlanner() {
   const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; idx: number }>(null);
   const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
+  const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
+  const [lastAdjustments, setLastAdjustments] = useState<{
+    salary?: { oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
+    budget?: { type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
+    extra?: { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; txIdx: number | null };
+    newExpense?: { expenseId: number; fixedBefore: FixedExpense[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
+  }>({});
+  const [undoPrompt, setUndoPrompt] = useState<null | { kind: 'salary'|'budget'|'extra'|'newExpense'; payload: unknown }>(null);
   
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
@@ -202,9 +220,7 @@ export default function FinancialPlanner() {
       grocExtra: 0,
       entExtra: 0,
       saveExtra: 0,
-      rolloverProcessed: false,
-      entBudgBase: null,
-      entBudgLocked: false
+      rolloverProcessed: false
     }))
   );
 
@@ -225,8 +241,24 @@ export default function FinancialPlanner() {
   const [varExp, setVarExp] = useState<VarExp>({
     grocBudg: Array(60).fill(0).map((_, i) => i === 0 ? 6160 : 6000),
     grocSpent: Array(60).fill(0).map((_, i) => i === 0 ? 425 : 0),
+    entBudg: Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 0),
     entSpent: Array(60).fill(0).map((_, i) => i === 0 ? 250 : 0)
   });
+
+  const validateBudgetBalance = useCallback((monthIdx: number, save: number, groc: number, ent: number, opts?: { dataOverride?: DataItem[]; fixedOverride?: FixedExpense[] }) => {
+    const dataSource = opts?.dataOverride ?? data;
+    const fixedSource = opts?.fixedOverride ?? fixed;
+    const monthData = dataSource[monthIdx];
+    const availableBudget = monthData.inc + monthData.extraInc - (fixedSource.reduce((sum, f) => sum + f.amts[monthIdx], 0));
+    const totalBudgets = save + groc + ent;
+    if (totalBudgets > availableBudget + 0.01) {
+      return {
+        valid: false,
+        message: `Month ${months[monthIdx].name}: Total budgets (${totalBudgets.toFixed(0)} SEK) exceed available budget balance (${availableBudget.toFixed(0)} SEK). Please re-split to balance.`
+      };
+    }
+    return { valid: true, message: '' };
+  }, [data, fixed, months]);
 
   useEffect(() => {
     const loadFromFirestore = async () => {
@@ -240,10 +272,25 @@ export default function FinancialPlanner() {
           const savedFixed = saved.fixed as FixedExpense[];
           setData(savedData);
           setFixed(savedFixed);
-          setVarExp(saved.varExp as VarExp);
+          // Migration: ensure varExp has entBudg array for old data
+          const varExpData = saved.varExp as VarExp;
+          if (!varExpData.entBudg || !Array.isArray(varExpData.entBudg)) {
+            varExpData.entBudg = Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 0);
+          }
+          setVarExp(varExpData);
           setAutoRollover(saved.autoRollover ?? false);
           setLastSaved(saved.updatedAt?.toDate?.() ?? null);
           setBaseUpdatedAt(saved.updatedAt ?? null);
+
+          // Validate budget balance on load
+          const issues: string[] = [];
+          for (let i = 0; i < Math.min(savedData.length, 60); i++) {
+            const grocTotal = (varExpData.grocBudg[i] || 0) + (savedData[i].grocBonus || 0) + (savedData[i].grocExtra || 0);
+            const entTotal = (varExpData.entBudg[i] || 0) + (savedData[i].entBonus || 0) + (savedData[i].entExtra || 0);
+            const check = validateBudgetBalance(i, savedData[i].save, grocTotal, entTotal);
+            if (!check.valid) issues.push(check.message);
+          }
+          setBudgetBalanceIssues(issues);
           if (!saved.transactions || (saved.transactions && (Array.isArray(saved.transactions) || saved.transactions.groc || saved.transactions.ent))) {
             try {
               const payload = { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) };
@@ -266,7 +313,7 @@ export default function FinancialPlanner() {
     };
 
     loadFromFirestore();
-  }, [user, loading, deserializeTransactions, findUndefinedPaths, sanitizeForFirestore, serializeTransactions]);
+  }, [user, loading, deserializeTransactions, findUndefinedPaths, sanitizeForFirestore, serializeTransactions, validateBudgetBalance]);
 
   useEffect(() => {
     if (!user || !hydrated) return;
@@ -295,6 +342,81 @@ export default function FinancialPlanner() {
 
     return () => clearTimeout(timeout);
   }, [autoRollover, baseUpdatedAt, data, findUndefinedPaths, fixed, hydrated, sanitizeForFirestore, serializeTransactions, transactions, user, varExp]);
+
+  const handleApplyUndo = useCallback(() => {
+    if (!undoPrompt) return;
+    if (undoPrompt.kind === 'salary' && lastAdjustments.salary) {
+      const revertedData = [...data].map(d => ({ ...d }));
+      const revertedVar = {
+        ...varExp,
+        grocBudg: [...varExp.grocBudg],
+        entBudg: [...varExp.entBudg]
+      };
+      lastAdjustments.salary.dataSnapshots.forEach(snap => {
+        revertedData[snap.idx] = { ...snap.data };
+      });
+      lastAdjustments.salary.varSnapshots.forEach(snap => {
+        revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+        revertedVar.entBudg[snap.idx] = snap.entBudg;
+      });
+      setData(revertedData);
+      setVarExp(revertedVar);
+      setLastAdjustments(prev => ({ ...prev, salary: undefined }));
+    } else if (undoPrompt.kind === 'budget' && lastAdjustments.budget) {
+      const revertedData = [...data].map(d => ({ ...d }));
+      const revertedVar = {
+        ...varExp,
+        grocBudg: [...varExp.grocBudg],
+        entBudg: [...varExp.entBudg]
+      };
+      lastAdjustments.budget.dataSnapshots.forEach(snap => {
+        revertedData[snap.idx] = { ...snap.data };
+      });
+      lastAdjustments.budget.varSnapshots.forEach(snap => {
+        revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+        revertedVar.entBudg[snap.idx] = snap.entBudg;
+      });
+      setData(revertedData);
+      setVarExp(revertedVar);
+      setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+    } else if (undoPrompt.kind === 'extra' && lastAdjustments.extra) {
+      const n = [...data].map(d => ({ ...d }));
+      const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+      const selIdx = lastAdjustments.extra.sel;
+      if (lastAdjustments.extra.txIdx !== null && tcopy.extra[selIdx][lastAdjustments.extra.txIdx]) {
+        tcopy.extra[selIdx].splice(lastAdjustments.extra.txIdx, 1);
+      }
+      n[selIdx].grocExtra = lastAdjustments.extra.prev.grocExtra;
+      n[selIdx].entExtra = lastAdjustments.extra.prev.entExtra;
+      n[selIdx].saveExtra = lastAdjustments.extra.prev.saveExtra;
+      n[selIdx].extraInc = lastAdjustments.extra.prev.extraInc;
+      n[selIdx].inc = lastAdjustments.extra.prev.inc;
+      setData(n);
+      setTransactions(tcopy);
+      setLastAdjustments(prev => ({ ...prev, extra: undefined }));
+    } else if (undoPrompt.kind === 'newExpense' && lastAdjustments.newExpense) {
+      const revertedData = [...data].map(d => ({ ...d }));
+      const revertedVar = {
+        ...varExp,
+        grocBudg: [...varExp.grocBudg],
+        entBudg: [...varExp.entBudg]
+      };
+      lastAdjustments.newExpense.dataSnapshots.forEach(snap => {
+        revertedData[snap.idx] = { ...snap.data };
+      });
+      lastAdjustments.newExpense.varSnapshots.forEach(snap => {
+        revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+        revertedVar.entBudg[snap.idx] = snap.entBudg;
+      });
+      const revertedFixed = lastAdjustments.newExpense.fixedBefore.map(f => ({ ...f, amts: [...f.amts], spent: [...f.spent] }));
+      setData(revertedData);
+      setVarExp(revertedVar);
+      setFixed(revertedFixed);
+      setLastAdjustments(prev => ({ ...prev, newExpense: undefined }));
+    }
+    setUndoPrompt(null);
+    setHasChanges(true);
+  }, [data, lastAdjustments, transactions, undoPrompt, varExp]);
 
 
   // Warn before leaving with unsaved changes
@@ -413,8 +535,9 @@ export default function FinancialPlanner() {
       n[0].save = saveVal;
       n[0].defSave = saveVal;
       
-      const nv = {...varExp, grocBudg: varExp.grocBudg.slice()};
+      const nv = {...varExp, grocBudg: varExp.grocBudg.slice(), entBudg: varExp.entBudg.slice()};
       nv.grocBudg[0] = grocVal;
+      nv.entBudg[0] = entVal;
       
       // Create fixed expenses from user input
       const nf = setupFixedExpenses.map((f, idx) => ({
@@ -424,19 +547,12 @@ export default function FinancialPlanner() {
         spent: Array(60).fill(false)
       }));
       
-      // Add entertainment as a fixed expense
-      nf.push({
-        id: nf.length + 1,
-        name: 'Entertainment',
-        amts: Array(60).fill(0).map((_, i) => i === 0 ? entVal : 0),
-        spent: Array(60).fill(false)
-      });
-      
       if (setupBudgetsApplyAll) {
         for (let i = 1; i < 60; i++) {
           n[i].save = saveVal;
           n[i].defSave = saveVal;
           nv.grocBudg[i] = grocVal;
+          nv.entBudg[i] = entVal;
           // Apply fixed expenses to all months
           nf.forEach(f => {
             f.amts[i] = f.amts[0];
@@ -467,23 +583,6 @@ export default function FinancialPlanner() {
   const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
   const calc = calcResult.items;
 
-  // Apply entBudg locks recorded by the pure calculator in a controlled effect
-  useEffect(() => {
-    if (!calcResult.locks || calcResult.locks.length === 0) return;
-    const n = [...data];
-    let changed = false;
-    calcResult.locks.forEach(l => {
-      if (!n[l.idx].entBudgLocked) {
-        n[l.idx].entBudgBase = l.entBudgBase;
-        n[l.idx].entBudgLocked = true;
-        changed = true;
-      }
-    });
-    if (changed) {
-      setData(n);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calcResult]);
   
 
   // Auto-rollover logic (must be after calc is defined)
@@ -559,14 +658,13 @@ export default function FinancialPlanner() {
       grocExtra: 0,
       entExtra: 0,
       saveExtra: 0,
-      rolloverProcessed: false,
-      entBudgBase: null,
-      entBudgLocked: false
+      rolloverProcessed: false
     };
     const nf = fixed.map(f => ({...f, amts: f.amts.map((amt, i) => i === sel ? 0 : amt)}));
     const nv = {
       ...varExp,
       grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b),
+      entBudg: varExp.entBudg.map((b, i) => i === sel ? 0 : b),
       grocSpent: varExp.grocSpent.map((s, i) => i === sel ? 0 : s),
       entSpent: varExp.entSpent.map((s, i) => i === sel ? 0 : s)
     };
@@ -591,14 +689,13 @@ export default function FinancialPlanner() {
       grocExtra: 0,
       entExtra: 0,
       saveExtra: 0,
-      rolloverProcessed: false,
-      entBudgBase: null,
-      entBudgLocked: false
+      rolloverProcessed: false
     }));
     const nf = fixed.map(f => ({...f, amts: Array(60).fill(0)}));
     const nv = {
       ...varExp,
       grocBudg: Array(60).fill(0),
+      entBudg: Array(60).fill(0),
       grocSpent: Array(60).fill(0),
       entSpent: Array(60).fill(0)
     };
@@ -732,6 +829,17 @@ if (!user) {
 return (
   <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-2 sm:p-4">
     <div className="max-w-7xl mx-auto">
+        {undoPrompt && (
+          <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-blue-900 text-sm font-medium">
+              Previous split detected. Click below to undo the last {undoPrompt.kind === 'salary' ? 'salary change' : undoPrompt.kind === 'budget' ? 'budget change' : undoPrompt.kind === 'extra' ? 'extra income split' : 'added expense'}.
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleApplyUndo} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all">UNDO PREVIOUS SPLIT</button>
+              <button onClick={()=>setUndoPrompt(null)} className="bg-white text-blue-700 px-4 py-2 rounded-lg border border-blue-300 hover:bg-blue-100 transition-all">Dismiss</button>
+            </div>
+          </div>
+        )}
         <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <Auth />
           <h1 className="text-2xl sm:text-3xl font-bold text-blue-600 flex items-center gap-2">
@@ -757,6 +865,20 @@ return (
               <div className="flex items-center gap-2 bg-yellow-100 px-3 py-2 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-yellow-700" />
                 <span className="text-sm font-medium text-yellow-700">{pendingChanges.length} pending changes</span>
+              </div>
+            )}
+            {budgetBalanceIssues.length > 0 && (
+              <div className="flex flex-col gap-2 bg-red-50 border border-red-300 px-3 py-2 rounded-lg w-full">
+                <div className="flex items-center gap-2 text-red-800 text-sm font-medium">
+                  <AlertTriangle className="w-4 h-4" />
+                  Budget allocations exceed available budget balance in some months. Please re-split.
+                </div>
+                <ul className="text-xs text-red-700 list-disc pl-5">
+                  {budgetBalanceIssues.slice(0,3).map((msg, idx) => (
+                    <li key={idx}>{msg}</li>
+                  ))}
+                  {budgetBalanceIssues.length > 3 && <li>...and {budgetBalanceIssues.length - 3} more</li>}
+                </ul>
               </div>
             )}
             {hasChanges && (
@@ -890,6 +1012,10 @@ return (
                   onFocus={()=>{
                     if(f.k === 'extraInc') {
                       setExtraIncInitial(data[sel].extraInc);
+                    } else if(f.k === 'inc') {
+                      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
+                    } else if(f.k === 'save') {
+                      setSavingsInitial(data[sel].save);
                     }
                   }}
                   onChange={(e)=>{
@@ -927,7 +1053,72 @@ return (
                     if(!f.e)return;
                     const val=sanitizeNumberInput(e.target.value);
                     
-                    if (f.k === 'extraInc') {
+                    if (f.k === 'inc') {
+                      if (lastAdjustments.salary && Math.abs(val - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
+                        if (!hasChanges) {
+                          setUndoPrompt({ kind: 'salary', payload: lastAdjustments.salary });
+                        } else {
+                          const revertedData = [...data].map(d => ({ ...d }));
+                          const revertedVar = {
+                            ...varExp,
+                            grocBudg: [...varExp.grocBudg],
+                            entBudg: [...varExp.entBudg]
+                          };
+                          lastAdjustments.salary.dataSnapshots.forEach(snap => {
+                            revertedData[snap.idx] = { ...snap.data };
+                          });
+                          lastAdjustments.salary.varSnapshots.forEach(snap => {
+                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                            revertedVar.entBudg[snap.idx] = snap.entBudg;
+                          });
+                          setData(revertedData);
+                          setVarExp(revertedVar);
+                          setSalarySplitActive(false);
+                          setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+                          setSalarySplitError('');
+                          setSalarySplitApplyFuture(false);
+                          setLastAdjustments(prev => ({ ...prev, salary: undefined }));
+                          setHasChanges(true);
+                        }
+                        return;
+                      }
+                      const oldVal = salaryInitial;
+                      const n=[...data];
+                      n[sel].inc = val;
+                      n[sel].baseSalary = val;
+                      // Trigger split modal if salary changed
+                      if (val !== oldVal) {
+                        setSalarySplitActive(true);
+                        setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+                      }
+                      setData(n);
+                      setHasChanges(true);
+                    } else if (f.k === 'extraInc') {
+                      if (lastAdjustments.extra && lastAdjustments.extra.sel === sel && Math.abs(val - lastAdjustments.extra.prev.extraInc) < 0.01) {
+                        if (!hasChanges) {
+                          setUndoPrompt({ kind: 'extra', payload: lastAdjustments.extra });
+                        } else {
+                          const n = [...data].map(d => ({ ...d }));
+                          const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                          if (lastAdjustments.extra.txIdx !== null && tcopy.extra[sel][lastAdjustments.extra.txIdx]) {
+                            tcopy.extra[sel].splice(lastAdjustments.extra.txIdx, 1);
+                          }
+                          n[sel].grocExtra = lastAdjustments.extra.prev.grocExtra;
+                          n[sel].entExtra = lastAdjustments.extra.prev.entExtra;
+                          n[sel].saveExtra = lastAdjustments.extra.prev.saveExtra;
+                          n[sel].extraInc = lastAdjustments.extra.prev.extraInc;
+                          n[sel].inc = lastAdjustments.extra.prev.inc;
+                          setData(n);
+                          setTransactions(tcopy);
+                          setExtraAdj({ groc: 0, ent: 0, save: 0 });
+                          setExtraSplitActive(false);
+                          setExtraSplitError('');
+                          setLastExtraApply(null);
+                          setLastAdjustments(prev => ({ ...prev, extra: undefined }));
+                          setHasChanges(true);
+                        }
+                        return;
+                      }
                       // Use the initial value captured on focus
                       const oldVal = extraIncInitial;
                       const n=[...data];
@@ -947,10 +1138,50 @@ return (
                       setData(n);
                       setHasChanges(true);
                     } else if (f.k === 'save') {
+                      if (lastAdjustments.budget && lastAdjustments.budget.type === 'save' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+                        if (!hasChanges) {
+                          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+                        } else {
+                          const revertedData = [...data].map(d => ({ ...d }));
+                          const revertedVar = {
+                            ...varExp,
+                            grocBudg: [...varExp.grocBudg],
+                            entBudg: [...varExp.entBudg]
+                          };
+                          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+                            revertedData[snap.idx] = { ...snap.data };
+                          });
+                          lastAdjustments.budget.varSnapshots.forEach(snap => {
+                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                            revertedVar.entBudg[snap.idx] = snap.entBudg;
+                          });
+                          setData(revertedData);
+                          setVarExp(revertedVar);
+                          setBudgetRebalanceModal(null);
+                          setBudgetRebalanceError('');
+                          setBudgetRebalanceApplyFuture(false);
+                          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+                          setSavingEdited(false);
+                          setAdj({ groc: 0, ent: 0 });
+                          setApplyFuture(false);
+                          setApplySavingsForward(null);
+                          setHasChanges(true);
+                        }
+                        return;
+                      }
+                      const oldVal = savingsInitial;
                       const n=[...data];
                       n[sel].save = val;
-                      // Do not clear bonuses when savings changes - bonuses are allocations from budget reductions
-                      // and should persist regardless of savings amount
+                      // Trigger budget rebalance modal if savings changed
+                      if (Math.abs(val - oldVal) > 0.01) {
+                        setBudgetRebalanceModal({ 
+                          type: 'save', 
+                          oldVal: oldVal, 
+                          newVal: val, 
+                          split: { a: 0, b: 0 } 
+                        });
+                        setBudgetRebalanceError('');
+                      }
                       setAdj({ groc: 0, ent: 0 });
                       setApplyFuture(false);
                       setApplySavingsForward(null);
@@ -983,27 +1214,6 @@ return (
               </div>
             ))}
           </div>
-
-          {data[sel].entBudgLocked && (
-            <div className="mt-3 p-3 bg-orange-50 border border-orange-300 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-orange-800">
-                <span>🔒</span>
-                <span>Entertainment budget locked at {data[sel].entBudgBase?.toFixed(0)} SEK</span>
-              </div>
-              <button
-                onClick={() => {
-                  const n = [...data];
-                  n[sel].entBudgLocked = false;
-                  n[sel].entBudgBase = null;
-                  setData(n);
-                  setHasChanges(true);
-                }}
-                className="text-xs bg-orange-600 text-white px-3 py-1 rounded-lg hover:bg-orange-700 transition-all"
-              >
-                Recalculate
-              </button>
-            </div>
-          )}
 
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
@@ -1087,6 +1297,616 @@ return (
               </div>
             </div>
           </div>
+          {salarySplitActive && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-blue-700" />
+                <h3 className="font-bold text-blue-900">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
+              </div>
+              <p className="text-sm text-blue-800 mb-3">
+                {salaryInitial < data[sel].inc 
+                  ? 'Your salary increased. Allocate the additional amount across categories.' 
+                  : 'Your salary decreased. Choose how to reduce your budgets.'}
+              </p>
+              
+              {salarySplitError && (
+                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {salarySplitError}
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                  <input 
+                    type="number" 
+                    placeholder="0" 
+                    value={salarySplitAdj.groc || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      setSalarySplitAdj({
+                        groc: v,
+                        ent: Math.max(0, Math.abs(data[sel].inc - salaryInitial) - v - salarySplitAdj.save),
+                        save: salarySplitAdj.save
+                      });
+                      setSalarySplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                  <input 
+                    type="number" 
+                    placeholder="0" 
+                    value={salarySplitAdj.ent || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      setSalarySplitAdj({
+                        ent: v,
+                        groc: Math.max(0, Math.abs(data[sel].inc - salaryInitial) - v - salarySplitAdj.save),
+                        save: salarySplitAdj.save
+                      });
+                      setSalarySplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                  <input 
+                    type="number" 
+                    placeholder="0" 
+                    value={salarySplitAdj.save || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      setSalarySplitAdj({
+                        save: v,
+                        groc: salarySplitAdj.groc,
+                        ent: Math.max(0, Math.abs(data[sel].inc - salaryInitial) - v - salarySplitAdj.groc)
+                      });
+                      setSalarySplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  />
+                </div>
+                <div className="col-span-full">
+                  <div className="text-sm text-gray-600 mb-2">
+                    Allocated: {(salarySplitAdj.groc + salarySplitAdj.ent + salarySplitAdj.save).toFixed(0)} / {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK
+                  </div>
+                  <label className="flex items-center gap-2 mb-3 text-sm text-gray-700">
+                    <input 
+                      type="checkbox"
+                      checked={salarySplitApplyFuture}
+                      onChange={(e) => setSalarySplitApplyFuture(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span>Apply to all future months</span>
+                  </label>
+                  <button
+                    onClick={() => {
+                      const total = salarySplitAdj.groc + salarySplitAdj.ent + salarySplitAdj.save;
+                      const diff = Math.abs(data[sel].inc - salaryInitial);
+                      if(Math.abs(total - diff) > 0.01) {
+                        setSalarySplitError(`Total must equal ${diff.toFixed(0)} SEK. Current total: ${total.toFixed(0)} SEK`);
+                        return;
+                      }
+                      const isIncrease = data[sel].inc > salaryInitial;
+                      const affectedMonths = salarySplitApplyFuture ? Array.from({ length: 60 - sel }, (_, i) => sel + i) : [sel];
+                      const dataSnapshots = affectedMonths.map(idx => ({
+                        idx,
+                        data: {
+                          ...data[idx],
+                          inc: idx === sel ? salaryInitial : data[idx].inc,
+                          baseSalary: idx === sel ? salaryInitial : data[idx].baseSalary
+                        }
+                      }));
+                      const varSnapshots = affectedMonths.map(idx => ({ idx, grocBudg: varExp.grocBudg[idx], entBudg: varExp.entBudg[idx] }));
+                      const tempData = data.map(d => ({ ...d }));
+                      const tempVar = {
+                        ...varExp,
+                        grocBudg: [...varExp.grocBudg],
+                        entBudg: [...varExp.entBudg]
+                      };
+
+                      for (const idx of affectedMonths) {
+                        if (salarySplitApplyFuture && idx !== sel) {
+                          tempData[idx].inc = data[sel].inc;
+                          tempData[idx].baseSalary = data[sel].baseSalary;
+                        }
+                        const grocExtras = (tempData[idx].grocBonus || 0) + (tempData[idx].grocExtra || 0);
+                        const entExtras = (tempData[idx].entBonus || 0) + (tempData[idx].entExtra || 0);
+                        let newSaveVal = tempData[idx].save;
+                        let newGrocBase = tempVar.grocBudg[idx];
+                        let newEntBase = tempVar.entBudg[idx];
+
+                        if (isIncrease) {
+                          newSaveVal += salarySplitAdj.save;
+                          newGrocBase = Math.max(0, newGrocBase + salarySplitAdj.groc);
+                          newEntBase = Math.max(0, newEntBase + salarySplitAdj.ent);
+                        } else {
+                          newSaveVal = Math.max(0, newSaveVal - salarySplitAdj.save);
+                          newGrocBase = Math.max(0, newGrocBase - salarySplitAdj.groc);
+                          newEntBase = Math.max(0, newEntBase - salarySplitAdj.ent);
+                        }
+
+                        const newGrocTotal = newGrocBase + grocExtras;
+                        const newEntTotal = newEntBase + entExtras;
+                        const balanceCheck = validateBudgetBalance(idx, newSaveVal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
+                        if (!balanceCheck.valid) {
+                          setSalarySplitError(balanceCheck.message);
+                          return;
+                        }
+
+                        tempData[idx].save = newSaveVal;
+                        tempData[idx].defSave = newSaveVal;
+                        tempVar.grocBudg[idx] = newGrocBase;
+                        tempVar.entBudg[idx] = newEntBase;
+
+                      }
+
+                      setData(tempData);
+                      setVarExp(tempVar);
+                      setLastAdjustments(prev => ({
+                        ...prev,
+                        salary: {
+                          oldVal: salaryInitial,
+                          newVal: data[sel].inc,
+                          months: affectedMonths,
+                          dataSnapshots,
+                          varSnapshots
+                        }
+                      }));
+                      setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+                      setSalarySplitActive(false);
+                      setSalarySplitError('');
+                      setSalarySplitApplyFuture(false);
+                      setHasChanges(true);
+                    }}
+                    className="w-full bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all"
+                  >
+                    Apply Salary Change Split
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Reset to initial salary
+                      const n = [...data];
+                      n[sel].inc = salaryInitial;
+                      n[sel].baseSalary = salaryInitial;
+                      setData(n);
+                      setSalarySplitActive(false);
+                      setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+                      setSalarySplitError('');
+                      setSalarySplitApplyFuture(false);
+                    }}
+                    className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                  >
+                    Cancel & Revert Salary
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {budgetRebalanceModal && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl shadow-md">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-700" />
+                <h3 className="font-bold text-yellow-900">
+                  Budget Changed: {budgetRebalanceModal.type === 'save' ? 'Savings' : budgetRebalanceModal.type === 'groc' ? 'Groceries' : 'Entertainment'} 
+                  {' '}({budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? '+' : ''}{(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK)
+                </h3>
+              </div>
+              <p className="text-sm text-yellow-800 mb-3">
+                To maintain budget balance, redistribute {Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK between the other budgets.
+              </p>
+              
+              {budgetRebalanceError && (
+                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {budgetRebalanceError}
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {budgetRebalanceModal.type !== 'save' && (
+                  <div>
+                    <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                    <input 
+                      type="number" 
+                      placeholder="0" 
+                      value={budgetRebalanceModal.split.a || ''} 
+                      onChange={(e) => {
+                        const v = sanitizeNumberInput(e.target.value);
+                        setBudgetRebalanceModal(prev => prev ? {
+                          ...prev,
+                          split: {
+                            a: v,
+                            b: Math.max(0, Math.abs(prev.newVal - prev.oldVal) - v)
+                          }
+                        } : null);
+                        setBudgetRebalanceError('');
+                      }} 
+                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                    />
+                  </div>
+                )}
+                {budgetRebalanceModal.type !== 'groc' && (
+                  <div>
+                    <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                    <input 
+                      type="number" 
+                      placeholder="0" 
+                      value={(budgetRebalanceModal.type === 'save' ? budgetRebalanceModal.split.a : budgetRebalanceModal.split.b) || ''} 
+                      onChange={(e) => {
+                        const v = sanitizeNumberInput(e.target.value);
+                        setBudgetRebalanceModal(prev => prev ? {
+                          ...prev,
+                          split: prev.type === 'save' ? {
+                            a: v,
+                            b: Math.max(0, Math.abs(prev.newVal - prev.oldVal) - v)
+                          } : {
+                            a: prev.split.a,
+                            b: v
+                          }
+                        } : null);
+                        setBudgetRebalanceError('');
+                      }} 
+                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                    />
+                  </div>
+                )}
+                {budgetRebalanceModal.type !== 'ent' && (
+                  <div>
+                    <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                    <input 
+                      type="number" 
+                      placeholder="0" 
+                      value={budgetRebalanceModal.split.b || ''} 
+                      onChange={(e) => {
+                        const v = sanitizeNumberInput(e.target.value);
+                        setBudgetRebalanceModal(prev => prev ? {
+                          ...prev,
+                          split: {
+                            a: Math.max(0, Math.abs(prev.newVal - prev.oldVal) - v),
+                            b: v
+                          }
+                        } : null);
+                        setBudgetRebalanceError('');
+                      }} 
+                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                    />
+                  </div>
+                )}
+                <div className="col-span-full">
+                  <div className="text-sm text-gray-600 mb-2">
+                    Allocated: {(budgetRebalanceModal.split.a + budgetRebalanceModal.split.b).toFixed(0)} / {Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 mt-3 p-3 bg-white rounded-lg">
+                <input
+                  type="checkbox"
+                  checked={budgetRebalanceApplyFuture}
+                  onChange={(e) => setBudgetRebalanceApplyFuture(e.target.checked)}
+                  className="w-4 h-4 text-yellow-600 rounded"
+                />
+                <label className="text-sm text-gray-700">
+                  Apply to future months (from this month onward)
+                </label>
+              </div>
+              
+              <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      const total = budgetRebalanceModal.split.a + budgetRebalanceModal.split.b;
+                      const diff = Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal);
+                      if(Math.abs(total - diff) > 0.01) {
+                        setBudgetRebalanceError(`Total must equal ${diff.toFixed(0)} SEK. Current total: ${total.toFixed(0)} SEK`);
+                        return;
+                      }
+                      
+                      const multiplier = budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? -1 : 1; // If budget increased, others decrease
+                      const diffVal = budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal;
+                      const affectedMonths = budgetRebalanceApplyFuture ? Array.from({ length: 60 - sel }, (_, i) => sel + i) : [sel];
+                      const baselineData = data.map((d, idx) => {
+                        if (budgetRebalanceModal.type === 'save' && idx === sel) {
+                          return { ...d, save: budgetRebalanceModal.oldVal, defSave: budgetRebalanceModal.oldVal };
+                        }
+                        return { ...d };
+                      });
+                      const dataSnapshots = affectedMonths.map(idx => ({ idx, data: { ...baselineData[idx] } }));
+                      const varSnapshots = affectedMonths.map(idx => ({ idx, grocBudg: varExp.grocBudg[idx], entBudg: varExp.entBudg[idx] }));
+                      const tempData = baselineData.map(d => ({ ...d }));
+                      const tempVar = {
+                        ...varExp,
+                        grocBudg: [...varExp.grocBudg],
+                        entBudg: [...varExp.entBudg]
+                      };
+
+                      for (const idx of affectedMonths) {
+                        const grocExtras = (tempData[idx].grocBonus || 0) + (tempData[idx].grocExtra || 0);
+                        const entExtras = (tempData[idx].entBonus || 0) + (tempData[idx].entExtra || 0);
+                        let newSaveVal = tempData[idx].save;
+                        let newGrocBase = tempVar.grocBudg[idx];
+                        let newEntBase = tempVar.entBudg[idx];
+
+                        if (budgetRebalanceModal.type === 'save') {
+                          newSaveVal = idx === sel ? budgetRebalanceModal.newVal : Math.max(0, tempData[idx].save + diffVal);
+                          newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.a));
+                          newEntBase = Math.max(0, newEntBase + (multiplier * budgetRebalanceModal.split.b));
+                        } else if (budgetRebalanceModal.type === 'groc') {
+                          newGrocBase = idx === sel
+                            ? Math.max(0, budgetRebalanceModal.newVal - grocExtras)
+                            : Math.max(0, newGrocBase + diffVal);
+                          newSaveVal = Math.max(0, tempData[idx].save + (multiplier * budgetRebalanceModal.split.a));
+                          newEntBase = Math.max(0, newEntBase + (multiplier * budgetRebalanceModal.split.b));
+                        } else {
+                          newEntBase = idx === sel
+                            ? Math.max(0, budgetRebalanceModal.newVal - entExtras)
+                            : Math.max(0, newEntBase + diffVal);
+                          newSaveVal = Math.max(0, tempData[idx].save + (multiplier * budgetRebalanceModal.split.a));
+                          newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.b));
+                        }
+
+                        const newGrocTotal = newGrocBase + grocExtras;
+                        const newEntTotal = newEntBase + entExtras;
+                        const balanceCheck = validateBudgetBalance(idx, newSaveVal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
+                        if (!balanceCheck.valid) {
+                          setBudgetRebalanceError(balanceCheck.message);
+                          return;
+                        }
+
+                        tempData[idx].save = newSaveVal;
+                        tempData[idx].defSave = newSaveVal;
+                        tempVar.grocBudg[idx] = newGrocBase;
+                        tempVar.entBudg[idx] = newEntBase;
+                      }
+
+                      setData(tempData);
+                      setVarExp(tempVar);
+                      setLastAdjustments(prev => ({
+                        ...prev,
+                        budget: {
+                          type: budgetRebalanceModal.type,
+                          oldVal: budgetRebalanceModal.oldVal,
+                          newVal: budgetRebalanceModal.newVal,
+                          months: affectedMonths,
+                          dataSnapshots,
+                          varSnapshots
+                        }
+                      }));
+                      setBudgetRebalanceModal(null);
+                      setBudgetRebalanceError('');
+                      setBudgetRebalanceApplyFuture(false);
+                      setHasChanges(true);
+                    }}
+                    className="w-full bg-yellow-600 text-white p-3 rounded-xl hover:bg-yellow-700 active:bg-yellow-800 shadow-md transition-all"
+                  >
+                    Apply Budget Rebalance
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Cancel and revert to original value
+                      const n = [...data];
+                      const nv = {...varExp};
+                      if (budgetRebalanceModal.type === 'save') {
+                        n[sel].save = budgetRebalanceModal.oldVal;
+                        n[sel].defSave = budgetRebalanceModal.oldVal;
+                      } else if (budgetRebalanceModal.type === 'groc') {
+                        nv.grocBudg[sel] = Math.max(0, budgetRebalanceModal.oldVal - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                      } else if (budgetRebalanceModal.type === 'ent') {
+                        nv.entBudg[sel] = Math.max(0, budgetRebalanceModal.oldVal - data[sel].entBonus - (data[sel].entExtra || 0));
+                      }
+                      setData(n);
+                      setVarExp(nv);
+                      setBudgetRebalanceModal(null);
+                      setBudgetRebalanceError('');
+                      setBudgetRebalanceApplyFuture(false);
+                    }}
+                    className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                  >
+                    Cancel & Revert
+                  </button>
+                </div>
+            </div>
+          )}
+
+          {newExpenseSplit && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 rounded-xl shadow-md">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-red-700" />
+                <h3 className="font-bold text-red-900">New Fixed Expense: {newExpenseSplit.expense.name}</h3>
+              </div>
+              <p className="text-sm text-red-800 mb-3">
+                This expense affects {newExpenseSplit.expense.amts.filter(a => a > 0).length} month(s). 
+                For the first affected month ({months[newExpenseSplit.expense.amts.findIndex(a => a > 0)].name}), 
+                allocate {newExpenseSplit.expense.amts[newExpenseSplit.expense.amts.findIndex(a => a > 0)].toFixed(0)} SEK budget reduction across categories.
+              </p>
+              
+              {newExpenseSplitError && (
+                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  {newExpenseSplitError}
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Savings</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0" 
+                    value={newExpenseSplit.split.save || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      const firstIdx = newExpenseSplit.expense.amts.findIndex(a => a > 0);
+                      const amt = newExpenseSplit.expense.amts[firstIdx];
+                      setNewExpenseSplit(prev => prev ? {
+                        ...prev,
+                        split: {
+                          save: v,
+                          groc: Math.max(0, amt - v - prev.split.ent),
+                          ent: prev.split.ent
+                        }
+                      } : null);
+                      setNewExpenseSplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Groceries</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0" 
+                    value={newExpenseSplit.split.groc || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      const firstIdx = newExpenseSplit.expense.amts.findIndex(a => a > 0);
+                      const amt = newExpenseSplit.expense.amts[firstIdx];
+                      setNewExpenseSplit(prev => prev ? {
+                        ...prev,
+                        split: {
+                          groc: v,
+                          save: Math.max(0, amt - v - prev.split.ent),
+                          ent: prev.split.ent
+                        }
+                      } : null);
+                      setNewExpenseSplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Entertainment</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    placeholder="0" 
+                    value={newExpenseSplit.split.ent || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      const firstIdx = newExpenseSplit.expense.amts.findIndex(a => a > 0);
+                      const amt = newExpenseSplit.expense.amts[firstIdx];
+                      setNewExpenseSplit(prev => prev ? {
+                        ...prev,
+                        split: {
+                          ent: v,
+                          groc: prev.split.groc,
+                          save: Math.max(0, amt - v - prev.split.groc)
+                        }
+                      } : null);
+                      setNewExpenseSplitError('');
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                  />
+                </div>
+                <div className="col-span-full">
+                  <div className="text-sm text-gray-600 mb-2">
+                    Allocated: {(newExpenseSplit.split.save + newExpenseSplit.split.groc + newExpenseSplit.split.ent).toFixed(0)} / {newExpenseSplit.expense.amts[newExpenseSplit.expense.amts.findIndex(a => a > 0)].toFixed(0)} SEK
+                  </div>
+                  <label className="flex items-center gap-2 mb-3 text-sm text-gray-700">
+                    <input 
+                      type="checkbox"
+                      checked={newExpenseSplit.applyToAll}
+                      onChange={(e) => setNewExpenseSplit(prev => prev ? {...prev, applyToAll: e.target.checked} : null)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span>Apply same split to all affected months</span>
+                  </label>
+                  <button
+                    onClick={() => {
+                      const firstIdx = newExpenseSplit.expense.amts.findIndex(a => a > 0);
+                      const amt = newExpenseSplit.expense.amts[firstIdx];
+                      const total = newExpenseSplit.split.save + newExpenseSplit.split.groc + newExpenseSplit.split.ent;
+                      if(Math.abs(total - amt) > 0.01) {
+                        setNewExpenseSplitError(`Total must equal ${amt.toFixed(0)} SEK. Current total: ${total.toFixed(0)} SEK`);
+                        return;
+                      }
+                      const tempData = data.map(d => ({ ...d }));
+                      const tempVar = {
+                        ...varExp,
+                        grocBudg: [...varExp.grocBudg],
+                        entBudg: [...varExp.entBudg]
+                      };
+                      const tempFixed = fixed.map(f => ({ ...f, amts: [...f.amts], spent: [...f.spent] }));
+                      const dataSnapshots: { idx: number; data: DataItem }[] = [];
+                      const varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] = [];
+
+                      if (newExpenseSplit.applyToAll) {
+                        for (let i = 0; i < 60; i++) {
+                          if (newExpenseSplit.expense.amts[i] > 0) {
+                            dataSnapshots.push({ idx: i, data: { ...tempData[i] } });
+                            varSnapshots.push({ idx: i, grocBudg: tempVar.grocBudg[i], entBudg: tempVar.entBudg[i] });
+                            tempData[i].save = Math.max(0, tempData[i].save - newExpenseSplit.split.save);
+                            tempData[i].defSave = tempData[i].save;
+                            tempVar.grocBudg[i] = Math.max(0, tempVar.grocBudg[i] - newExpenseSplit.split.groc);
+                            tempVar.entBudg[i] = Math.max(0, tempVar.entBudg[i] - newExpenseSplit.split.ent);
+                            const grocTotal = tempVar.grocBudg[i] + (tempData[i].grocBonus || 0) + (tempData[i].grocExtra || 0);
+                            const entTotal = tempVar.entBudg[i] + (tempData[i].entBonus || 0) + (tempData[i].entExtra || 0);
+                            const check = validateBudgetBalance(i, tempData[i].save, grocTotal, entTotal, { dataOverride: tempData, fixedOverride: [...tempFixed, newExpenseSplit.expense] });
+                            if (!check.valid) {
+                              setNewExpenseSplitError(check.message);
+                              return;
+                            }
+                          }
+                        }
+                      } else {
+                        dataSnapshots.push({ idx: firstIdx, data: { ...tempData[firstIdx] } });
+                        varSnapshots.push({ idx: firstIdx, grocBudg: tempVar.grocBudg[firstIdx], entBudg: tempVar.entBudg[firstIdx] });
+                        tempData[firstIdx].save = Math.max(0, tempData[firstIdx].save - newExpenseSplit.split.save);
+                        tempData[firstIdx].defSave = tempData[firstIdx].save;
+                        tempVar.grocBudg[firstIdx] = Math.max(0, tempVar.grocBudg[firstIdx] - newExpenseSplit.split.groc);
+                        tempVar.entBudg[firstIdx] = Math.max(0, tempVar.entBudg[firstIdx] - newExpenseSplit.split.ent);
+                        const grocTotal = tempVar.grocBudg[firstIdx] + (tempData[firstIdx].grocBonus || 0) + (tempData[firstIdx].grocExtra || 0);
+                        const entTotal = tempVar.entBudg[firstIdx] + (tempData[firstIdx].entBonus || 0) + (tempData[firstIdx].entExtra || 0);
+                        const check = validateBudgetBalance(firstIdx, tempData[firstIdx].save, grocTotal, entTotal, { dataOverride: tempData, fixedOverride: [...tempFixed, newExpenseSplit.expense] });
+                        if (!check.valid) {
+                          setNewExpenseSplitError(check.message);
+                          return;
+                        }
+                      }
+
+                      const fixedWithNew = [...tempFixed, newExpenseSplit.expense];
+                      setData(tempData);
+                      setVarExp(tempVar);
+                      setFixed(fixedWithNew);
+                      setLastAdjustments(prev => ({
+                        ...prev,
+                        newExpense: {
+                          expenseId: newExpenseSplit.expense.id,
+                          fixedBefore: tempFixed,
+                          dataSnapshots,
+                          varSnapshots
+                        }
+                      }));
+                      setNewExpenseSplit(null);
+                      setNewExpenseSplitError('');
+                      setHasChanges(true);
+                    }}
+                    className="w-full bg-red-600 text-white p-3 rounded-xl hover:bg-red-700 active:bg-red-800 shadow-md transition-all"
+                  >
+                    Confirm & Add Expense
+                  </button>
+                  <button
+                    onClick={() => {
+                      setNewExpenseSplit(null);
+                      setNewExpenseSplitError('');
+                    }}
+                    className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {extraSplitActive && data[sel].extraInc > 0 && (
             <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-xl shadow-md">
               <div className="flex items-center gap-2 mb-3">
@@ -1177,31 +1997,48 @@ return (
                         setExtraSplitError(`Total must equal ${data[sel].extraInc.toFixed(0)} SEK. Current total: ${total.toFixed(0)} SEK`);
                         return;
                       }
-                      const n = [...data];
-                      const prevGrocExtra = n[sel].grocExtra ?? 0;
-                      const prevEntExtra = n[sel].entExtra ?? 0;
-                      const prevSaveExtra = n[sel].saveExtra ?? 0;
-                      const prevExtraInc = n[sel].extraInc;
-                      const prevInc = n[sel].inc;
-                      
-                      n[sel].grocExtra = prevGrocExtra + extraAdj.groc;
-                      n[sel].entExtra = prevEntExtra + extraAdj.ent;
-                      n[sel].saveExtra = prevSaveExtra + extraAdj.save;
-                      // Move extraInc to permanent inc and clear extraInc
-                      // Track base salary if not already set
-                      if (!n[sel].baseSalary) {
-                        n[sel].baseSalary = prevInc;
+                      const dataClone = data.map(d => ({ ...d }));
+                      const prevGrocExtra = dataClone[sel].grocExtra ?? 0;
+                      const prevEntExtra = dataClone[sel].entExtra ?? 0;
+                      const prevSaveExtra = dataClone[sel].saveExtra ?? 0;
+                      const prevExtraInc = dataClone[sel].extraInc;
+                      const prevInc = dataClone[sel].inc;
+
+                      const newGrocExtra = prevGrocExtra + extraAdj.groc;
+                      const newEntExtra = prevEntExtra + extraAdj.ent;
+                      const newSaveExtra = prevSaveExtra + extraAdj.save;
+                      const newInc = prevInc + (prevExtraInc || 0);
+                      const grocTotal = varExp.grocBudg[sel] + (dataClone[sel].grocBonus || 0) + newGrocExtra;
+                      const entTotal = varExp.entBudg[sel] + (dataClone[sel].entBonus || 0) + newEntExtra;
+                      const saveTotal = dataClone[sel].save + newSaveExtra;
+                      dataClone[sel] = {
+                        ...dataClone[sel],
+                        grocExtra: newGrocExtra,
+                        entExtra: newEntExtra,
+                        saveExtra: newSaveExtra,
+                        inc: newInc,
+                        extraInc: 0
+                      };
+                      const balanceCheck = validateBudgetBalance(sel, saveTotal, grocTotal, entTotal, { dataOverride: dataClone, fixedOverride: fixed });
+                      if (!balanceCheck.valid) {
+                        setExtraSplitError(balanceCheck.message);
+                        return;
                       }
-                      n[sel].inc = prevInc + (prevExtraInc || 0);
-                      n[sel].extraInc = 0;
-                      setData(n);
+
+                      if (!dataClone[sel].baseSalary) {
+                        dataClone[sel].baseSalary = prevInc;
+                      }
+                      setData(dataClone);
                       // record the allocation in transactions.extra for history
                       const now = new Date().toISOString();
                       const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
                       tcopy.extra[sel].push({ groc: extraAdj.groc, ent: extraAdj.ent, save: extraAdj.save, ts: now });
                       setTransactions(tcopy);
                       // store undo info (index of pushed entry)
-                      setLastExtraApply({ sel, prev: { grocExtra: prevGrocExtra, entExtra: prevEntExtra, saveExtra: prevSaveExtra, extraInc: prevExtraInc, inc: prevInc }, idx: tcopy.extra[sel].length - 1 });
+                      const txIdx = tcopy.extra[sel].length - 1;
+                      const lastPrev = { grocExtra: prevGrocExtra, entExtra: prevEntExtra, saveExtra: prevSaveExtra, extraInc: prevExtraInc, inc: prevInc };
+                      setLastExtraApply({ sel, prev: lastPrev, idx: txIdx });
+                      setLastAdjustments(prev => ({ ...prev, extra: { sel, prev: lastPrev, txIdx } }));
                       setExtraAdj({ groc: 0, ent: 0, save: 0 });
                       setExtraSplitActive(false);
                       setExtraSplitError('');
@@ -1362,10 +2199,15 @@ return (
                     const int=parseInt(newExp.type);
                     return(i-newExp.start)%int===0?newExp.amt:0;
                   });
-                  setFixed([...fixed,{id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)}]);
+                  // Trigger split modal for affected months
+                  setNewExpenseSplit({
+                    expense: {id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)},
+                    split: { save: 0, groc: 0, ent: 0 },
+                    applyToAll: false
+                  });
+                  setNewExpenseSplitError('');
                   setNewExp({name:'',amt:0,type:'monthly',start:0});
                   setShowAdd(false);
-                  setHasChanges(true);
                 }} 
                 className="bg-green-600 text-white rounded-xl hover:bg-green-700 active:bg-green-800 shadow-md transition-all"
               >
@@ -1404,22 +2246,23 @@ return (
                       max="1000000"
                       placeholder="0" 
                       value={e.amts[sel]} 
+                      onFocus={() => {
+                        // Store original amount when user starts editing
+                        setEditingExpenseOriginal({ idx: originalIndex, monthIdx: sel, originalAmt: e.amts[sel] });
+                      }}
                       onBlur={(ev) => {
                         const newAmt = sanitizeNumberInput(ev.target.value);
-                        const oldAmt = e.amts[sel];
-                        if (newAmt !== oldAmt) {
-                          // Only show split modal if amount decreased
-                          if (newAmt < oldAmt) {
-                            setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                            setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
-                          } else {
-                            // Amount increased, just update it
-                            const n = [...fixed];
-                            n[originalIndex].amts[sel] = newAmt;
-                            setFixed(n);
-                            setHasChanges(true);
-                          }
+                        const oldAmt = editingExpenseOriginal?.originalAmt ?? e.amts[sel];
+                        
+                        if (newAmt !== oldAmt && editingExpenseOriginal) {
+                          // Show split modal for both increases and decreases
+                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
+                          setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
+                        } else if (newAmt === oldAmt && editingExpenseOriginal) {
+                          // Reverted to original amount: remove pending changes for this expense
+                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
                         }
+                        setEditingExpenseOriginal(null);
                       }} 
                       onChange={(ev) => {
                         const val = sanitizeNumberInput(ev.target.value);
@@ -1467,9 +2310,15 @@ return (
                 </select>
               </div>
               
-              <h4 className="font-semibold mb-2 text-gray-800">Split freed amount</h4>
+              <h4 className="font-semibold mb-2 text-gray-800">
+                {deleteModal 
+                  ? 'Split freed amount' 
+                  : (changeModal && (changeModal.newAmt ?? 0) < (changeModal.oldAmt ?? 0)) 
+                    ? 'Split freed amount' 
+                    : 'Allocate additional cost from'}
+              </h4>
               <p className="text-sm text-gray-600 mb-3">
-                Total to split: {(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
+                Total to {deleteModal || (changeModal && (changeModal.newAmt ?? 0) < (changeModal.oldAmt ?? 0)) ? 'split' : 'allocate'}: {Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
               </p>
               
               {splitError && (
@@ -1488,12 +2337,12 @@ return (
                     <input 
                       type="number" 
                       min="0"
-                      max={ (deleteModal ? deleteModal.amt : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))) }
+                      max={Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0))))}
                       placeholder="0" 
                       value={(deleteModal ?? changeModal)?.split[k] ?? ''} 
                       onChange={(e) => {
                         const v = sanitizeNumberInput(e.target.value);
-                        const total = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
+                        const total = Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0))));
                         const s = (deleteModal ?? changeModal)?.split ?? { save:0, groc:0, ent:0 };
 
                         if (k === 'save') {
@@ -1527,7 +2376,7 @@ return (
               </div>
               
               <div className="text-sm text-gray-600 mb-4">
-                Allocated: {(((deleteModal ?? changeModal)?.split.save ?? 0) + ((deleteModal ?? changeModal)?.split.groc ?? 0) + ((deleteModal ?? changeModal)?.split.ent ?? 0)).toFixed(0)} / {( deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)) ) ).toFixed(0)} SEK
+                Allocated: {(((deleteModal ?? changeModal)?.split.save ?? 0) + ((deleteModal ?? changeModal)?.split.groc ?? 0) + ((deleteModal ?? changeModal)?.split.ent ?? 0)).toFixed(0)} / {Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
               </div>
               
               <div className="flex flex-col sm:flex-row gap-2">
@@ -1535,14 +2384,65 @@ return (
                   onClick={()=>{
                     const modal = deleteModal ?? changeModal;
                     if (!modal) return;
-                    const totalNum = deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)));
+                    const totalNum = Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0))));
 
-                    if(!validateSplit(modal.split, totalNum)) {
-                      setSplitError(`Total must equal ${totalNum.toFixed(0)} SEK. Current total: ${((modal.split.save + modal.split.groc + modal.split.ent) ).toFixed(0)} SEK`);
+                    if (deleteModal && lastAdjustments.newExpense && fixed[deleteModal.idx]?.id === lastAdjustments.newExpense.expenseId && deleteModal.scope === 'forever') {
+                      if (!hasChanges) {
+                        setUndoPrompt({ kind: 'newExpense', payload: lastAdjustments.newExpense });
+                        setDeleteModal(null);
+                        setChangeModal(null);
+                        setSplitError('');
+                      } else {
+                        const revertedData = [...data].map(d => ({ ...d }));
+                        const revertedVar = {
+                          ...varExp,
+                          grocBudg: [...varExp.grocBudg],
+                          entBudg: [...varExp.entBudg]
+                        };
+                        lastAdjustments.newExpense.dataSnapshots.forEach(snap => {
+                          revertedData[snap.idx] = { ...snap.data };
+                        });
+                        lastAdjustments.newExpense.varSnapshots.forEach(snap => {
+                          revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                          revertedVar.entBudg[snap.idx] = snap.entBudg;
+                        });
+                        const revertedFixed = lastAdjustments.newExpense.fixedBefore.map(f => ({ ...f, amts: [...f.amts], spent: [...f.spent] }));
+                        setData(revertedData);
+                        setVarExp(revertedVar);
+                        setFixed(revertedFixed);
+                        setLastAdjustments(prev => ({ ...prev, newExpense: undefined }));
+                        setDeleteModal(null);
+                        setChangeModal(null);
+                        setSplitError('');
+                        setHasChanges(true);
+                      }
                       return;
                     }
 
-                    setPendingChanges(prev => [...prev, { ...modal, type: deleteModal ? 'delete' : 'amount', monthIdx: sel }]);
+                    if(!validateSplit(modal.split, totalNum)) {
+                      setSplitError(`Total must equal ${Math.abs(totalNum).toFixed(0)} SEK. Current total: ${((modal.split.save + modal.split.groc + modal.split.ent)).toFixed(0)} SEK`);
+                      return;
+                    }
+
+                    // If expense increased (changeModal && newAmt > oldAmt), negate the splits
+                    const isIncrease = changeModal && (changeModal.newAmt ?? 0) > (changeModal.oldAmt ?? 0);
+                    const finalSplit = isIncrease 
+                      ? { save: -modal.split.save, groc: -modal.split.groc, ent: -modal.split.ent }
+                      : modal.split;
+
+                    const newChange = { ...modal, split: finalSplit, type: deleteModal ? 'delete' : 'amount', monthIdx: sel } as Change;
+                    const simulated = applySaveChanges({ fixed, data, pendingChanges: [...pendingChanges, newChange], applySavingsForward });
+                    for (let i = 0; i < 60; i++) {
+                      const grocTotal = (varExp.grocBudg[i] || 0) + (simulated.data[i].grocBonus || 0) + (simulated.data[i].grocExtra || 0);
+                      const entTotal = (varExp.entBudg[i] || 0) + (simulated.data[i].entBonus || 0) + (simulated.data[i].entExtra || 0);
+                      const balanceCheck = validateBudgetBalance(i, simulated.data[i].save, grocTotal, entTotal, { dataOverride: simulated.data, fixedOverride: simulated.fixed });
+                      if (!balanceCheck.valid) {
+                        setSplitError(balanceCheck.message);
+                        return;
+                      }
+                    }
+
+                    setPendingChanges(prev => [...prev, newChange]);
                     setDeleteModal(null);
                     setChangeModal(null);
                     setSplitError('');
@@ -1597,7 +2497,7 @@ return (
                           setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
                         } else if (!editingEnt) {
                           setEditingEnt(true);
-                          setEntInput(String(data[sel].entBudgBase ?? Math.round(cur.entBudg)));
+                          setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
                         }
                       }}
                       onChange={(e) => {
@@ -1613,47 +2513,103 @@ return (
                         if (type === 'groc') {
                           const val = sanitizeNumberInput(e.target.value);
                           const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
-                          const difference = currentTotal - val;
+                          const difference = val - currentTotal;
 
-                          const n = { ...varExp };
-                          n.grocBudg[sel] = Math.max(0, val - data[sel].grocBonus - (data[sel].grocExtra || 0));
-                          setVarExp(n);
+                            if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+                              if (!hasChanges) {
+                                setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+                              } else {
+                                const revertedData = [...data].map(d => ({ ...d }));
+                                const revertedVar = {
+                                  ...varExp,
+                                  grocBudg: [...varExp.grocBudg],
+                                  entBudg: [...varExp.entBudg]
+                                };
+                                lastAdjustments.budget.dataSnapshots.forEach(snap => {
+                                  revertedData[snap.idx] = { ...snap.data };
+                                });
+                                lastAdjustments.budget.varSnapshots.forEach(snap => {
+                                  revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                                  revertedVar.entBudg[snap.idx] = snap.entBudg;
+                                });
+                                setData(revertedData);
+                                setVarExp(revertedVar);
+                                setBudgetRebalanceModal(null);
+                                setBudgetRebalanceError('');
+                                setBudgetRebalanceApplyFuture(false);
+                                setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+                                setHasChanges(true);
+                              }
+                              setEditingGroc(false);
+                              setGrocInput('');
+                              return;
+                            }
+
                           setEditingGroc(false);
                           setGrocInput('');
-                          setHasChanges(true);
 
-                          // Only show split modal if budget decreased
-                          if (difference > 0) {
-                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
-                            setSplitError('');
+                          // Always show split modal if budget changed
+                          if (Math.abs(difference) > 0.01) {
+                            setBudgetRebalanceModal({ 
+                              type: 'groc', 
+                              oldVal: currentTotal, 
+                              newVal: val, 
+                              split: { a: 0, b: 0 } 
+                            });
+                            setBudgetRebalanceError('');
                           }
                         } else if (type === 'ent') {
                           const val = sanitizeNumberInput(e.target.value);
                           const currentTotal = cur.entBudg;
-                          const difference = currentTotal - val;
+                          const difference = val - currentTotal;
+
+                          if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+                            if (!hasChanges) {
+                              setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+                            } else {
+                              const revertedData = [...data].map(d => ({ ...d }));
+                              const revertedVar = {
+                                ...varExp,
+                                grocBudg: [...varExp.grocBudg],
+                                entBudg: [...varExp.entBudg]
+                              };
+                              lastAdjustments.budget.dataSnapshots.forEach(snap => {
+                                revertedData[snap.idx] = { ...snap.data };
+                              });
+                              lastAdjustments.budget.varSnapshots.forEach(snap => {
+                                revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                                revertedVar.entBudg[snap.idx] = snap.entBudg;
+                              });
+                              setData(revertedData);
+                              setVarExp(revertedVar);
+                              setBudgetRebalanceModal(null);
+                              setBudgetRebalanceError('');
+                              setBudgetRebalanceApplyFuture(false);
+                              setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+                              setHasChanges(true);
+                            }
+                            setEditingEnt(false);
+                            setEntInput('');
+                            return;
+                          }
                           
-                          const n = [...data];
-                          const entExtra = n[sel].entExtra || 0;
-                          const entBonus = n[sel].entBonus || 0;
-                          // store base such that base + extras/bonuses = val
-                          n[sel].entBudgBase = Math.max(0, val - entExtra - entBonus);
-                          // clear explicit extras/bonuses because user included them in manual total
-                          n[sel].entExtra = 0;
-                          n[sel].entBonus = 0;
-                          n[sel].entBudgLocked = true;
-                          setData(n);
-                          setHasChanges(true);
                           setEditingEnt(false);
+                          setEntInput('');
                           
-                          // Show split modal if budget decreased
-                          if (difference > 0) {
-                            setChangeModal({ idx: sel, oldAmt: currentTotal, newAmt: val, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
-                            setSplitError('');
+                          // Always show split modal if budget changed
+                          if (Math.abs(difference) > 0.01) {
+                            setBudgetRebalanceModal({ 
+                              type: 'ent', 
+                              oldVal: currentTotal, 
+                              newVal: val, 
+                              split: { a: 0, b: 0 } 
+                            });
+                            setBudgetRebalanceError('');
                           }
                         }
                       }}
                       disabled={false}
-                      className={`w-full p-2 sm:p-3 border-2 ${type==='ent' && data[sel].entBudgLocked ? 'border-orange-400' : 'border-gray-300'} rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
+                      className={`w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
                     />
                   </div>
                   <div>
@@ -2001,6 +2957,9 @@ return (
                     </div>
                     <div className="mb-1">
                       <strong>Allocated:</strong> {(parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0')).toFixed(0)} SEK
+                    </div>
+                    <div className={`mb-1 ${(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0) - (parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0'))) < 0 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}`}>
+                      <strong>Remaining:</strong> {(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0) - (parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0'))).toFixed(0)} SEK
                     </div>
                     <div className="text-gray-600">
                       (Salary + Extra Income - Fixed Expenses)

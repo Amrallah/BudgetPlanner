@@ -57,7 +57,7 @@ describe('pendingChanges and applySavingsForward transformations', () => {
   it('applies a month-scoped amount change and updates data bonuses', () => {
     const months = mkMonths(3);
     const fixed = [ { id:1, name:'A', amts: [200,200,200], spent: [false,false,false] } ];
-    const data = Array(3).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
+    const data = Array(3).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }));
 
     const pending = [ { type:'amount', scope:'month', idx:0, monthIdx:1, newAmt:0, split:{ save:50, groc:20, ent:30 } } ];
     const { fixed: nf, data: nd } = applyPendingChanges(pending, fixed, data);
@@ -69,14 +69,14 @@ describe('pendingChanges and applySavingsForward transformations', () => {
     expect(nd[1].grocBonus).toBe(20);
     expect(nd[1].entBonus).toBe(30);
 
-    const { items } = calculateMonthly({ data: nd, fixed: nf, varExp: { grocBudg:[0,0,0], grocSpent:[0,0,0], entSpent:[0,0,0] }, months, now: months[0].date });
+    const { items } = calculateMonthly({ data: nd, fixed: nf, varExp: { grocBudg:[0,0,0], grocSpent:[0,0,0], entBudg:[0,0,0], entSpent:[0,0,0] }, months, now: months[0].date });
     // entBudg should reflect reduced fixed expense in month 1 (higher entBudg)
     expect(items[1].entBudg).toBeGreaterThan(items[0].entBudg);
   });
 
   it('applies future-scoped deletion across months', () => {
     const fixed = [ { id:1, name:'A', amts: [100,100,100,100], spent: [false,false,false,false] } ];
-    const data = Array(4).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
+    const data = Array(4).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }));
 
     const pending = [ { type:'delete', scope:'future', idx:0, monthIdx:2, split:{ save:20, groc:10, ent:5 } } ];
     const { fixed: nf, data: nd } = applyPendingChanges(pending, fixed, data);
@@ -90,7 +90,7 @@ describe('pendingChanges and applySavingsForward transformations', () => {
   });
 
   it('applies applySavingsForward behavior for both branches', () => {
-    const data = Array(4).fill(0).map((_,i) => ({ inc:1000, prev:null, prevManual:false, save: i===0?80:100, defSave:100, extraInc:0, grocBonus: i===0?10:0, entBonus: i===0?5:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
+    const data = Array(4).fill(0).map((_,i) => ({ inc:1000, prev:null, prevManual:false, save: i===0?80:100, defSave:100, extraInc:0, grocBonus: i===0?10:0, entBonus: i===0?5:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }));
 
     // branch: src.save < src.defSave -> propagate bonuses
     const nd1 = applySavingsForward(0, data);

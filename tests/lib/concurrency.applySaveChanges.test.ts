@@ -22,9 +22,7 @@ function makeData() {
     grocExtra: 0,
     entExtra: 0,
     saveExtra: 0,
-    rolloverProcessed: false,
-    entBudgBase: null,
-    entBudgLocked: false,
+    rolloverProcessed: false
   }));
 }
 

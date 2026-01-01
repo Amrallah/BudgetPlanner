@@ -10,33 +10,40 @@ function makeMonths(count = 3, start = new Date('2025-12-25')) {
 }
 
 describe('calculateMonthly behavior', () => {
-  it('overspend consumes previous savings when available', () => {
+  it('overspend consumes previous savings when available (CORRECT EXPECTATION)', () => {
     const months = makeMonths(3);
     const data = [
-      { inc: 1000, prev: 5000, prevManual: true, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false },
-      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false },
-      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false }
+      { inc: 1000, prev: 5000, prevManual: true, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
     ];
     const fixed = [];
-    const varExp = { grocBudg: [100, 100, 100], grocSpent: [500, 0, 0], entSpent: [1200, 0, 0] };
+    const varExp = { grocBudg: [100, 100, 100], grocSpent: [500, 0, 0], entBudg: [0, 0, 0], entSpent: [1200, 0, 0] };
 
     const now = new Date(months[0].date.getTime());
     const { items } = calculateMonthly({ data, fixed, varExp, months, now });
 
-    // Month0 had over = 400, save=100 -> deficit=300 consumed from prev (5000 -> 4700). actSave should be 0.
+    // REAL LIFE LOGIC:
+    // Started with 5000 savings, planned to save 100 more
+    // Overspent by 1600 total (400 groc + 1200 ent)
+    // The 100 planned savings is wiped out
+    // Still need 1500 more from the 5000 previous savings
+    // Month 0 should end with: 5000 - 1500 = 3500
+    expect(items[0].over).toBe(1600);
     expect(items[0].actSave).toBe(0);
-    // Month1 prev should equal previous total (prevSave) after iteration
-    expect(items[1].prev).toBe(5000);
+    expect(items[0].totSave).toBe(3500); // 5000 - 1500 deficit
+    // Month 1 should inherit 3500, not 5000
+    expect(items[1].prev).toBe(3500);
   });
 
   it('flags critical overspend when deficit exceeds previous savings', () => {
     const months = makeMonths(1);
     const data = [
-      { inc: 0, prev: 100, prevManual: true, save: 50, defSave: 50, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false }
+      { inc: 0, prev: 100, prevManual: true, save: 50, defSave: 50, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
     ];
     const fixed = [];
     // Force large spending to create critical deficit
-    const varExp = { grocBudg: [0], grocSpent: [500], entSpent: [0] };
+    const varExp = { grocBudg: [0], grocSpent: [500], entBudg: [0], entSpent: [0] };
     const now = new Date(months[0].date.getTime());
     const { items } = calculateMonthly({ data, fixed, varExp, months, now });
     expect(items[0].criticalOverspend).toBe(true);
@@ -45,11 +52,11 @@ describe('calculateMonthly behavior', () => {
   it('detects rollover when previous month has remaining budget and next month is passed', () => {
     const months = makeMonths(2, new Date('2025-10-01'));
     const data = [
-      { inc: 1000, prev: 0, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false },
-      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false }
+      { inc: 1000, prev: 0, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
     ];
     const fixed = [];
-    const varExp = { grocBudg: [100, 100], grocSpent: [0, 0], entSpent: [0, 0] };
+    const varExp = { grocBudg: [100, 100], grocSpent: [0, 0], entBudg: [200, 200], entSpent: [0, 0] };
 
     // Choose now after month1 date so month1.passed is true
     const now = new Date(months[1].date.getTime() + 1000 * 60 * 60 * 24 * 10);
@@ -60,21 +67,21 @@ describe('calculateMonthly behavior', () => {
     expect(items[1].hasRollover).toBe(true);
   });
 
-  it('returns locks for months that become passed and are not yet locked', () => {
+  it('uses provided entertainment budgets without locking and reports rollover days', () => {
     const months = makeMonths(2, new Date('2025-01-01'));
     const data = [
-      { inc: 1000, prev: 0, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false },
-      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false, entBudgBase: null, entBudgLocked: false }
+      { inc: 1000, prev: 0, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+      { inc: 1000, prev: null, prevManual: false, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
     ];
     const fixed = [];
-    const varExp = { grocBudg: [100, 100], grocSpent: [0, 0], entSpent: [0, 0] };
+    const varExp = { grocBudg: [100, 100], grocSpent: [0, 0], entBudg: [250, 220], entSpent: [0, 0] };
 
     const now = new Date(months[0].date.getTime() + 1000 * 60 * 60 * 24 * 40);
-    const { locks } = calculateMonthly({ data, fixed, varExp, months, now });
+    const { items } = calculateMonthly({ data, fixed, varExp, months, now });
 
-    expect(Array.isArray(locks)).toBe(true);
-    expect(locks.length).toBeGreaterThan(0);
-    expect(locks[0].idx).toBe(0);
-    expect(typeof locks[0].entBudgBase).toBe('number');
+    expect(items[0].entBudg).toBe(250);
+    expect(items[1].entBudg).toBe(220);
+    expect(items[1].hasRollover).toBe(true);
+    expect(items[1].rolloverDaysRemaining).toBeGreaterThanOrEqual(0);
   });
 });

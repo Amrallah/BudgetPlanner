@@ -30,9 +30,7 @@ function makeData() {
     grocExtra: 0,
     entExtra: 0,
     saveExtra: 0,
-    rolloverProcessed: false,
-    entBudgBase: null,
-    entBudgLocked: false,
+    rolloverProcessed: false
   }));
 }
 
@@ -52,10 +50,45 @@ describe('integration: applySaveChanges -> calculateMonthly', () => {
     // data.save increased by split.save for affected months
     for (let i = 1; i < 6; i++) expect(nd[i].save).toBe(250);
 
-    const { items } = calculateMonthly({ data: nd, fixed: nf, varExp: { grocBudg: Array(6).fill(0), grocSpent: Array(6).fill(0), entSpent: Array(6).fill(0) }, months, now: new Date('2025-12-31T00:00:00Z') });
+    const { items } = calculateMonthly({ data: nd, fixed: nf, varExp: { grocBudg: Array(6).fill(0), grocSpent: Array(6).fill(0), entBudg: Array(6).fill(0), entSpent: Array(6).fill(0) }, months, now: new Date('2025-12-31T00:00:00Z') });
 
     // actSave should reflect save adjustments
     expect(items[1].save).toBe(250);
     expect(items[1].fixExp).toBe(0);
+  });
+
+  it('propagates forwarded savings plan and bonus budgets', () => {
+    const months = genMonths(4);
+    const fixed = makeFixed();
+    const data = makeData();
+
+    // Lower savings in month 1 with bonuses that should propagate forward
+    data[1].save = 250;
+    data[1].defSave = 300;
+    data[1].grocBonus = 40;
+    data[1].entBonus = 60;
+
+    const { data: nd, fixed: nf } = applySaveChanges({ fixed, data, pendingChanges: [], applySavingsForward: 1 });
+
+    // Savings and bonuses are copied to months 2 and 3
+    for (let i = 2; i < 4; i++) {
+      expect(nd[i].save).toBe(250);
+      expect(nd[i].grocBonus).toBe(40);
+      expect(nd[i].entBonus).toBe(60);
+    }
+
+    const varExp = {
+      grocBudg: Array(4).fill(500),
+      grocSpent: Array(4).fill(0),
+      entBudg: Array(4).fill(300),
+      entSpent: Array(4).fill(0)
+    };
+
+    const { items } = calculateMonthly({ data: nd, fixed: nf, varExp, months, now: new Date('2025-12-31T00:00:00Z') });
+
+    // Budget bonuses should inflate available budgets and savings should match forwarded value
+    expect(items[2].grocBudg).toBe(540);
+    expect(items[2].entBudg).toBe(360);
+    expect(items[2].actSave).toBe(250);
   });
 });

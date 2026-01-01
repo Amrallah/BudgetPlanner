@@ -23,9 +23,7 @@ function buildSeed() {
     grocExtra: 0,
     entExtra: 0,
     saveExtra: 0,
-    rolloverProcessed: false,
-    entBudgBase: null,
-    entBudgLocked: false
+    rolloverProcessed: false
   }));
 
   const fixed = [
@@ -37,6 +35,7 @@ function buildSeed() {
   const varExp = {
     grocBudg: Array(60).fill(0).map((_, i) => i === 0 ? 6160 : 6000),
     grocSpent: Array(60).fill(0).map((_, i) => i === 0 ? 425 : 0),
+    entBudg: Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 3000),
     entSpent: Array(60).fill(0).map((_, i) => i === 0 ? 250 : 0)
   };
 
@@ -51,7 +50,7 @@ describe('calculateMonthly', () => {
     const varExpCopy = JSON.parse(JSON.stringify(seed.varExp));
 
     const now = new Date('2025-12-31T00:00:00Z');
-    const { items, locks } = calculateMonthly({ data: seed.data, fixed: seed.fixed, varExp: seed.varExp, months: seed.months, now });
+    const { items } = calculateMonthly({ data: seed.data, fixed: seed.fixed, varExp: seed.varExp, months: seed.months, now });
 
     expect(items.length).toBe(60);
     // Ensure inputs unchanged
@@ -60,7 +59,6 @@ describe('calculateMonthly', () => {
     expect(seed.varExp).toEqual(varExpCopy);
     // Basic numeric assertion from seed (month 0 totSave expected)
     expect(items[0].totSave).toBe(23000);
-    // Locks array should be present (could be empty depending on now)
-    expect(Array.isArray(locks)).toBe(true);
+    expect(items[0].entBudg).toBe(3000);
   });
 });
