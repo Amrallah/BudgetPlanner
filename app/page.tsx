@@ -92,7 +92,6 @@ const createEmptyTransactions = (): Transactions => ({
   extra: Array.from({ length: 60 }, () => [] as ExtraAlloc[])
 });
 
-
 export default function FinancialPlanner() {
   const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
     const d = new Date(2025, 11, 25);
@@ -1186,82 +1185,111 @@ return (
             </div>
           </div>
         )}
-        <div className="sticky top-3 z-30">
-          <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="mb-4 sm:mb-5">
+          <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-xl shadow-xl p-3 sm:p-4 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg">
-                  <DollarSign className="w-6 h-6" />
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md">
+                  <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">Finance Dashboard</h1>
-                  <p className="text-sm text-gray-600">60-month personal planner with autosave</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Finance Dashboard</h1>
+                  <p className="text-xs sm:text-sm text-gray-600 leading-snug">60-month planner with autosave</p>
                 </div>
-                <span className="hidden sm:inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
-                  {months[sel]?.name}
-                </span>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 w-full lg:w-auto">
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
-                  <span className="text-xs text-gray-600">Month</span>
-                  <select
-                    value={sel}
-                    onChange={(e) => setSel(parseInt(e.target.value))}
-                    className="text-sm bg-transparent focus:outline-none"
-                    aria-label="Quick month select"
-                  >
-                    {months.map((m, i) => (
-                      <option key={i} value={i}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-                {undoPrompt && (
-                  <button
-                    onClick={handleApplyUndo}
-                    className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
-                  >
-                    Undo last change
-                  </button>
-                )}
-                {hasChanges && (
-                  <button
-                    onClick={saveChanges}
-                    disabled={budgetBalanceIssues.length > 0}
-                    className={`px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
-                    title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
-                  >
-                    <Save size={18} />Save
-                  </button>
-                )}
-                <button onClick={deleteCurrentMonth} className="px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
-                  <Trash2 size={16} />Reset month
+              <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-auto">
+                <span className="font-semibold truncate max-w-[180px] sm:max-w-[220px] text-left">{user?.email ?? 'Account'}</span>
+                <button
+                  onClick={() => signOut(auth)}
+                  className="px-3 py-1 rounded-md bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800"
+                >
+                  Log out
                 </button>
-                <button onClick={deleteAllMonths} className="px-4 py-2 rounded-xl bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
-                  <Trash2 size={16} />Delete all
-                </button>
-                <div className="w-full sm:w-auto max-w-[260px]">
-                  <Auth />
-                </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              {lastSaved && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-800 border border-green-200">
-                  <Check className="w-4 h-4" /> Saved {lastSaved.toLocaleTimeString()}
+
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 w-full">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-56 md:w-64">
+                    <span className="text-[11px] text-gray-600">Month</span>
+                    <select
+                      value={sel}
+                      onChange={(e) => setSel(parseInt(e.target.value))}
+                      className="text-sm bg-transparent focus:outline-none w-full py-1"
+                      aria-label="Quick month select"
+                    >
+                      {months.map((m, i) => (
+                        <option key={i} value={i}>{`${m.name} - Day ${m.day} ${isPassed(i) ? '✓' : '⏳'}`}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              )}
+                <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto">
+                  {undoPrompt && (
+                    <button
+                      onClick={handleApplyUndo}
+                      className="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
+                    >
+                      Undo last change
+                    </button>
+                  )}
+                  {hasChanges && (
+                    <button
+                      onClick={saveChanges}
+                      disabled={budgetBalanceIssues.length > 0}
+                      className={`px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                      title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
+                    >
+                      <Save size={16} />Save
+                    </button>
+                  )}
+                  <button onClick={deleteCurrentMonth} className="px-3 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                    <Trash2 size={14} />Reset
+                  </button>
+                  <button onClick={deleteAllMonths} className="px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                    <Trash2 size={14} />Delete all
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={autoRollover}
+                    onClick={() => setAutoRollover(!autoRollover)}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-semibold border shadow-sm transition-all ${autoRollover ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <span>Auto-rollover</span>
+                    <span className="text-[11px] opacity-80">after 5 days</span>
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
+                  {lastSaved && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-800 border border-green-200">
+                      <Check className="w-4 h-4" /> Saved {lastSaved.toLocaleTimeString()}
+                    </div>
+                  )}
+                  {pendingChanges.length > 0 && (
+                    <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200 text-yellow-800 shadow-sm">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm font-medium">{pendingChanges.length} pending changes</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {saveConflict && (
-                <div className="flex items-center gap-2 bg-red-50 px-3 py-2 rounded-xl border border-red-200 shadow-sm">
-                  <AlertTriangle className="w-4 h-4 text-red-700" />
-                  <div className="text-sm font-medium text-red-700">Save conflict detected — remote changes exist.</div>
-                  <button onClick={handleReloadRemote} className="bg-white text-red-700 px-3 py-1 rounded-md shadow-sm border border-red-200">Reload</button>
-                  <button onClick={handleForceSave} className="bg-red-700 text-white px-3 py-1 rounded-md shadow-sm">Force</button>
-                </div>
-              )}
-              {pendingChanges.length > 0 && (
-                <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200 text-yellow-800 shadow-sm">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-sm font-medium">{pendingChanges.length} pending changes</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-red-50 px-3 py-2 rounded-xl border border-red-200 shadow-sm">
+                  <div className="flex items-center gap-2 text-red-700 text-sm font-medium">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span>Save conflict detected — remote changes exist.</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleReloadRemote} className="bg-white text-red-700 px-3 py-1 rounded-md shadow-sm border border-red-200">Reload</button>
+                    <button onClick={handleForceSave} className="bg-red-700 text-white px-3 py-1 rounded-md shadow-sm">Force</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1282,7 +1310,7 @@ return (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
           <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
           <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
           <Card label="Income" value={data[sel].baseSalary ?? cur.inc} icon={Calendar} color="purple" />
@@ -1296,7 +1324,7 @@ return (
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
               <PiggyBank className="w-4 h-4 text-emerald-600" />
@@ -1371,7 +1399,7 @@ return (
         </div>
 
         {cur.overspendWarning && (
-          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-4 rounded-xl shadow-md`}>
+          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
             <div className="flex items-start gap-3">
               <AlertTriangle className={`w-5 h-5 mt-0.5 ${cur.criticalOverspend ? 'text-red-700' : 'text-yellow-700'}`} />
               <div>
@@ -1383,26 +1411,6 @@ return (
             </div>
           </div>
         )}
-
-        <div className="bg-white rounded-xl shadow-xl p-4 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <select value={sel} onChange={(e) => setSel(parseInt(e.target.value))} className="flex-1 p-3 sm:p-4 border-2 border-gray-300 rounded-xl text-base sm:text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
-              {months.map((m, i) => <option key={i} value={i}>{m.name} - Day {m.day} {isPassed(i) ? '✓' : '⏳'}</option>)}
-            </select>
-          </div>
-          <div className="mt-3 flex items-center gap-3">
-            <input 
-              type="checkbox" 
-              id="autoRollover" 
-              checked={autoRollover} 
-              onChange={(e) => setAutoRollover(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            <label htmlFor="autoRollover" className="text-sm text-gray-700 cursor-pointer">
-              Auto-rollover unspent budget to savings after 5 days
-            </label>
-          </div>
-        </div>
 
         {cur.hasRollover && !showRollover && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
@@ -1452,9 +1460,9 @@ return (
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
+        <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
           <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {cur.month}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {[
               {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
               {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
@@ -1464,7 +1472,7 @@ return (
               {l:'Actual',v:cur.actSave,k:'act',e:false}
             ].map((f,i)=>(
               <div key={i}>
-                <label className="block text-sm font-semibold mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
+                <label className="block text-sm font-semibold leading-snug mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
                 <input 
                   type="number" 
                   min="0" 
@@ -1677,7 +1685,7 @@ return (
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
               <h3 className="font-bold text-purple-900 mb-3 flex items-center gap-2">
                 <Wallet className="w-5 h-5" />
