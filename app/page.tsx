@@ -92,7 +92,6 @@ const createEmptyTransactions = (): Transactions => ({
   extra: Array.from({ length: 60 }, () => [] as ExtraAlloc[])
 });
 
-
 export default function FinancialPlanner() {
   const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
     const d = new Date(2025, 11, 25);
@@ -1211,10 +1210,20 @@ return (
                     aria-label="Quick month select"
                   >
                     {months.map((m, i) => (
-                      <option key={i} value={i}>{m.name}</option>
+                      <option key={i} value={i}>{`${m.name} - Day ${m.day} ${isPassed(i) ? '✓' : '⏳'}`}</option>
                     ))}
                   </select>
                 </div>
+                <label className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoRollover}
+                    onChange={(e) => setAutoRollover(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                    aria-label="Auto-rollover unspent budget to savings after 5 days"
+                  />
+                  <span className="text-xs sm:text-sm text-gray-700">Auto-rollover unspent budget to savings after 5 days</span>
+                </label>
                 {undoPrompt && (
                   <button
                     onClick={handleApplyUndo}
