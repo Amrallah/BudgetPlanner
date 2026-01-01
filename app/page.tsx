@@ -1185,28 +1185,31 @@ return (
             </div>
           </div>
         )}
-        <div className="sticky top-3 z-30 mb-4 sm:mb-6">
+        <div className="sticky top-3 z-30 mb-6 sm:mb-8">
           <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col gap-4">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 lg:gap-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-6">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg">
                   <DollarSign className="w-6 h-6" />
                 </div>
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">Finance Dashboard</h1>
-                  <p className="text-sm text-gray-600">60-month personal planner with autosave</p>
+                  <p className="text-sm text-gray-600 leading-snug">60-month personal planner with autosave</p>
                 </div>
-                <span className="hidden sm:inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
-                  {months[sel]?.name}
-                </span>
               </div>
-              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch justify-end gap-2 sm:gap-3 w-full lg:w-auto">
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
+              <span className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-blue-50 text-blue-700 border border-blue-200 shadow-sm w-fit">
+                {months[sel]?.name}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full">
                   <span className="text-xs text-gray-600">Month</span>
                   <select
                     value={sel}
                     onChange={(e) => setSel(parseInt(e.target.value))}
-                    className="text-sm bg-transparent focus:outline-none w-full sm:w-auto"
+                    className="text-sm bg-transparent focus:outline-none w-full"
                     aria-label="Quick month select"
                   >
                     {months.map((m, i) => (
@@ -1214,7 +1217,7 @@ return (
                     ))}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm cursor-pointer w-full sm:w-auto">
+                <label className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm cursor-pointer w-full">
                   <input
                     type="checkbox"
                     checked={autoRollover}
@@ -1222,12 +1225,15 @@ return (
                     className="w-4 h-4 rounded"
                     aria-label="Auto-rollover unspent budget to savings after 5 days"
                   />
-                  <span className="text-xs sm:text-sm text-gray-700">Auto-rollover unspent budget to savings after 5 days</span>
+                  <span className="text-xs sm:text-sm text-gray-700 leading-snug">Auto-rollover unspent budget to savings after 5 days</span>
                 </label>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 w-full">
                 {undoPrompt && (
                   <button
                     onClick={handleApplyUndo}
-                    className="w-full sm:w-auto px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
+                    className="w-full px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
                   >
                     Undo last change
                   </button>
@@ -1236,19 +1242,19 @@ return (
                   <button
                     onClick={saveChanges}
                     disabled={budgetBalanceIssues.length > 0}
-                    className={`w-full sm:w-auto px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                    className={`w-full px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
                     title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
                   >
                     <Save size={18} />Save
                   </button>
                 )}
-                <button onClick={deleteCurrentMonth} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
+                <button onClick={deleteCurrentMonth} className="w-full px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
                   <Trash2 size={16} />Reset month
                 </button>
-                <button onClick={deleteAllMonths} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
+                <button onClick={deleteAllMonths} className="w-full px-4 py-2 rounded-xl bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
                   <Trash2 size={16} />Delete all
                 </button>
-                <div className="w-full sm:w-auto max-w-[320px]">
+                <div className="col-span-2 sm:col-span-3 lg:col-span-2 w-full max-w-full">
                   <Auth />
                 </div>
               </div>
@@ -1291,7 +1297,7 @@ return (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
           <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
           <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
           <Card label="Income" value={data[sel].baseSalary ?? cur.inc} icon={Calendar} color="purple" />
@@ -1305,7 +1311,7 @@ return (
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
               <PiggyBank className="w-4 h-4 text-emerald-600" />
@@ -1380,7 +1386,7 @@ return (
         </div>
 
         {cur.overspendWarning && (
-          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-4 rounded-xl shadow-md`}>
+          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
             <div className="flex items-start gap-3">
               <AlertTriangle className={`w-5 h-5 mt-0.5 ${cur.criticalOverspend ? 'text-red-700' : 'text-yellow-700'}`} />
               <div>
@@ -1441,9 +1447,9 @@ return (
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
+        <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
           <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {cur.month}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {[
               {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
               {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
@@ -1453,7 +1459,7 @@ return (
               {l:'Actual',v:cur.actSave,k:'act',e:false}
             ].map((f,i)=>(
               <div key={i}>
-                <label className="block text-sm font-semibold mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
+                <label className="block text-sm font-semibold leading-snug mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
                 <input 
                   type="number" 
                   min="0" 
@@ -1666,7 +1672,7 @@ return (
             ))}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
               <h3 className="font-bold text-purple-900 mb-3 flex items-center gap-2">
                 <Wallet className="w-5 h-5" />
