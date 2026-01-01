@@ -1393,26 +1393,6 @@ return (
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl p-4 mb-4">
-          <div className="flex items-center justify-between mb-2">
-            <select value={sel} onChange={(e) => setSel(parseInt(e.target.value))} className="flex-1 p-3 sm:p-4 border-2 border-gray-300 rounded-xl text-base sm:text-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
-              {months.map((m, i) => <option key={i} value={i}>{m.name} - Day {m.day} {isPassed(i) ? '✓' : '⏳'}</option>)}
-            </select>
-          </div>
-          <div className="mt-3 flex items-center gap-3">
-            <input 
-              type="checkbox" 
-              id="autoRollover" 
-              checked={autoRollover} 
-              onChange={(e) => setAutoRollover(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            <label htmlFor="autoRollover" className="text-sm text-gray-700 cursor-pointer">
-              Auto-rollover unspent budget to savings after 5 days
-            </label>
-          </div>
-        </div>
-
         {cur.hasRollover && !showRollover && (
           <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
             <div className="flex-1">
