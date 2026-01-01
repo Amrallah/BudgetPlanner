@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
@@ -9,6 +9,7 @@ import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
 import { Timestamp } from 'firebase/firestore';
+import { validateBudgetBalance as validateBudgetBalanceHelper, computeBudgetIssues } from '@/lib/budgetBalance';
 
 
 // -- Types
@@ -104,6 +105,11 @@ export default function FinancialPlanner() {
   const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<{ type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; split: { a: number; b: number } } | null>(null);
   const [budgetRebalanceError, setBudgetRebalanceError] = useState('');
   const [budgetRebalanceApplyFuture, setBudgetRebalanceApplyFuture] = useState(false);
+  const [forceRebalanceOpen, setForceRebalanceOpen] = useState(false);
+  const [forceRebalanceError, setForceRebalanceError] = useState('');
+  const [forceRebalanceValues, setForceRebalanceValues] = useState<{ save: number; groc: number; ent: number }>({ save: 0, groc: 0, ent: 0 });
+  const [forceRebalanceTarget, setForceRebalanceTarget] = useState<number | null>(null);
+  const forceRebalanceInitialized = useRef(false);
   const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<{ idx: number; monthIdx: number; originalAmt: number } | null>(null);
   const [newExpenseSplit, setNewExpenseSplit] = useState<{ expense: { name: string; amts: number[]; spent: boolean[]; id: number }; split: { save: number; groc: number; ent: number }; applyToAll: boolean } | null>(null);
   const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
@@ -248,21 +254,64 @@ export default function FinancialPlanner() {
   const validateBudgetBalance = useCallback((monthIdx: number, save: number, groc: number, ent: number, opts?: { dataOverride?: DataItem[]; fixedOverride?: FixedExpense[] }) => {
     const dataSource = opts?.dataOverride ?? data;
     const fixedSource = opts?.fixedOverride ?? fixed;
-    const monthData = dataSource[monthIdx];
-    const availableBudget = monthData.inc + monthData.extraInc - (fixedSource.reduce((sum, f) => sum + f.amts[monthIdx], 0));
-    const totalBudgets = save + groc + ent;
-    if (totalBudgets > availableBudget + 0.01) {
-      return {
-        valid: false,
-        message: `Month ${months[monthIdx].name}: Total budgets (${totalBudgets.toFixed(0)} SEK) exceed available budget balance (${availableBudget.toFixed(0)} SEK). Please re-split to balance.`
-      };
-    }
-    return { valid: true, message: '' };
+    return validateBudgetBalanceHelper({ monthIdx, save, groc, ent, data: dataSource, fixed: fixedSource, months });
   }, [data, fixed, months]);
+
+  const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
+    if (!hydrated && !opts) return;
+    const dataSource = opts?.dataOverride ?? data;
+    const varSource = opts?.varOverride ?? varExp;
+    const fixedSource = opts?.fixedOverride ?? fixed;
+
+    const result = computeBudgetIssues({ data: dataSource, varExp: varSource, fixed: fixedSource, months });
+
+    if (result.firstIssue) {
+      console.debug('Force rebalance - first issue', {
+        idx: result.firstIssue.idx,
+        month: months[result.firstIssue.idx]?.name,
+        saveTotal: result.firstIssue.saveTotal,
+        grocTotal: result.firstIssue.grocTotal,
+        entTotal: result.firstIssue.entTotal,
+        available: result.firstIssue.available,
+        deficit: result.firstIssue.deficit,
+        issuesCount: result.issues.length
+      });
+    } else if (result.issues.length > 0) {
+      console.debug('Force rebalance - issues found but no summary', { issuesCount: result.issues.length });
+    }
+
+    setBudgetBalanceIssues(result.issues);
+
+    if (result.issues.length === 0) {
+      setForceRebalanceOpen(false);
+      setForceRebalanceError('');
+      setForceRebalanceTarget(null);
+      forceRebalanceInitialized.current = false;
+      return;
+    }
+
+    if (result.firstIssue) {
+      setForceRebalanceTarget(result.firstIssue.idx);
+      // Only set initial values if modal is not already open or values haven't been initialized
+      if (!forceRebalanceOpen || !forceRebalanceInitialized.current) {
+        setForceRebalanceValues({ save: result.firstIssue.saveTotal, groc: result.firstIssue.grocTotal, ent: result.firstIssue.entTotal });
+        forceRebalanceInitialized.current = true;
+      }
+      setForceRebalanceError('');
+      setForceRebalanceOpen(true);
+    } else {
+      // If there are issues but no summary, keep modal closed to avoid loops
+      setForceRebalanceOpen(false);
+    }
+  }, [data, fixed, hydrated, months, varExp, forceRebalanceOpen]);
 
   useEffect(() => {
     const loadFromFirestore = async () => {
-      if (!user) return;
+      if (!user) {
+        setIsLoading(false);
+        setHydrated(true);
+        return;
+      }
       try {
         const saved = await getFinancialData(user.uid);
         if (saved) {
@@ -282,27 +331,7 @@ export default function FinancialPlanner() {
           setLastSaved(saved.updatedAt?.toDate?.() ?? null);
           setBaseUpdatedAt(saved.updatedAt ?? null);
 
-          // Validate budget balance on load
-          const issues: string[] = [];
-          for (let i = 0; i < Math.min(savedData.length, 60); i++) {
-            const grocTotal = (varExpData.grocBudg[i] || 0) + (savedData[i].grocBonus || 0) + (savedData[i].grocExtra || 0);
-            const entTotal = (varExpData.entBudg[i] || 0) + (savedData[i].entBonus || 0) + (savedData[i].entExtra || 0);
-            const check = validateBudgetBalance(i, savedData[i].save, grocTotal, entTotal);
-            if (!check.valid) issues.push(check.message);
-          }
-          setBudgetBalanceIssues(issues);
-          if (!saved.transactions || (saved.transactions && (Array.isArray(saved.transactions) || saved.transactions.groc || saved.transactions.ent))) {
-            try {
-              const payload = { data: saved.data, fixed: saved.fixed, varExp: saved.varExp, autoRollover: saved.autoRollover ?? false, transactions: serializeTransactions(des) };
-              const undef = findUndefinedPaths(payload);
-              if (undef.length) console.warn('Undefined fields before save (migration):', undef, payload);
-              await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), saved.updatedAt ?? null);
-              const refreshed = await getFinancialData(user.uid);
-              setBaseUpdatedAt(refreshed?.updatedAt ?? null);
-            } catch (err) {
-              console.warn('Transaction migration failed', err);
-            }
-          }
+          recomputeBudgetIssues({ dataOverride: savedData, varOverride: varExpData, fixedOverride: savedFixed });
         }
       } catch (err) {
         console.error("Failed to load from Firestore", err);
@@ -313,35 +342,12 @@ export default function FinancialPlanner() {
     };
 
     loadFromFirestore();
-  }, [user, loading, deserializeTransactions, findUndefinedPaths, sanitizeForFirestore, serializeTransactions, validateBudgetBalance]);
+  }, [user, loading, deserializeTransactions, findUndefinedPaths, sanitizeForFirestore, serializeTransactions, recomputeBudgetIssues]);
 
   useEffect(() => {
-    if (!user || !hydrated) return;
-
-    const timeout = setTimeout(() => {
-      (async () => {
-        try {
-          const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
-          const undef = findUndefinedPaths(payload);
-          if (undef.length) console.warn('Undefined fields before autosave:', undef, payload);
-          await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          // Refresh remote timestamp
-          const saved = await getFinancialData(user.uid);
-          setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
-          setBaseUpdatedAt(saved?.updatedAt ?? null);
-          setSaveConflict(false);
-        } catch (err: unknown) {
-          if (err && err instanceof Error && err.message === 'conflict') {
-            setSaveConflict(true);
-          } else {
-            console.error('Failed to save to Firestore', err);
-          }
-        }
-      })();
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, [autoRollover, baseUpdatedAt, data, findUndefinedPaths, fixed, hydrated, sanitizeForFirestore, serializeTransactions, transactions, user, varExp]);
+    if (!hydrated) return;
+    recomputeBudgetIssues();
+  }, [hydrated, recomputeBudgetIssues]);
 
   const handleApplyUndo = useCallback(() => {
     if (!undoPrompt) return;
@@ -612,7 +618,194 @@ export default function FinancialPlanner() {
 
   const cur = calc[sel];
 
+  const forceRebalanceTotals = useMemo(() => {
+    const idx = forceRebalanceTarget ?? sel;
+    const grocExtras = (data[idx]?.grocBonus || 0) + (data[idx]?.grocExtra || 0);
+    const entExtras = (data[idx]?.entBonus || 0) + (data[idx]?.entExtra || 0);
+
+    // Prevent setting totals below baked-in bonuses/extras (which would bounce back when recomputed)
+    if (forceRebalanceValues.groc < grocExtras) {
+      setForceRebalanceError(`Groceries must be at least ${grocExtras.toFixed(0)} SEK due to bonuses/extras.`);
+      return;
+    }
+    if (forceRebalanceValues.ent < entExtras) {
+      setForceRebalanceError(`Entertainment must be at least ${entExtras.toFixed(0)} SEK due to bonuses/extras.`);
+      return;
+    }
+    const grocTotal = (varExp.grocBudg[idx] || 0) + grocExtras;
+    const entTotal = (varExp.entBudg[idx] || 0) + entExtras;
+    const saveTotal = data[idx]?.save || 0;
+    const available = (data[idx]?.inc || 0) + (data[idx]?.extraInc || 0) - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
+    const check = validateBudgetBalance(idx, saveTotal, grocTotal, entTotal, { dataOverride: data, fixedOverride: fixed });
+    const deficit = !check.valid && check.deficit ? check.deficit : 0;
+    return { idx, grocTotal, entTotal, saveTotal, available, deficit };
+  }, [data, fixed, forceRebalanceTarget, sel, validateBudgetBalance, varExp, forceRebalanceValues.groc, forceRebalanceValues.ent]);
+
+  const forceRebalanceTotal = forceRebalanceValues.save + forceRebalanceValues.groc + forceRebalanceValues.ent;
+
   const previewFixed = useMemo(() => applyPendingToFixed(fixed, pendingChanges), [fixed, pendingChanges]);
+
+  const applyForceRebalance = useCallback(() => {
+    if (forceRebalanceTarget === null) {
+      setForceRebalanceError('Select a month to rebalance.');
+      return;
+    }
+
+    const idx = forceRebalanceTarget;
+    const total = forceRebalanceValues.save + forceRebalanceValues.groc + forceRebalanceValues.ent;
+
+    if (forceRebalanceValues.save < 0 || forceRebalanceValues.groc < 0 || forceRebalanceValues.ent < 0) {
+      setForceRebalanceError('Budgets cannot be negative.');
+      return;
+    }
+
+    // Recalculate available balance fresh from current data
+    const monthData = data[idx];
+    const freshAvailable = (monthData.inc || 0) + (monthData.extraInc || 0) - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
+    
+    // Check that total equals available (not just less than)
+    // Match server-side/library tolerance to avoid tiny float mismatches
+    const tolerance = 0.5;
+    console.debug('Force rebalance apply check', { idx, total, freshAvailable, tolerance });
+    if (Math.abs(total - freshAvailable) > tolerance) {
+      const diff = total - freshAvailable;
+      if (diff > 0) {
+        setForceRebalanceError(`Total budgets exceed available by ${diff.toFixed(0)} SEK. Please reduce.`);
+      } else {
+        setForceRebalanceError(`Total budgets are ${Math.abs(diff).toFixed(0)} SEK below available. Please allocate all funds.`);
+      }
+      return;
+    }
+
+    const grocExtras = (data[idx]?.grocBonus || 0) + (data[idx]?.grocExtra || 0);
+    const entExtras = (data[idx]?.entBonus || 0) + (data[idx]?.entExtra || 0);
+    const tempData = data.map(d => ({ ...d }));
+    const tempVar = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg]
+    };
+
+    tempData[idx].save = forceRebalanceValues.save;
+    tempData[idx].defSave = forceRebalanceValues.save;
+    // Clear prior extras so manual override becomes authoritative and old extras are not re-applied
+    tempData[idx].grocBonus = 0;
+    tempData[idx].grocExtra = 0;
+    tempData[idx].entBonus = 0;
+    tempData[idx].entExtra = 0;
+    tempData[idx].saveExtra = 0;
+    // With extras cleared, base budgets should equal the user-entered totals
+    tempVar.grocBudg[idx] = Math.max(0, forceRebalanceValues.groc);
+    tempVar.entBudg[idx] = Math.max(0, forceRebalanceValues.ent);
+
+    // Validation already passed above, apply the changes
+    setData(tempData);
+    setVarExp(tempVar);
+    setHasChanges(true);
+    // Close modal and reset state
+    setForceRebalanceOpen(false);
+    setForceRebalanceError('');
+    setForceRebalanceTarget(null);
+    setBudgetBalanceIssues([]);
+    forceRebalanceInitialized.current = false;
+
+    // Persist immediately per requirements
+    if (user) {
+      (async () => {
+        try {
+          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
+          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
+          setLastSaved(newUpdatedAt.toDate());
+          setBaseUpdatedAt(newUpdatedAt);
+          setSaveConflict(false);
+        } catch (err) {
+          console.error('Failed to save forced rebalance:', err);
+          setForceRebalanceError('Failed to save changes. Please try again.');
+        }
+      })();
+    }
+
+    // Recompute immediately with the updated state to avoid reopening the modal
+    recomputeBudgetIssues({ dataOverride: tempData, varOverride: tempVar, fixedOverride: fixed });
+  }, [data, fixed, forceRebalanceTarget, forceRebalanceValues.ent, forceRebalanceValues.groc, forceRebalanceValues.save, varExp, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions]);
+
+  const applyForceRebalanceToAll = useCallback(() => {
+    const result = computeBudgetIssues({ data, varExp, fixed, months });
+    if (result.issues.length === 0) {
+      setForceRebalanceOpen(false);
+      return;
+    }
+
+    const tempData = data.map(d => ({ ...d }));
+    const tempVar = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg]
+    };
+
+    // Apply equal split to all problematic months
+    result.issues.forEach((_, issueIdx) => {
+      const issue = computeBudgetIssues({ data: tempData, varExp: tempVar, fixed, months }).issues[issueIdx];
+      if (!issue) return;
+
+      const monthMatch = issue.match(/Month ([^:]+):/);
+      if (!monthMatch) return;
+      const monthName = monthMatch[1];
+      const idx = months.findIndex(m => m.name === monthName);
+      if (idx === -1) return;
+
+      const monthData = tempData[idx];
+      const availableBudget = monthData.inc + monthData.extraInc - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
+      const grocExtras = (tempData[idx]?.grocBonus || 0) + (tempData[idx]?.grocExtra || 0);
+      const entExtras = (tempData[idx]?.entBonus || 0) + (tempData[idx]?.entExtra || 0);
+
+      // Non-adjustable portion (extras) + adjustable portion should equal available
+      const adjustable = availableBudget - grocExtras - entExtras;
+      const baseSplit = adjustable / 3;
+      const saveTotal = baseSplit;
+      const grocTotal = baseSplit + grocExtras;
+      const entTotal = baseSplit + entExtras;
+
+      tempData[idx].save = saveTotal;
+      tempData[idx].defSave = saveTotal;
+      // Clear prior extras so this forced split becomes the new base
+      tempData[idx].grocBonus = 0;
+      tempData[idx].grocExtra = 0;
+      tempData[idx].entBonus = 0;
+      tempData[idx].entExtra = 0;
+      tempData[idx].saveExtra = 0;
+      // With extras cleared, base budgets should equal the desired totals
+      tempVar.grocBudg[idx] = Math.max(0, grocTotal);
+      tempVar.entBudg[idx] = Math.max(0, entTotal);
+    });
+
+    setData(tempData);
+    setVarExp(tempVar);
+    setHasChanges(true);
+    setForceRebalanceOpen(false);
+    setForceRebalanceError('');
+    forceRebalanceInitialized.current = false;
+    setBudgetBalanceIssues([]);
+    setForceRebalanceTarget(null);
+
+    // Persist immediately per requirements
+    if (user) {
+      (async () => {
+        try {
+          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
+          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
+          setLastSaved(newUpdatedAt.toDate());
+          setBaseUpdatedAt(newUpdatedAt);
+          setSaveConflict(false);
+        } catch (err) {
+          console.error('Failed to save forced rebalance to all months:', err);
+        }
+      })();
+    }
+
+    // Recompute immediately with updated state to confirm issues are cleared
+    recomputeBudgetIssues({ dataOverride: tempData, varOverride: tempVar, fixedOverride: fixed });
+  }, [data, fixed, varExp, months, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions]);
 
   const saveChanges = () => {
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });
@@ -629,10 +822,9 @@ export default function FinancialPlanner() {
           const payload = { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) };
           const undef = findUndefinedPaths(payload);
           if (undef.length) console.warn('Undefined fields before saveChanges:', undef, payload);
-          await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          const saved = await getFinancialData(user.uid);
-          setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
-          setBaseUpdatedAt(saved?.updatedAt ?? null);
+          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
+          setLastSaved(newUpdatedAt.toDate());
+          setBaseUpdatedAt(newUpdatedAt);
           setSaveConflict(false);
           alert('All changes saved successfully!');
         }
@@ -725,7 +917,6 @@ export default function FinancialPlanner() {
     } catch (err) {
       console.error('Failed to reload remote data', err);
     } finally {
-      setSaveConflict(false);
     }
   };
 
@@ -735,10 +926,9 @@ export default function FinancialPlanner() {
       const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
       const undef = findUndefinedPaths(payload);
       if (undef.length) console.warn('Undefined fields before forceSave:', undef, payload);
-      await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), null);
-      const saved = await getFinancialData(user.uid);
-      setLastSaved(saved?.updatedAt?.toDate?.() ?? new Date());
-      setBaseUpdatedAt(saved?.updatedAt ?? null);
+      const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), null);
+      setLastSaved(newUpdatedAt.toDate());
+      setBaseUpdatedAt(newUpdatedAt);
       setSaveConflict(false);
       setHasChanges(false);
     } catch (err: unknown) {
@@ -871,7 +1061,7 @@ return (
               <div className="flex flex-col gap-2 bg-red-50 border border-red-300 px-3 py-2 rounded-lg w-full">
                 <div className="flex items-center gap-2 text-red-800 text-sm font-medium">
                   <AlertTriangle className="w-4 h-4" />
-                  Budget allocations exceed available budget balance in some months. Please re-split.
+                  Budget allocations exceed available budget balance. Saving is disabled until budgets are rebalanced.
                 </div>
                 <ul className="text-xs text-red-700 list-disc pl-5">
                   {budgetBalanceIssues.slice(0,3).map((msg, idx) => (
@@ -882,7 +1072,12 @@ return (
               </div>
             )}
             {hasChanges && (
-              <button onClick={saveChanges} className="w-full sm:w-auto bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 active:bg-green-800 flex items-center justify-center gap-2 shadow-lg transition-all">
+              <button
+                onClick={saveChanges}
+                disabled={budgetBalanceIssues.length > 0}
+                className={`w-full sm:w-auto px-6 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
+              >
                 <Save size={20} />Save Changes
               </button>
             )}
@@ -1484,6 +1679,154 @@ return (
                   >
                     Cancel & Revert Salary
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {forceRebalanceOpen && budgetBalanceIssues.length > 0 && (
+            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle className="w-6 h-6 text-red-700" />
+                  <h3 className="text-xl font-bold text-red-900">Budget Rebalance Required</h3>
+                </div>
+                <div className="mb-4 p-3 bg-red-50 rounded-lg">
+                  <p className="text-sm text-red-800 font-medium mb-1">Month: {months[forceRebalanceTotals?.idx ?? sel].name}</p>
+                  <p className="text-sm text-red-800">
+                    Your budget allocations must equal the available balance. Current difference: <span className="font-bold">{(forceRebalanceTotals?.deficit ?? 0).toFixed(0)} SEK</span>
+                  </p>
+                  <div className="mt-2 text-xs text-red-700">
+                    <div>Available balance: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></div>
+                    <div>Current total budgets: {((forceRebalanceTotals?.saveTotal ?? 0) + (forceRebalanceTotals?.grocTotal ?? 0) + (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</div>
+                    <div className="font-medium mt-1">⚠️ Sum of budgets must exactly equal available balance</div>
+                  </div>
+                </div>
+
+                {forceRebalanceError && (
+                  <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    {forceRebalanceError}
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Quick Fix Options (allocate exactly {(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK)</h4>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        const newSave = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
+                        setForceRebalanceValues({ save: Math.max(0, newSave), groc: forceRebalanceTotals?.grocTotal ?? 0, ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setForceRebalanceError('');
+                      }}
+                      className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg text-left transition-all">
+                      <div className="font-medium text-blue-900">Option 1: Adjust Savings</div>
+                      <div className="text-sm text-blue-700 mt-1">Savings: {(forceRebalanceTotals?.saveTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-gray-600 mt-1">Keep groceries and entertainment unchanged</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newGroc = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
+                        setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: Math.max(0, newGroc), ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setForceRebalanceError('');
+                      }}
+                      className="w-full p-3 bg-green-50 hover:bg-green-100 border border-green-300 rounded-lg text-left transition-all">
+                      <div className="font-medium text-green-900">Option 2: Adjust Groceries</div>
+                      <div className="text-sm text-green-700 mt-1">Groceries: {(forceRebalanceTotals?.grocTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-gray-600 mt-1">Keep savings and entertainment unchanged</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newEnt = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0);
+                        setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: forceRebalanceTotals?.grocTotal ?? 0, ent: Math.max(0, newEnt) });
+                        setForceRebalanceError('');
+                      }}
+                      className="w-full p-3 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded-lg text-left transition-all">
+                      <div className="font-medium text-orange-900">Option 3: Adjust Entertainment</div>
+                      <div className="text-sm text-orange-700 mt-1">Entertainment: {(forceRebalanceTotals?.entTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-gray-600 mt-1">Keep savings and groceries unchanged</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const equalSplit = (forceRebalanceTotals?.available ?? 0) / 3;
+                        setForceRebalanceValues({ save: equalSplit, groc: equalSplit, ent: equalSplit });
+                        setForceRebalanceError('');
+                      }}
+                      className="w-full p-3 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg text-left transition-all">
+                      <div className="font-medium text-purple-900">Option 4: Equal Split</div>
+                      <div className="text-sm text-purple-700 mt-1">
+                        Each category: <span className="font-bold">{(((forceRebalanceTotals?.available ?? 0) / 3)).toFixed(0)} SEK</span>
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">Distribute available balance equally across all categories</div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h4 className="font-semibold text-gray-900 mb-2">Or Adjust Manually</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs mb-1 font-medium text-gray-700">Savings</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={forceRebalanceValues.save || ''}
+                        onChange={(e) => {
+                          setForceRebalanceValues(prev => ({ ...prev, save: sanitizeNumberInput(e.target.value) }));
+                          setForceRebalanceError('');
+                        }}
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1 font-medium text-gray-700">Groceries</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={forceRebalanceValues.groc || ''}
+                        onChange={(e) => {
+                          setForceRebalanceValues(prev => ({ ...prev, groc: sanitizeNumberInput(e.target.value) }));
+                          setForceRebalanceError('');
+                        }}
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1 font-medium text-gray-700">Entertainment</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={forceRebalanceValues.ent || ''}
+                        onChange={(e) => {
+                          setForceRebalanceValues(prev => ({ ...prev, ent: sanitizeNumberInput(e.target.value) }));
+                          setForceRebalanceError('');
+                        }}
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 flex justify-between">
+                    <span>New total: <span className={Math.abs(forceRebalanceTotal - (forceRebalanceTotals?.available ?? 0)) > 0.01 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}>{forceRebalanceTotal.toFixed(0)} SEK</span></span>
+                    <span>Must equal: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={applyForceRebalance}
+                    className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 active:bg-red-800 shadow-md transition-all font-semibold"
+                  >
+                    Apply This Month
+                  </button>
+                  {budgetBalanceIssues && budgetBalanceIssues.length > 1 && (
+                    <button
+                      onClick={applyForceRebalanceToAll}
+                      className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all font-semibold"
+                      title={`Fix all ${budgetBalanceIssues.length} problematic months at once with equal splits`}
+                    >
+                      Fix All ({budgetBalanceIssues.length})
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

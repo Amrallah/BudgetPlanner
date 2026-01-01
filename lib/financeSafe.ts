@@ -1,8 +1,9 @@
-import { doc, serverTimestamp, runTransaction, Timestamp } from 'firebase/firestore';
+import { doc, runTransaction, Timestamp } from 'firebase/firestore';
 import { db } from './firebase';
 
-export async function saveFinancialDataSafe(uid: string, data: unknown, baseUpdatedAt: Timestamp | null = null) {
+export async function saveFinancialDataSafe(uid: string, data: unknown, baseUpdatedAt: Timestamp | null = null): Promise<Timestamp> {
   const ref = doc(db, 'users', uid, 'financial', 'data');
+  const nextUpdatedAt = Timestamp.now();
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
@@ -17,8 +18,10 @@ export async function saveFinancialDataSafe(uid: string, data: unknown, baseUpda
     }
 
     const payload = (data && typeof data === 'object') ? data as Record<string, unknown> : {};
-    tx.set(ref, { ...payload, updatedAt: serverTimestamp() });
+    tx.set(ref, { ...payload, updatedAt: nextUpdatedAt });
   });
+
+  return nextUpdatedAt;
 }
 
 export default saveFinancialDataSafe;
