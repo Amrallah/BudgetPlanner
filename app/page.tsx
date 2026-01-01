@@ -1229,7 +1229,7 @@ return (
                   {undoPrompt && (
                     <button
                       onClick={handleApplyUndo}
-                      className="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm min-w-[110px]"
                     >
                       Undo last change
                     </button>
@@ -1238,16 +1238,16 @@ return (
                     <button
                       onClick={saveChanges}
                       disabled={budgetBalanceIssues.length > 0}
-                      className={`px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                      className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
                       title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
                     >
                       <Save size={16} />Save
                     </button>
                   )}
-                  <button onClick={deleteCurrentMonth} className="px-3 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                  <button onClick={deleteCurrentMonth} className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap">
                     <Trash2 size={14} />Reset
                   </button>
-                  <button onClick={deleteAllMonths} className="px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                  <button onClick={deleteAllMonths} className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap">
                     <Trash2 size={14} />Delete all
                   </button>
                 </div>
