@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
 import { applySaveChanges } from '@/lib/saveChanges';
 import type { FixedExpense, DataItem, Change } from '@/lib/calc';
@@ -22,9 +23,7 @@ function makeData(): DataItem[] {
     grocExtra: 0,
     entExtra: 0,
     saveExtra: 0,
-    rolloverProcessed: false,
-    entBudgBase: null,
-    entBudgLocked: false,
+    rolloverProcessed: false
   }));
 }
 
@@ -91,7 +90,7 @@ import { applySaveChanges } from '../../lib/saveChanges';
 describe('applySaveChanges helper', () => {
   it('applies applySavingsForward propagation and resets bonuses correctly', () => {
     const fixed = [ { id:1, name:'A', amts: Array(5).fill(0), spent: Array(5).fill(false) } ];
-    const data = Array(5).fill(0).map((_,i) => ({ inc:1000, prev:null, prevManual:false, save: i===0?80:100, defSave:100, extraInc:0, grocBonus: i===0?10:0, entBonus: i===0?5:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
+    const data = Array(5).fill(0).map((_,i) => ({ inc:1000, prev:null, prevManual:false, save: i===0?80:100, defSave:100, extraInc:0, grocBonus: i===0?10:0, entBonus: i===0?5:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }));
 
     const result1 = applySaveChanges({ fixed, data, pendingChanges: [], applySavingsForward: 0 });
     expect(result1.data[1].save).toBe(80);
@@ -107,7 +106,7 @@ describe('applySaveChanges helper', () => {
 
   it('applies pendingChanges amount and delete and updates data accordingly', () => {
     const fixed = [ { id:1, name:'A', amts: [100,100,100], spent: [false,false,false] } ];
-    const data = Array(3).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false, entBudgBase:null, entBudgLocked:false }));
+    const data = Array(3).fill(0).map(() => ({ inc:1000, prev:null, prevManual:false, save:100, defSave:100, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }));
 
     const pending = [ { type:'delete', scope:'month', idx:0, monthIdx:1, split:{ save:50, groc:20, ent:30 } } ];
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges: pending, applySavingsForward: null });

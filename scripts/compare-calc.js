@@ -27,9 +27,7 @@ function buildSeed() {
     grocExtra: 0,
     entExtra: 0,
     saveExtra: 0,
-    rolloverProcessed: false,
-    entBudgBase: null,
-    entBudgLocked: false
+    rolloverProcessed: false
   }));
 
   const fixed = [
@@ -49,6 +47,7 @@ function buildSeed() {
   const varExp = {
     grocBudg: Array(60).fill(0).map((_, i) => i === 0 ? 6160 : 6000),
     grocSpent: Array(60).fill(0).map((_, i) => i === 0 ? 425 : 0),
+    entBudg: Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 3000),
     entSpent: Array(60).fill(0).map((_, i) => i === 0 ? 250 : 0)
   };
 
@@ -81,16 +80,8 @@ function oldCalc(seed, now = new Date()) {
     const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
     const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
     const grocSpent = varExp.grocSpent[i];
-    let entBudg;
-    if (d.entBudgLocked && d.entBudgBase !== null) {
-      entBudg = d.entBudgBase;
-    } else {
-      entBudg = d.inc + d.extraInc - d.save - (d.saveExtra || 0) - grocBudg - fixExp;
-      if (isPassed(i) && !d.entBudgLocked) {
-        d.entBudgBase = entBudg;
-        d.entBudgLocked = true;
-      }
-    }
+    // Use manual entertainment budget from varExp instead of calculating
+    const entBudg = varExp.entBudg[i] + d.entExtra + d.entBonus;
     const entSpent = varExp.entSpent[i];
     const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
 
