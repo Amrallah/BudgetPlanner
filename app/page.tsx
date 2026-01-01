@@ -1185,9 +1185,9 @@ return (
             </div>
           </div>
         )}
-        <div className="sticky top-3 z-30">
-          <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="sticky top-3 z-30 mb-4 sm:mb-6">
+          <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 lg:gap-6">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg">
                   <DollarSign className="w-6 h-6" />
@@ -1200,13 +1200,13 @@ return (
                   {months[sel]?.name}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2 w-full lg:w-auto">
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch justify-end gap-2 sm:gap-3 w-full lg:w-auto">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full sm:w-auto">
                   <span className="text-xs text-gray-600">Month</span>
                   <select
                     value={sel}
                     onChange={(e) => setSel(parseInt(e.target.value))}
-                    className="text-sm bg-transparent focus:outline-none"
+                    className="text-sm bg-transparent focus:outline-none w-full sm:w-auto"
                     aria-label="Quick month select"
                   >
                     {months.map((m, i) => (
@@ -1214,7 +1214,7 @@ return (
                     ))}
                   </select>
                 </div>
-                <label className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm cursor-pointer">
+                <label className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 shadow-sm cursor-pointer w-full sm:w-auto">
                   <input
                     type="checkbox"
                     checked={autoRollover}
@@ -1227,7 +1227,7 @@ return (
                 {undoPrompt && (
                   <button
                     onClick={handleApplyUndo}
-                    className="px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
+                    className="w-full sm:w-auto px-3 py-2 rounded-xl text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
                   >
                     Undo last change
                   </button>
@@ -1236,19 +1236,19 @@ return (
                   <button
                     onClick={saveChanges}
                     disabled={budgetBalanceIssues.length > 0}
-                    className={`px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                    className={`w-full sm:w-auto px-4 py-2 rounded-xl flex items-center justify-center gap-2 shadow-md transition-all ${budgetBalanceIssues.length > 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
                     title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
                   >
                     <Save size={18} />Save
                   </button>
                 )}
-                <button onClick={deleteCurrentMonth} className="px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
+                <button onClick={deleteCurrentMonth} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
                   <Trash2 size={16} />Reset month
                 </button>
-                <button onClick={deleteAllMonths} className="px-4 py-2 rounded-xl bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
+                <button onClick={deleteAllMonths} className="w-full sm:w-auto px-4 py-2 rounded-xl bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-md transition-all text-sm">
                   <Trash2 size={16} />Delete all
                 </button>
-                <div className="w-full sm:w-auto max-w-[260px]">
+                <div className="w-full sm:w-auto max-w-[320px]">
                   <Auth />
                 </div>
               </div>
