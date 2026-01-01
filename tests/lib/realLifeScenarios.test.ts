@@ -722,4 +722,279 @@ describe('Real-Life Financial Scenarios', () => {
       expect(items[3].passed).toBe(false); // Mar 2026
     });
   });
+
+  describe('Additional Real-Life Scenarios', () => {
+    it('handles variable income with a zero-income month and preserves savings carry', () => {
+      const months = genMonths(3);
+      const data: DataItem[] = [
+        { inc: 15000, prev: 5000, prevManual: true, save: 2000, defSave: 2000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 0, prev: null, prevManual: false, save: 0, defSave: 0, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 12000, prev: null, prevManual: false, save: 1500, defSave: 1500, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [3000, 2000, 2500],
+        grocSpent: [0, 0, 0],
+        entBudg: [2000, 1500, 1800],
+        entSpent: [0, 0, 0]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      expect(items[0].totSave).toBe(7000); // 5000 + 2000
+      expect(items[1].prev).toBe(7000);
+      expect(items[1].totSave).toBe(7000);
+      expect(items[2].prev).toBe(7000);
+      expect(items[2].totSave).toBe(8500); // 7000 + 1500
+    });
+
+    it('allocates extra income entirely to groceries without changing savings', () => {
+      const months = genMonths(1);
+      const data: DataItem[] = [
+        { inc: 10000, prev: 0, prevManual: true, save: 2000, defSave: 2000, extraInc: 1000, grocBonus: 0, entBonus: 0, grocExtra: 1000, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [3000],
+        grocSpent: [0],
+        entBudg: [2000],
+        entSpent: [0]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      expect(items[0].grocBudg).toBe(4000); // 3000 base + 1000 extra
+      expect(items[0].actSave).toBe(2000);  // savings unchanged
+      expect(items[0].totSave).toBe(2000);
+    });
+
+    it('treats rollover at the five-day boundary as available', () => {
+      const months = genMonths(2, new Date('2025-01-25'));
+      const data: DataItem[] = [
+        { inc: 10000, prev: 0, prevManual: false, save: 2000, defSave: 2000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 10000, prev: null, prevManual: false, save: 2000, defSave: 2000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [3000, 3000],
+        grocSpent: [2000, 0],
+        entBudg: [2000, 2000],
+        entSpent: [1500, 0]
+      };
+
+      const now = new Date('2025-03-02'); // exactly 5 days after Feb 25 rollover date
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now });
+
+      expect(items[1].hasRollover).toBe(true);
+      expect(items[1].rolloverDaysRemaining).toBe(0);
+    });
+
+    it('warns when manual previous savings lower the carried balance after overspend', () => {
+      const months = genMonths(2);
+      const data: DataItem[] = [
+        { inc: 10000, prev: 8000, prevManual: true, save: 1000, defSave: 1000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 10000, prev: 5000, prevManual: true, save: 1000, defSave: 1000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [2000, 2000],
+        grocSpent: [5000, 0], // overspend 3000 on groc
+        entBudg: [0, 0],
+        entSpent: [0, 0]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      // Month 0: 8000 prev - 2000 deficit (after wiping 1000 save) => totSave 6000
+      expect(items[0].totSave).toBe(6000);
+      // Month 1 uses manual prev 5000 (lower than calculated 6000) but still reports warning and computes totSave from that manual base + savings
+      expect(items[1].prev).toBe(5000);
+      expect(items[1].totSave).toBe(6000);
+      expect(items[1].overspendWarning).toContain('Manual Previous');
+    });
+
+    it('tracks overspend together with late-paid fixed expense', () => {
+      const months = genMonths(1);
+      const data: DataItem[] = [
+        { inc: 12000, prev: 4000, prevManual: true, save: 1500, defSave: 1500, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      // Fixed expense initially unpaid, then paid -> use spent flag to reflect payment status
+      const fixedUnpaid: FixedExpense[] = [ { id: 1, name: 'Rent', amts: [8000], spent: [false] } ];
+      const fixedPaid: FixedExpense[] = [ { id: 1, name: 'Rent', amts: [8000], spent: [true] } ];
+
+      const varExp: VarExp = {
+        grocBudg: [2500],
+        grocSpent: [4000], // overspend groceries by 1500
+        entBudg: [1500],
+        entSpent: [1000]
+      };
+
+      const { items: unpaid } = calculateMonthly({ data, fixed: fixedUnpaid, varExp, months, now: months[0].date });
+      const { items: paid } = calculateMonthly({ data, fixed: fixedPaid, varExp, months, now: months[0].date });
+
+      // When unpaid: balance excludes fixed spent; overspend still reduces savings
+      expect(unpaid[0].fixSpent).toBe(0);
+      expect(unpaid[0].totSave).toBeLessThan(5500); // 4000 prev + 1500 save minus overspend deficit
+
+      // When paid: balance reflects rent and savings drop further
+      expect(paid[0].fixSpent).toBe(8000);
+      expect(paid[0].bal).toBeLessThan(unpaid[0].bal);
+    });
+
+    it('handles a loan payoff ending mid-year increasing later balances', () => {
+      const months = genMonths(4);
+      const data: DataItem[] = Array(4).fill(0).map((_, i) => ({
+        inc: 18000,
+        prev: i === 0 ? 3000 : null,
+        prevManual: i === 0,
+        save: 2000,
+        defSave: 2000,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        grocExtra: 0,
+        entExtra: 0,
+        saveExtra: 0,
+        rolloverProcessed: false
+      }));
+
+      // Loan ends after month 1
+      const fixed: FixedExpense[] = [
+        { id: 1, name: 'Loan', amts: [3000, 3000, 0, 0], spent: [true, true, false, false] }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [3000, 3000, 3000, 3000],
+        grocSpent: [2000, 2000, 2000, 2000],
+        entBudg: [1500, 1500, 1500, 1500],
+        entSpent: [1000, 1000, 1000, 1000]
+      };
+
+      const { items } = calculateMonthly({ data, fixed, varExp, months, now: months[0].date });
+
+      expect(items[0].fixExp).toBe(3000);
+      expect(items[1].fixExp).toBe(3000);
+      expect(items[2].fixExp).toBe(0);
+      expect(items[3].fixExp).toBe(0);
+      expect(items[2].bal).toBeGreaterThan(items[1].bal);
+      expect(items[3].bal).toBeGreaterThan(items[1].bal);
+    });
+
+    it('supports mid-stream budget increase after spending already occurred', () => {
+      const months = genMonths(1);
+      const data: DataItem[] = [
+        { inc: 10000, prev: 2000, prevManual: true, save: 1500, defSave: 1500, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExpBefore: VarExp = {
+        grocBudg: [2000],
+        grocSpent: [2300],
+        entBudg: [1000],
+        entSpent: [1100]
+      };
+
+      const varExpAfter: VarExp = {
+        grocBudg: [2500], // increased after some spend
+        grocSpent: [2300],
+        entBudg: [1200],
+        entSpent: [1100]
+      };
+
+      const { items: before } = calculateMonthly({ data, fixed: [], varExp: varExpBefore, months, now: months[0].date });
+      const { items: after } = calculateMonthly({ data, fixed: [], varExp: varExpAfter, months, now: months[0].date });
+
+      expect(before[0].over).toBe(400);
+      expect(after[0].over).toBe(0);
+      expect(after[0].grocRem).toBe(200);
+      expect(after[0].entRem).toBe(100);
+    });
+
+    it('handles zero savings plan without going negative unless overspend forces it', () => {
+      const months = genMonths(1);
+      const data: DataItem[] = [
+        { inc: 8000, prev: 2000, prevManual: true, save: 0, defSave: 0, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [1500],
+        grocSpent: [1400],
+        entBudg: [1500],
+        entSpent: [1400]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      expect(items[0].actSave).toBe(0);
+      expect(items[0].totSave).toBe(2000);
+      expect(items[0].criticalOverspend).toBe(false);
+    });
+
+    it('handles currency rounding when overspend slightly exceeds planned savings', () => {
+      const months = genMonths(1);
+      const data: DataItem[] = [
+        { inc: 5000, prev: 1000, prevManual: true, save: 100.05, defSave: 100.05, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [0],
+        grocSpent: [120.07], // slight overspend vs savings
+        entBudg: [0],
+        entSpent: [0]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      expect(items[0].over).toBeCloseTo(120.07, 2);
+      expect(items[0].actSave).toBeCloseTo(0, 2); // planned savings wiped out by overspend
+      expect(items[0].totSave).toBeCloseTo(979.98, 2); // 1000 prev - 20.02 deficit
+    });
+
+    it('propagates mixed savings forwarding when some months are below default and others above', () => {
+      const data: DataItem[] = Array(4).fill(0).map((_, i) => ({
+        inc: 10000,
+        prev: i === 0 ? 5000 : null,
+        prevManual: i === 0,
+        save: i === 1 ? 1500 : 2500,
+        defSave: 2000,
+        extraInc: 0,
+        grocBonus: i === 1 ? 200 : 0,
+        entBonus: i === 1 ? 100 : 0,
+        grocExtra: 0,
+        entExtra: 0,
+        saveExtra: 0,
+        rolloverProcessed: false
+      }));
+
+      const { data: forwarded } = applySaveChanges({ fixed: [], data, pendingChanges: [], applySavingsForward: 1 });
+
+      // Months after idx 1 should mirror month 1 values
+      for (let i = 2; i < 4; i++) {
+        expect(forwarded[i].save).toBe(1500);
+        expect(forwarded[i].grocBonus).toBe(200);
+        expect(forwarded[i].entBonus).toBe(100);
+      }
+    });
+
+    it('suppresses rollover when marked processed even if prior budgets remain and manual prev is set', () => {
+      const months = genMonths(2, new Date('2025-01-25'));
+      const data: DataItem[] = [
+        { inc: 10000, prev: 8000, prevManual: true, save: 2000, defSave: 2000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 10000, prev: null, prevManual: true, save: 2000, defSave: 2000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: true }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [3000, 3000],
+        grocSpent: [2000, 0],
+        entBudg: [2000, 2000],
+        entSpent: [1000, 0]
+      };
+
+      const now = new Date('2025-02-28');
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now });
+
+      expect(items[1].hasRollover).toBe(false);
+      expect(items[1].prev).toBe(8000 + 2000); // manual prev not altered by rollover logic
+    });
+  });
 });
