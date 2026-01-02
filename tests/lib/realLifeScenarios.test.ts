@@ -996,5 +996,49 @@ describe('Real-Life Financial Scenarios', () => {
       expect(items[1].hasRollover).toBe(false);
       expect(items[1].prev).toBe(8000 + 2000); // manual prev not altered by rollover logic
     });
+
+    it('carries extra-income-only savings forward when base income is zero', () => {
+      const months = genMonths(2);
+      const data: DataItem[] = [
+        { inc: 0, prev: 0, prevManual: true, save: 0, defSave: 0, extraInc: 1500, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 1500, rolloverProcessed: false },
+        { inc: 5000, prev: null, prevManual: false, save: 500, defSave: 500, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [0, 1000],
+        grocSpent: [0, 0],
+        entBudg: [0, 500],
+        entSpent: [0, 0]
+      };
+
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
+
+      expect(items[0].actSave).toBe(1500);
+      expect(items[0].totSave).toBe(1500);
+      expect(items[1].prev).toBe(1500);
+    });
+
+    it('does not allow rollover when the previous month overspent its budgets', () => {
+      const months = genMonths(2, new Date('2025-01-25'));
+      const data: DataItem[] = [
+        { inc: 8000, prev: 1000, prevManual: true, save: 500, defSave: 500, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
+        { inc: 8000, prev: null, prevManual: false, save: 1000, defSave: 1000, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
+      ];
+
+      const varExp: VarExp = {
+        grocBudg: [1500, 1500],
+        grocSpent: [2000, 0],
+        entBudg: [800, 800],
+        entSpent: [1200, 0]
+      };
+
+      // Two days after second month start; prior month is passed
+      const now = new Date('2025-02-27');
+      const { items } = calculateMonthly({ data, fixed: [], varExp, months, now });
+
+      expect(items[1].hasRollover).toBe(false);
+      expect(items[1].prevGrocRem).toBeLessThanOrEqual(0);
+      expect(items[1].prevEntRem).toBeLessThanOrEqual(0);
+    });
   });
 });

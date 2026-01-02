@@ -1,4 +1,4 @@
-import { type DataItem, type FixedExpense, type VarExp, type MonthItem } from './calc';
+import type { DataItem, FixedExpense, VarExp, MonthItem } from './types';
 
 export type BudgetBalanceResult = {
   valid: boolean;

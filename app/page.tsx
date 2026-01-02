@@ -13,53 +13,21 @@ import { signOut } from 'firebase/auth';
 import { validateBudgetBalance as validateBudgetBalanceHelper, computeBudgetIssues } from '@/lib/budgetBalance';
 import { hasAnyFinancialData } from '@/lib/setupGate';
 import { auth } from '@/lib/firebase';
+import type {
+  MonthItem,
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  Tx,
+  ExtraAlloc,
+  Transactions,
+  SerializedTransactions,
+  LegacyTransactions,
+  FirestoreSafe
+} from '@/lib/types';
 
-
-// -- Types
-type MonthItem = { name: string; date: Date; day: number };
-
-type Split = { save: number; groc: number; ent: number };
-
-type Change = {
-  type?: 'delete' | 'amount';
-  scope: 'month' | 'future' | 'forever';
-  idx: number;
-  monthIdx?: number;
-  newAmt?: number;
-  oldAmt?: number;
-  amt?: number;
-  split: Split;
-};
-
-type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[] };
-
-type DataItem = {
-  inc: number;
-  baseSalary?: number;
-  prev: number | null;
-  prevManual: boolean;
-  save: number;
-  defSave: number;
-  extraInc: number;
-  grocBonus: number;
-  entBonus: number;
-  grocExtra?: number;
-  entExtra?: number;
-  saveExtra?: number;
-  rolloverProcessed: boolean;
-};
-
-type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
-type Tx = { amt: number; ts: string };
-type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
-type Transactions = { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-type SerializedTransactions = {
-  groc?: Record<string, Tx[]>;
-  ent?: Record<string, Tx[]>;
-  extra?: Record<string, ExtraAlloc[]>;
-};
-type LegacyTransactions = { groc?: number[][]; ent?: number[][] };
-type FirestoreSafe = null | boolean | number | string | FirestoreSafe[] | { [k: string]: FirestoreSafe };
 
 const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
   inc: 0,
@@ -2768,6 +2736,329 @@ return (
         </div>
 
         <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
+          <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
+          <div className="space-y-4">
+            {(['groc','ent'] as ('groc'|'ent')[]).map(type=>(
+              <div key={type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
+                <div className="font-semibold mb-3 text-gray-800 text-lg">{type==='groc'?'🛒 Groceries':'🎭 Entertainment'}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">
+                      Total Budget
+                      {type==='groc' && (data[sel].grocBonus > 0 || (data[sel].grocExtra ?? 0) > 0) && (
+                        <span className="text-green-600 ml-1 block text-xs">
+                          (Base: {varExp.grocBudg[sel].toFixed(0)}
+                          {data[sel].grocBonus > 0 && ` +${data[sel].grocBonus.toFixed(0)} freed`}
+                          {(data[sel].grocExtra ?? 0) > 0 && ` +${(data[sel].grocExtra ?? 0).toFixed(0)} extra`})
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1000000"
+                      placeholder="0"
+                      value={type==='groc' ? (editingGroc ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)).toFixed(0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
+                      onFocus={() => {
+                        if (type === 'groc') {
+                          setEditingGroc(true);
+                          setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
+                        } else if (!editingEnt) {
+                          setEditingEnt(true);
+                          setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
+                        }
+                      }}
+                      onChange={(e) => {
+                        if (type === 'groc') {
+                          // Just buffer the input while typing
+                          setGrocInput(e.target.value);
+                        } else if (type === 'ent') {
+                          // buffer raw input while editing to avoid calc overwrites
+                          setEntInput(e.target.value);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (type === 'groc') {
+                          const val = sanitizeNumberInput(e.target.value);
+                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+                          const difference = val - currentTotal;
+
+                            if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+                              if (!hasChanges) {
+                                setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+                              } else {
+                                const revertedData = [...data].map(d => ({ ...d }));
+                                const revertedVar = {
+                                  ...varExp,
+                                  grocBudg: [...varExp.grocBudg],
+                                  entBudg: [...varExp.entBudg]
+                                };
+                                lastAdjustments.budget.dataSnapshots.forEach(snap => {
+                                  revertedData[snap.idx] = { ...snap.data };
+                                });
+                                lastAdjustments.budget.varSnapshots.forEach(snap => {
+                                  revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                                  revertedVar.entBudg[snap.idx] = snap.entBudg;
+                                });
+                                setData(revertedData);
+                                setVarExp(revertedVar);
+                                setBudgetRebalanceModal(null);
+                                setBudgetRebalanceError('');
+                                setBudgetRebalanceApplyFuture(false);
+                                setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+                                setHasChanges(true);
+                              }
+                              setEditingGroc(false);
+                              setGrocInput('');
+                              return;
+                            }
+
+                          setEditingGroc(false);
+                          setGrocInput('');
+
+                          // Always show split modal if budget changed
+                          if (Math.abs(difference) > 0.01) {
+                            setBudgetRebalanceModal({ 
+                              type: 'groc', 
+                              oldVal: currentTotal, 
+                              newVal: val, 
+                              split: { a: 0, b: 0 } 
+                            });
+                            setBudgetRebalanceError('');
+                          }
+                        } else if (type === 'ent') {
+                          const val = sanitizeNumberInput(e.target.value);
+                          const currentTotal = cur.entBudg;
+                          const difference = val - currentTotal;
+
+                          if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+                            if (!hasChanges) {
+                              setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+                            } else {
+                              const revertedData = [...data].map(d => ({ ...d }));
+                              const revertedVar = {
+                                ...varExp,
+                                grocBudg: [...varExp.grocBudg],
+                                entBudg: [...varExp.entBudg]
+                              };
+                              lastAdjustments.budget.dataSnapshots.forEach(snap => {
+                                revertedData[snap.idx] = { ...snap.data };
+                              });
+                              lastAdjustments.budget.varSnapshots.forEach(snap => {
+                                revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+                                revertedVar.entBudg[snap.idx] = snap.entBudg;
+                              });
+                              setData(revertedData);
+                              setVarExp(revertedVar);
+                              setBudgetRebalanceModal(null);
+                              setBudgetRebalanceError('');
+                              setBudgetRebalanceApplyFuture(false);
+                              setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+                              setHasChanges(true);
+                            }
+                            setEditingEnt(false);
+                            setEntInput('');
+                            return;
+                          }
+                          
+                          setEditingEnt(false);
+                          setEntInput('');
+                          
+                          // Always show split modal if budget changed
+                          if (Math.abs(difference) > 0.01) {
+                            setBudgetRebalanceModal({ 
+                              type: 'ent', 
+                              oldVal: currentTotal, 
+                              newVal: val, 
+                              split: { a: 0, b: 0 } 
+                            });
+                            setBudgetRebalanceError('');
+                          }
+                        }
+                      }}
+                      disabled={false}
+                      className={`w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs flex gap-2 items-center font-medium text-gray-700 mb-1">
+                      Spent 
+                      <button 
+                        onClick={()=>setEditSpent({...editSpent,[type]:!editSpent[type]})} 
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        <Edit2 size={12}/>
+                      </button>
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0"
+                      max="1000000"
+                      placeholder="0" 
+                      value={type==='groc'?varExp.grocSpent[sel]:varExp.entSpent[sel]} 
+                      onChange={(e)=>{
+                        if(editSpent[type]){
+                          const val = sanitizeNumberInput(e.target.value);
+                          const n={...varExp};
+                          n[type==='groc'?'grocSpent':'entSpent'][sel]=val;
+                          setVarExp(n);
+                          setHasChanges(true);
+                        }
+                      }} 
+                      disabled={!editSpent[type]} 
+                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block mb-1">Remaining</label>
+                    <input 
+                      type="number" 
+                      value={type==='groc'?cur.grocRem.toFixed(0):cur.entRem.toFixed(0)} 
+                      disabled 
+                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl bg-gray-100"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <input 
+                    type="number" 
+                    min="0"
+                    max="1000000"
+                    placeholder="Add transaction amount" 
+                    value={newTrans[type]} 
+                    onChange={(e)=>setNewTrans({...newTrans,[type]:e.target.value})} 
+                    className="flex-1 p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  />
+                  <button 
+                    onClick={()=>{
+                      const amt=sanitizeNumberInput(newTrans[type]);
+                      if(!amt || amt<=0) {
+                        alert('Please enter a valid amount between 0 and 1,000,000');
+                        return;
+                      }
+                      const n={...varExp};
+                      n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
+                      setVarExp(n);
+                      // record transaction in transactions state as Tx with timestamp
+                      const now = new Date().toISOString();
+                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                      if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
+                      setTransactions(nt);
+                      setNewTrans({...newTrans,[type]:''});
+                      setHasChanges(true);
+                    }} 
+                    className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all text-lg font-bold"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
+                  <div>
+                    <span className="font-medium">Recent:</span>
+                    {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
+                      <span key={i} className="inline-block mr-2">{(t?.amt ?? 0).toFixed(0)} SEK <span className="text-xs text-gray-400">({t?.ts ? new Date(t.ts).toLocaleTimeString() : ''})</span></span>
+                    ))}
+                  </div>
+                  <button onClick={()=>setTransModal({ open:true, type })} className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Transactions History</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {transModal.open && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-lg">
+                  Transactions — {transModal.type === 'groc' ? 'Groceries' : transModal.type === 'ent' ? 'Entertainment' : 'Extra Allocations'} — {months[sel].name}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {transModal.type !== 'extra' ? (
+                  (transactions[transModal.type][sel].length === 0 ? (
+                    <div className="text-sm text-gray-500">No transactions for this month.</div>
+                  ) : (
+                    transactions[transModal.type][sel].map((t, i) => {
+                      const txType = transModal.type as 'groc' | 'ent';
+                      return (
+                        <div key={i} className="flex items-center justify-between border-b py-2">
+                          <div className="flex items-center gap-4">
+                            {transEdit.idx === i ? (
+                              <div className="flex items-center gap-2">
+                                <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
+                                <button onClick={()=>handleSaveTransactionEdit(txType, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
+                                <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
+                                <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
+                            <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(txType, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ))
+                ) : (
+                  // extra allocations view (with edit/delete)
+                  (transactions.extra[sel] && transactions.extra[sel].length > 0) ? (
+                    transactions.extra[sel].map((ex, i) => (
+                      <div key={i} className="flex items-center justify-between border-b py-2">
+                        <div className="flex items-center gap-4">
+                          <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
+                          <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => {
+                            if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
+                            const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                            const removed = tcopy.extra[sel].splice(i, 1)[0];
+                            setTransactions(tcopy);
+                            const n = [...data];
+                            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
+                            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
+                            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
+                            // Also reduce permanent inc by the total allocation amount
+                            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
+                            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
+                            setData(n);
+                            setHasChanges(true);
+                          }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+                  )
+                )}
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
+                  {transactions.extra[sel] && transactions.extra[sel].length > 0 ? (
+                    transactions.extra[sel].map((ex, j) => (
+                      <div key={j} className="flex items-center justify-between border-b py-2">
+                        <div className="text-sm">Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — Savings: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
+                        <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
             <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Fixed Expenses</h3>
             <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-2 shadow-md transition-all">
@@ -3087,7 +3378,7 @@ return (
 
                     // If expense increased (changeModal && newAmt > oldAmt), negate the splits
                     const isIncrease = changeModal && (changeModal.newAmt ?? 0) > (changeModal.oldAmt ?? 0);
-                    const finalSplit = isIncrease 
+                    const finalSplit = isIncrease
                       ? { save: -modal.split.save, groc: -modal.split.groc, ent: -modal.split.ent }
                       : modal.split;
 
@@ -3123,329 +3414,6 @@ return (
                 >
                   Cancel
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-          <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
-          <div className="space-y-4">
-            {(['groc','ent'] as ('groc'|'ent')[]).map(type=>(
-              <div key={type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-                <div className="font-semibold mb-3 text-gray-800 text-lg">{type==='groc'?'🛒 Groceries':'🎭 Entertainment'}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">
-                      Total Budget
-                      {type==='groc' && (data[sel].grocBonus > 0 || (data[sel].grocExtra ?? 0) > 0) && (
-                        <span className="text-green-600 ml-1 block text-xs">
-                          (Base: {varExp.grocBudg[sel].toFixed(0)}
-                          {data[sel].grocBonus > 0 && ` +${data[sel].grocBonus.toFixed(0)} freed`}
-                          {(data[sel].grocExtra ?? 0) > 0 && ` +${(data[sel].grocExtra ?? 0).toFixed(0)} extra`})
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1000000"
-                      placeholder="0"
-                      value={type==='groc' ? (editingGroc ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)).toFixed(0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
-                      onFocus={() => {
-                        if (type === 'groc') {
-                          setEditingGroc(true);
-                          setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
-                        } else if (!editingEnt) {
-                          setEditingEnt(true);
-                          setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
-                        }
-                      }}
-                      onChange={(e) => {
-                        if (type === 'groc') {
-                          // Just buffer the input while typing
-                          setGrocInput(e.target.value);
-                        } else if (type === 'ent') {
-                          // buffer raw input while editing to avoid calc overwrites
-                          setEntInput(e.target.value);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (type === 'groc') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
-                          const difference = val - currentTotal;
-
-                            if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                              if (!hasChanges) {
-                                setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                              } else {
-                                const revertedData = [...data].map(d => ({ ...d }));
-                                const revertedVar = {
-                                  ...varExp,
-                                  grocBudg: [...varExp.grocBudg],
-                                  entBudg: [...varExp.entBudg]
-                                };
-                                lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                  revertedData[snap.idx] = { ...snap.data };
-                                });
-                                lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                  revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                  revertedVar.entBudg[snap.idx] = snap.entBudg;
-                                });
-                                setData(revertedData);
-                                setVarExp(revertedVar);
-                                setBudgetRebalanceModal(null);
-                                setBudgetRebalanceError('');
-                                setBudgetRebalanceApplyFuture(false);
-                                setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                                setHasChanges(true);
-                              }
-                              setEditingGroc(false);
-                              setGrocInput('');
-                              return;
-                            }
-
-                          setEditingGroc(false);
-                          setGrocInput('');
-
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'groc', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        } else if (type === 'ent') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = cur.entBudg;
-                          const difference = val - currentTotal;
-
-                          if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                            if (!hasChanges) {
-                              setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                            } else {
-                              const revertedData = [...data].map(d => ({ ...d }));
-                              const revertedVar = {
-                                ...varExp,
-                                grocBudg: [...varExp.grocBudg],
-                                entBudg: [...varExp.entBudg]
-                              };
-                              lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                revertedData[snap.idx] = { ...snap.data };
-                              });
-                              lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                revertedVar.entBudg[snap.idx] = snap.entBudg;
-                              });
-                              setData(revertedData);
-                              setVarExp(revertedVar);
-                              setBudgetRebalanceModal(null);
-                              setBudgetRebalanceError('');
-                              setBudgetRebalanceApplyFuture(false);
-                              setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                              setHasChanges(true);
-                            }
-                            setEditingEnt(false);
-                            setEntInput('');
-                            return;
-                          }
-                          
-                          setEditingEnt(false);
-                          setEntInput('');
-                          
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'ent', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        }
-                      }}
-                      disabled={false}
-                      className={`w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs flex gap-2 items-center font-medium text-gray-700 mb-1">
-                      Spent 
-                      <button 
-                        onClick={()=>setEditSpent({...editSpent,[type]:!editSpent[type]})} 
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <Edit2 size={12}/>
-                      </button>
-                    </label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="1000000"
-                      placeholder="0" 
-                      value={type==='groc'?varExp.grocSpent[sel]:varExp.entSpent[sel]} 
-                      onChange={(e)=>{
-                        if(editSpent[type]){
-                          const val = sanitizeNumberInput(e.target.value);
-                          const n={...varExp};
-                          n[type==='groc'?'grocSpent':'entSpent'][sel]=val;
-                          setVarExp(n);
-                          setHasChanges(true);
-                        }
-                      }} 
-                      disabled={!editSpent[type]} 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Remaining</label>
-                    <input 
-                      type="number" 
-                      value={type==='groc'?cur.grocRem.toFixed(0):cur.entRem.toFixed(0)} 
-                      disabled 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl bg-gray-100"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="number" 
-                    min="0"
-                    max="1000000"
-                    placeholder="Add transaction amount" 
-                    value={newTrans[type]} 
-                    onChange={(e)=>setNewTrans({...newTrans,[type]:e.target.value})} 
-                    className="flex-1 p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  />
-                  <button 
-                    onClick={()=>{
-                      const amt=sanitizeNumberInput(newTrans[type]);
-                      if(!amt || amt<=0) {
-                        alert('Please enter a valid amount between 0 and 1,000,000');
-                        return;
-                      }
-                      const n={...varExp};
-                      n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
-                      setVarExp(n);
-                      // record transaction in transactions state as Tx with timestamp
-                      const now = new Date().toISOString();
-                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                      if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
-                      setTransactions(nt);
-                      setNewTrans({...newTrans,[type]:''});
-                      setHasChanges(true);
-                    }} 
-                    className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all text-lg font-bold"
-                  >
-                    +
-                  </button>
-                </div>
-                <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
-                  <div>
-                    <span className="font-medium">Recent:</span>
-                    {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
-                      <span key={i} className="inline-block mr-2">{(t?.amt ?? 0).toFixed(0)} SEK <span className="text-xs text-gray-400">({t?.ts ? new Date(t.ts).toLocaleTimeString() : ''})</span></span>
-                    ))}
-                  </div>
-                  <button onClick={()=>setTransModal({ open:true, type })} className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Transactions History</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {transModal.open && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-lg">
-                  Transactions — {transModal.type === 'groc' ? 'Groceries' : transModal.type === 'ent' ? 'Entertainment' : 'Extra Allocations'} — {months[sel].name}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {transModal.type !== 'extra' ? (
-                  (transactions[transModal.type][sel].length === 0 ? (
-                    <div className="text-sm text-gray-500">No transactions for this month.</div>
-                  ) : (
-                    transactions[transModal.type][sel].map((t, i) => {
-                      const txType = transModal.type as 'groc' | 'ent';
-                      return (
-                        <div key={i} className="flex items-center justify-between border-b py-2">
-                          <div className="flex items-center gap-4">
-                            {transEdit.idx === i ? (
-                              <div className="flex items-center gap-2">
-                                <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
-                                <button onClick={()=>handleSaveTransactionEdit(txType, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                                <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
-                                <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
-                            <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(txType, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ))
-                ) : (
-                  // extra allocations view (with edit/delete)
-                  (transactions.extra[sel] && transactions.extra[sel].length > 0) ? (
-                    transactions.extra[sel].map((ex, i) => (
-                      <div key={i} className="flex items-center justify-between border-b py-2">
-                        <div className="flex items-center gap-4">
-                          <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                          <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => {
-                            if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
-                            const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                            const removed = tcopy.extra[sel].splice(i, 1)[0];
-                            setTransactions(tcopy);
-                            const n = [...data];
-                            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
-                            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
-                            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
-                            // Also reduce permanent inc by the total allocation amount
-                            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
-                            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
-                            setData(n);
-                            setHasChanges(true);
-                          }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )
-                )}
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
-                  {transactions.extra[sel] && transactions.extra[sel].length > 0 ? (
-                    transactions.extra[sel].map((ex, j) => (
-                      <div key={j} className="flex items-center justify-between border-b py-2">
-                        <div className="text-sm">Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — Savings: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                        <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )}
-                </div>
               </div>
             </div>
           </div>

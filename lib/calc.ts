@@ -1,52 +1,27 @@
-export type MonthItem = { name: string; date: Date; day: number };
+import type {
+  MonthItem,
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  MonthlyCalcItem,
+  CalculationResult
+} from './types';
 
-export type Split = { save: number; groc: number; ent: number };
-
-export type Change = {
-  type?: 'delete' | 'amount';
-  scope: 'month' | 'future' | 'forever';
-  idx: number;
-  monthIdx?: number;
-  newAmt?: number;
-  oldAmt?: number;
-  amt?: number;
-  split: Split;
+// Re-export types for backward compatibility
+export type {
+  MonthItem,
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  MonthlyCalcItem,
+  CalculationResult
 };
 
-export type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[] };
-
-export type DataItem = {
-  inc: number;
-  baseSalary?: number;
-  prev: number | null;
-  prevManual: boolean;
-  save: number;
-  defSave: number;
-  extraInc: number;
-  grocBonus: number;
-  entBonus: number;
-  grocExtra?: number;
-  entExtra?: number;
-  saveExtra?: number;
-  rolloverProcessed: boolean;
-};
-
-export type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
-
-export type MonthlyCalcItem = {
-  month: string;
-  date: Date;
-  inc: number;
-  prev: number;
-  save: number;
-  actSave: number;
-  totSave: number;
-  bal: number;
-  fixExp: number;
-  fixSpent: number;
-  grocBudg: number;
-  grocSpent: number;
-  grocRem: number;
+export type _OmittedMonthlyCalcItemFields = {
   entBudg: number;
   entSpent: number;
   entRem: number;
@@ -61,10 +36,6 @@ export type MonthlyCalcItem = {
   prevEntRem?: number;
   hasRollover?: boolean;
   rolloverDaysRemaining?: number | null;
-};
-
-export type CalculationResult = {
-  items: MonthlyCalcItem[];
 };
 
 function isPassed(monthDate: Date, now: Date) {
