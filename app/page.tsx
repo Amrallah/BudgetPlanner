@@ -27,6 +27,18 @@ import type {
   LegacyTransactions,
   FirestoreSafe
 } from '@/lib/types';
+import type {
+  BudgetRebalanceModal,
+  NewExpenseSplit,
+  TransactionModal,
+  TransactionEdit,
+  AdjustmentHistory,
+  UndoPrompt,
+  LastExtraApply,
+  ExpenseEdit,
+  SetupStep,
+  SetupFixedExpense
+} from '@/lib/hooks/types';
 
 
 const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
@@ -83,7 +95,7 @@ export default function FinancialPlanner() {
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
   const [applySavingsForward, setApplySavingsForward] = useState<number | null>(null);
-  const [extraAdj, setExtraAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
+  const [extraAdj, setExtraAdj] = useState<Split>({ groc: 0, ent: 0, save: 0 });
   const [extraSplitActive, setExtraSplitActive] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [extraSplitError, setExtraSplitError] = useState('');
@@ -101,45 +113,40 @@ export default function FinancialPlanner() {
   const [hydrated, setHydrated] = useState(false);
   const [salaryInitial, setSalaryInitial] = useState<number>(0);
   const [salarySplitActive, setSalarySplitActive] = useState(false);
-  const [salarySplitAdj, setSalarySplitAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
+  const [salarySplitAdj, setSalarySplitAdj] = useState<Split>({ groc: 0, ent: 0, save: 0 });
   const [salarySplitError, setSalarySplitError] = useState('');
   const [salarySplitApplyFuture, setSalarySplitApplyFuture] = useState(false);
   const [savingsInitial, setSavingsInitial] = useState<number>(0);
-  const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<{ type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; split: { a: number; b: number } } | null>(null);
+  const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<BudgetRebalanceModal | null>(null);
   const [budgetRebalanceError, setBudgetRebalanceError] = useState('');
   const [budgetRebalanceApplyFuture, setBudgetRebalanceApplyFuture] = useState(false);
   const [forceRebalanceOpen, setForceRebalanceOpen] = useState(false);
   const [forceRebalanceError, setForceRebalanceError] = useState('');
-  const [forceRebalanceValues, setForceRebalanceValues] = useState<{ save: number; groc: number; ent: number }>({ save: 0, groc: 0, ent: 0 });
+  const [forceRebalanceValues, setForceRebalanceValues] = useState<Split>({ save: 0, groc: 0, ent: 0 });
   const [forceRebalanceTarget, setForceRebalanceTarget] = useState<number | null>(null);
   const forceRebalanceInitialized = useRef(false);
   const lastLoggedIssue = useRef<{ idx: number; save: number; groc: number; ent: number } | null>(null);
   const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
-  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<{ idx: number; monthIdx: number; originalAmt: number } | null>(null);
-  const [newExpenseSplit, setNewExpenseSplit] = useState<{ expense: { name: string; amts: number[]; spent: boolean[]; id: number }; split: { save: number; groc: number; ent: number }; applyToAll: boolean } | null>(null);
+  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
+  const [newExpenseSplit, setNewExpenseSplit] = useState<NewExpenseSplit | null>(null);
   const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
   const [lastAddedExpenseId, setLastAddedExpenseId] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => createEmptyTransactions());
-  const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; idx: number }>(null);
-  const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
-  const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
+  const [transactions, setTransactions] = useState<Transactions>(() => createEmptyTransactions());
+  const [lastExtraApply, setLastExtraApply] = useState<LastExtraApply | null>(null);
+  const [transModal, setTransModal] = useState<TransactionModal>({ open:false, type:'groc' });
+  const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
-  const [lastAdjustments, setLastAdjustments] = useState<{
-    salary?: { oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-    budget?: { type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-    extra?: { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; txIdx: number | null };
-    newExpense?: { expenseId: number; fixedBefore: FixedExpense[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-  }>({});
-  const [undoPrompt, setUndoPrompt] = useState<null | { kind: 'salary'|'budget'|'extra'|'newExpense'; payload: unknown }>(null);
+  const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
+  const [undoPrompt, setUndoPrompt] = useState<UndoPrompt | null>(null);
   
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
-  const [setupStep, setSetupStep] = useState<'prev'|'salary'|'extraInc'|'fixedExpenses'|'budgets'>('prev');
+  const [setupStep, setSetupStep] = useState<SetupStep>('prev');
   const [setupPrev, setSetupPrev] = useState('');
   const [setupSalary, setSetupSalary] = useState('');
   const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
   const [setupExtraInc, setSetupExtraInc] = useState('0');
-  const [setupFixedExpenses, setSetupFixedExpenses] = useState<{name: string; amt: string}[]>([]);
+  const [setupFixedExpenses, setSetupFixedExpenses] = useState<SetupFixedExpense[]>([]);
   const [setupFixedName, setSetupFixedName] = useState('');
   const [setupFixedAmt, setSetupFixedAmt] = useState('');
   const [setupSave, setSetupSave] = useState('');
