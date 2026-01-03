@@ -4,6 +4,7 @@ import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save,
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
+import { useFixedExpenses } from "@/lib/hooks/useFixedExpenses";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -30,8 +31,7 @@ import type {
   UndoPrompt,
   LastExtraApply,
   ExpenseEdit,
-  SetupStep,
-  SetupFixedExpense
+  SetupStep
 } from '@/lib/hooks/types';
 
 export default function FinancialPlanner() {
@@ -127,18 +127,29 @@ export default function FinancialPlanner() {
   const [setupSalary, setSetupSalary] = useState('');
   const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
   const [setupExtraInc, setSetupExtraInc] = useState('0');
-  const [setupFixedExpenses, setSetupFixedExpenses] = useState<SetupFixedExpense[]>([]);
-  const [setupFixedName, setSetupFixedName] = useState('');
-  const [setupFixedAmt, setSetupFixedAmt] = useState('');
   const [setupSave, setSetupSave] = useState('');
   const [setupGroc, setSetupGroc] = useState('');
   const [setupEnt, setSetupEnt] = useState('');
   const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
-  const [setupError, setSetupError] = useState('');
+  
+  // Fixed expense management
+  const {
+    setupFixedExpenses,
+    setSetupFixedExpenses,
+    setupFixedName,
+    setSetupFixedName,
+    setupFixedAmt,
+    setSetupFixedAmt,
+    setupError,
+    setSetupError,
+    handleAddFixedExpense,
+    handleRemoveFixedExpense,
+    createFromSetup
+  } = useFixedExpenses();
   
   const { user, loading } = useAuth();
 
-  const resetStateToInitial = useCallback((opts?: { keepHydrated?: boolean }) => {
+  const resetStateToInitial = useCallback(() => {
     setSel(0);
     setShowAdd(false);
     setNewExp({ name: '', amt: 0, type: 'monthly', start: 0 });
@@ -391,25 +402,6 @@ export default function FinancialPlanner() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
-  const handleAddFixedExpense = () => {
-    if (!setupFixedName.trim()) {
-      setSetupError('Expense name is required');
-      return;
-    }
-    const amt = parseFloat(setupFixedAmt || '0');
-    if (amt < 0) {
-      setSetupError('Amount must be a positive number');
-      return;
-    }
-    setSetupFixedExpenses([...setupFixedExpenses, { name: setupFixedName, amt: setupFixedAmt }]);
-    setSetupFixedName('');
-    setSetupFixedAmt('');
-    setSetupError('');
-  };
-
-  const handleRemoveFixedExpense = (index: number) => {
-    setSetupFixedExpenses(setupFixedExpenses.filter((_, i) => i !== index));
-  };
 
   const handleSetupNext = () => {
     setSetupError('');
@@ -489,13 +481,8 @@ export default function FinancialPlanner() {
       nv.grocBudg[0] = grocVal;
       nv.entBudg[0] = entVal;
       
-      // Create fixed expenses from user input
-      const nf = setupFixedExpenses.map((f, idx) => ({
-        id: idx + 1,
-        name: f.name,
-        amts: Array(60).fill(0).map((_, i) => i === 0 ? parseFloat(f.amt) : 0),
-        spent: Array(60).fill(false)
-      }));
+      // Create fixed expenses from user input using hook function
+      const createdFixed = createFromSetup();
       
       if (setupBudgetsApplyAll) {
         for (let i = 1; i < 60; i++) {
@@ -504,7 +491,7 @@ export default function FinancialPlanner() {
           nv.grocBudg[i] = grocVal;
           nv.entBudg[i] = entVal;
           // Apply fixed expenses to all months
-          nf.forEach(f => {
+          createdFixed.forEach(f => {
             f.amts[i] = f.amts[0];
           });
         }
@@ -512,7 +499,7 @@ export default function FinancialPlanner() {
       
       setData(n);
       setVarExp(nv);
-      setFixed(nf);
+      setFixed(createdFixed);
       setShowSetup(false);
       setHasChanges(true);
     }

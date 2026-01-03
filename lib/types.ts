@@ -28,6 +28,11 @@ export type Change = {
   split: Split;
 };
 
+export type SetupFixedExpense = {
+  name: string;
+  amt: string;
+};
+
 export type FixedExpense = { 
   id: number; 
   name: string; 
