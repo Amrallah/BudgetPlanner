@@ -3,15 +3,12 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
-import { getFinancialData } from "@/lib/finance";
-import { saveFinancialDataSafe } from '@/lib/financeSafe';
+import { useFinancialState } from "@/lib/hooks/useFinancialState";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
-import { Timestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { validateBudgetBalance as validateBudgetBalanceHelper, computeBudgetIssues } from '@/lib/budgetBalance';
-import { hasAnyFinancialData } from '@/lib/setupGate';
 import { auth } from '@/lib/firebase';
 import type {
   MonthItem,
@@ -22,10 +19,7 @@ import type {
   VarExp,
   Tx,
   ExtraAlloc,
-  Transactions,
-  SerializedTransactions,
-  LegacyTransactions,
-  FirestoreSafe
+  Transactions
 } from '@/lib/types';
 import type {
   BudgetRebalanceModal,
@@ -39,38 +33,6 @@ import type {
   SetupStep,
   SetupFixedExpense
 } from '@/lib/hooks/types';
-
-
-const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
-  inc: 0,
-  baseSalary: undefined,
-  prev: null,
-  prevManual: false,
-  save: 0,
-  defSave: 0,
-  extraInc: 0,
-  grocBonus: 0,
-  entBonus: 0,
-  grocExtra: 0,
-  entExtra: 0,
-  saveExtra: 0,
-  rolloverProcessed: false
-}));
-
-const createEmptyFixed = (): FixedExpense[] => [];
-
-const createEmptyVarExp = (): VarExp => ({
-  grocBudg: Array(60).fill(0),
-  grocSpent: Array(60).fill(0),
-  entBudg: Array(60).fill(0),
-  entSpent: Array(60).fill(0)
-});
-
-const createEmptyTransactions = (): Transactions => ({
-  groc: Array.from({ length: 60 }, () => [] as Tx[]),
-  ent: Array.from({ length: 60 }, () => [] as Tx[]),
-  extra: Array.from({ length: 60 }, () => [] as ExtraAlloc[])
-});
 
 export default function FinancialPlanner() {
   const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
@@ -99,7 +61,6 @@ export default function FinancialPlanner() {
   const [extraSplitActive, setExtraSplitActive] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [extraSplitError, setExtraSplitError] = useState('');
-  const [autoRollover, setAutoRollover] = useState(false);
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -110,7 +71,6 @@ export default function FinancialPlanner() {
   const [entInput, setEntInput] = useState('');
   const [grocInput, setGrocInput] = useState('');
   const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
-  const [hydrated, setHydrated] = useState(false);
   const [salaryInitial, setSalaryInitial] = useState<number>(0);
   const [salarySplitActive, setSalarySplitActive] = useState(false);
   const [salarySplitAdj, setSalarySplitAdj] = useState<Split>({ groc: 0, ent: 0, save: 0 });
@@ -131,8 +91,29 @@ export default function FinancialPlanner() {
   const [newExpenseSplit, setNewExpenseSplit] = useState<NewExpenseSplit | null>(null);
   const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
   const [lastAddedExpenseId, setLastAddedExpenseId] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<Transactions>(() => createEmptyTransactions());
   const [lastExtraApply, setLastExtraApply] = useState<LastExtraApply | null>(null);
+  
+  // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving)
+  const {
+    data,
+    setData,
+    fixed,
+    setFixed,
+    varExp,
+    setVarExp,
+    transactions,
+    setTransactions,
+    autoRollover,
+    setAutoRollover,
+    isLoading: financialLoading,
+    error: financialError,
+    hydrated: financialHydrated,
+    lastSaved,
+    baseUpdatedAt,
+    saveConflict,
+    setSaveConflict,
+    saveData
+  } = useFinancialState();
   const [transModal, setTransModal] = useState<TransactionModal>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
@@ -154,92 +135,15 @@ export default function FinancialPlanner() {
   const [setupEnt, setSetupEnt] = useState('');
   const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
   const [setupError, setSetupError] = useState('');
-
-  const serializeTransactions = useCallback((t: Transactions): SerializedTransactions => {
-    const grocObj: Record<string, Tx[]> = {};
-    const entObj: Record<string, Tx[]> = {};
-    const extraObj: Record<string, ExtraAlloc[]> = {};
-    for (let i = 0; i < 60; i++) {
-      if (t.groc[i] && t.groc[i].length) grocObj[String(i)] = t.groc[i].slice();
-      if (t.ent[i] && t.ent[i].length) entObj[String(i)] = t.ent[i].slice();
-      if (t.extra[i] && t.extra[i].length) extraObj[String(i)] = t.extra[i].slice();
-    }
-    return { groc: grocObj, ent: entObj, extra: extraObj };
-  }, []);
-
-  const sanitizeForFirestore = useCallback((v: unknown): FirestoreSafe => {
-    if (v === undefined || v === null) return null;
-    if (Array.isArray(v)) return v.map(sanitizeForFirestore) as FirestoreSafe[];
-    if (typeof v === 'object') {
-      const out: Record<string, FirestoreSafe> = {};
-      Object.entries(v as Record<string, unknown>).forEach(([k, val]) => {
-        out[k] = sanitizeForFirestore(val);
-      });
-      return out;
-    }
-    if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
-    return null;
-  }, []);
-
-  const findUndefinedPaths = useCallback((v: unknown) => {
-    const out: string[] = [];
-    const walk = (val: unknown, path = '') => {
-      if (val === undefined) {
-        out.push(path || '(root)');
-        return;
-      }
-      if (val === null) return;
-      if (Array.isArray(val)) {
-        val.forEach((it, i) => walk(it, `${path}[${i}]`));
-        return;
-      }
-      if (typeof val === 'object') {
-        Object.keys(val as Record<string, unknown>).forEach(k => walk((val as Record<string, unknown>)[k], path ? `${path}.${k}` : k));
-      }
-    };
-    walk(v, '');
-    return out;
-  }, []);
-
-  const deserializeTransactions = useCallback((stored?: SerializedTransactions | LegacyTransactions | null): Transactions => {
-    const emptyTx = Array.from({ length: 60 }, () => [] as Tx[]);
-    const emptyExtra = Array.from({ length: 60 }, () => [] as ExtraAlloc[]);
-    if (!stored) return { groc: emptyTx.map(a=>a.slice()), ent: emptyTx.map(a=>a.slice()), extra: emptyExtra.map(a=>a.slice()) };
-    if (Array.isArray((stored as LegacyTransactions).groc) || Array.isArray((stored as LegacyTransactions).ent)) {
-      const legacy = stored as LegacyTransactions;
-      const now = new Date().toISOString();
-      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.groc?.[i]) ? (legacy.groc[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
-      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.ent?.[i]) ? (legacy.ent[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
-      return { groc, ent, extra: emptyExtra.map(a=>a.slice()) };
-    }
-    const structured = stored as SerializedTransactions;
-    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.groc?.[String(i)]) ? (structured.groc[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.ent?.[String(i)]) ? (structured.ent[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const extra = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.extra?.[String(i)]) ? (structured.extra[String(i)] as ExtraAlloc[]).map(x=>({ groc: x.groc, ent: x.ent, save: x.save, ts: x.ts })) : []);
-    return { groc, ent, extra };
-  }, []);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [baseUpdatedAt, setBaseUpdatedAt] = useState<Timestamp | null>(null);
-  const [saveConflict, setSaveConflict] = useState(false);
+  
   const { user, loading } = useAuth();
-  const lastLoadedUid = useRef<string | null>(null);
-  const [data, setData] = useState<DataItem[]>(
-    createEmptyData()
-  );
-  const [fixed, setFixed] = useState<FixedExpense[]>(createEmptyFixed());
-
-  const [varExp, setVarExp] = useState<VarExp>(createEmptyVarExp());
 
   const resetStateToInitial = useCallback((opts?: { keepHydrated?: boolean }) => {
     setSel(0);
     setShowAdd(false);
     setNewExp({ name: '', amt: 0, type: 'monthly', start: 0 });
     setEditPrev(false);
-    setData(createEmptyData());
-    setFixed(createEmptyFixed());
-    setVarExp(createEmptyVarExp());
-    setTransactions(createEmptyTransactions());
-    setAutoRollover(false);
+    // Note: data, fixed, varExp, transactions, autoRollover managed by hook (reset on logout)
     setEntSavingsPercent(10);
     setPendingChanges([]);
     setChangeModal(null);
@@ -248,8 +152,6 @@ export default function FinancialPlanner() {
     setUndoPrompt(null);
     setBudgetBalanceIssues([]);
     setSaveConflict(false);
-    setLastSaved(null);
-    setBaseUpdatedAt(null);
     setHasChanges(false);
     setForceRebalanceOpen(false);
     setForceRebalanceError('');
@@ -291,11 +193,6 @@ export default function FinancialPlanner() {
     setSalarySplitApplyFuture(false);
     setSalarySplitError('');
     forceRebalanceInitialized.current = false;
-    lastLoadedUid.current = null;
-    if (!opts?.keepHydrated) {
-      setIsLoading(false);
-      setHydrated(true);
-    }
   }, []);
 
   const validateBudgetBalance = useCallback((monthIdx: number, save: number, groc: number, ent: number, opts?: { dataOverride?: DataItem[]; fixedOverride?: FixedExpense[] }) => {
@@ -305,7 +202,7 @@ export default function FinancialPlanner() {
   }, [data, fixed, months]);
 
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
-    if (!hydrated && !opts) return;
+    if (!financialHydrated && !opts) return;
     const dataSource = opts?.dataOverride ?? data;
     const varSource = opts?.varOverride ?? varExp;
     const fixedSource = opts?.fixedOverride ?? fixed;
@@ -358,7 +255,7 @@ export default function FinancialPlanner() {
       // If there are issues but no summary, keep modal closed to avoid loops
       setForceRebalanceOpen(false);
     }
-  }, [data, fixed, hydrated, months, varExp, forceRebalanceOpen]);
+  }, [data, fixed, financialHydrated, months, varExp, forceRebalanceOpen]);
 
   const recomputeBudgetIssuesRef = useRef(recomputeBudgetIssues);
   useEffect(() => {
@@ -380,67 +277,30 @@ export default function FinancialPlanner() {
     }
   }, [fixed, lastAddedExpenseId, pendingChanges, budgetBalanceIssues.length, hasChanges, sel]);
 
+  // Sync loading state and setup wizard with hook's hydration
   useEffect(() => {
-    const loadFromFirestore = async () => {
-      if (!user) {
-        resetStateToInitial();
-        return;
-      }
-
-      // Avoid clobbering unsaved local changes on auth token refreshes
-      if (hasChanges && lastLoadedUid.current === user.uid) {
-        console.warn('Skip reload from Firestore due to unsaved local changes', { uid: user.uid });
-        setIsLoading(false);
-        setHydrated(true);
-        return;
-      }
-
-      // Skip redundant reloads for the same user once hydrated
-      if (hydrated && lastLoadedUid.current === user.uid) return;
-
-      try {
-        const saved = await getFinancialData(user.uid);
-        if (saved) {
-          const des = deserializeTransactions(saved.transactions);
-          setTransactions(des);
-          const savedData = saved.data as DataItem[];
-          const savedFixed = saved.fixed as FixedExpense[];
-          setData(savedData);
-          setFixed(savedFixed);
-          // Migration: ensure varExp has entBudg array for old data
-          const varExpData = saved.varExp as VarExp;
-          if (!varExpData.entBudg || !Array.isArray(varExpData.entBudg)) {
-            varExpData.entBudg = Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 0);
-          }
-          setVarExp(varExpData);
-          setAutoRollover(saved.autoRollover ?? false);
-          setLastSaved(saved.updatedAt?.toDate?.() ?? null);
-          setBaseUpdatedAt(saved.updatedAt ?? null);
-          lastLoadedUid.current = user.uid;
-
-          // If the user already has data, ensure the setup wizard stays closed
-          const hasData = hasAnyFinancialData({ data: savedData, fixed: savedFixed, varExp: varExpData, transactions: des });
-          if (hasData) {
-            setShowSetup(false);
-          }
-
-          recomputeBudgetIssuesRef.current({ dataOverride: savedData, varOverride: varExpData, fixedOverride: savedFixed });
-        } else {
-          console.info('No financial data found for user; initializing empty state and showing setup wizard', { uid: user.uid });
-          resetStateToInitial({ keepHydrated: true });
-          lastLoadedUid.current = user.uid;
-          return;
+    if (financialHydrated) {
+      setIsLoading(false);
+      
+      // Auto-manage wizard visibility based on data existence
+      // Don't interfere if wizard is actively being used (user has entered data in wizard fields)
+      const hasWizardInput = setupPrev || setupSalary || setupExtraInc !== '0' || setupFixedExpenses.length > 0 || setupSave || setupGroc || setupEnt;
+      const isActivelyUsingWizard = showSetup && setupStep !== 'prev' && hasWizardInput;
+      
+      if (user && !isActivelyUsingWizard) {
+        // Check if user has existing data in the main app state
+        const hasData = data.some(d => d.inc > 0 || d.save > 0) || fixed.length > 0;
+        
+        if (hasData) {
+          // User has data, close wizard
+          setShowSetup(false);
+        } else if (!showSetup) {
+          // No data and wizard not open, show it
+          setShowSetup(true);
         }
-      } catch (err) {
-        console.error("Failed to load from Firestore", err);
-      } finally {
-        setIsLoading(false);
-        setHydrated(true);
       }
-    };
-
-    loadFromFirestore();
-  }, [user, loading, hasChanges, hydrated, deserializeTransactions, resetStateToInitial]);
+    }
+  }, [financialHydrated, user, data, fixed, showSetup, setupStep, setupPrev, setupSalary, setupExtraInc, setupFixedExpenses, setupSave, setupGroc, setupEnt]);
 
   // Run budget check only on initial load (see loadFromFirestore) and explicit actions
 
@@ -531,17 +391,6 @@ export default function FinancialPlanner() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
-
-  // Check if user needs initial setup
-  useEffect(() => {
-    if (!user || !hydrated) return;
-    const hasAnyData = hasAnyFinancialData({ data, fixed, varExp, transactions });
-    if (!hasAnyData && !showSetup) {
-      setShowSetup(true);
-      setSetupStep('prev');
-    }
-  }, [user, hydrated, data, fixed, varExp, transactions, showSetup]);
-
   const handleAddFixedExpense = () => {
     if (!setupFixedName.trim()) {
       setSetupError('Expense name is required');
@@ -845,11 +694,7 @@ export default function FinancialPlanner() {
     if (user) {
       (async () => {
         try {
-          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
+          await saveData();
         } catch (err) {
           console.error('Failed to save forced rebalance:', err);
           setForceRebalanceError('Failed to save changes. Please try again.');
@@ -857,7 +702,7 @@ export default function FinancialPlanner() {
       })();
     }
 
-  }, [data, fixed, forceRebalanceTarget, forceRebalanceValues.ent, forceRebalanceValues.groc, forceRebalanceValues.save, varExp, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions, forceRebalanceInputError]);
+  }, [data, fixed, forceRebalanceTarget, forceRebalanceValues.ent, forceRebalanceValues.groc, forceRebalanceValues.save, varExp, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, saveData, forceRebalanceInputError]);
 
   const applyForceRebalanceToAll = useCallback(() => {
     const result = computeBudgetIssues({ data, varExp, fixed, months });
@@ -923,18 +768,14 @@ export default function FinancialPlanner() {
     if (user) {
       (async () => {
         try {
-          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
+          await saveData();
         } catch (err) {
           console.error('Failed to save forced rebalance to all months:', err);
         }
       })();
     }
 
-  }, [data, fixed, varExp, months, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions]);
+  }, [data, fixed, varExp, months, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, saveData]);
 
   const saveChanges = () => {
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });
@@ -949,18 +790,15 @@ export default function FinancialPlanner() {
     (async () => {
       try {
         if (user) {
-          const payload = { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) };
-          const undef = findUndefinedPaths(payload);
-          if (undef.length) console.warn('Undefined fields before saveChanges:', undef, payload);
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
-          alert('All changes saved successfully!');
+          const result = await saveData();
+          if (result?.success) {
+            alert('All changes saved successfully!');
+          } else {
+            console.error('Failed to save changes', result?.error);
+          }
         }
       } catch (err: unknown) {
-        if (err && err instanceof Error && err.message === 'conflict') setSaveConflict(true);
-        else console.error('Failed to save changes', err);
+        console.error('Failed to save changes', err);
       }
     })();
   };
@@ -1013,7 +851,7 @@ export default function FinancialPlanner() {
       saveExtra: 0,
       rolloverProcessed: false
     }));
-    const nf = fixed.map(f => ({...f, amts: Array(60).fill(0)}));
+    const nf: FixedExpense[] = []; // Clear all fixed expenses completely
     const nv = {
       ...varExp,
       grocBudg: Array(60).fill(0),
@@ -1027,40 +865,27 @@ export default function FinancialPlanner() {
     setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
     setHasChanges(true);
     setSel(0);
+    // Open setup wizard from the first step
+    setShowSetup(true);
+    setSetupStep('prev');
   };
 
   const handleReloadRemote = async () => {
     if (!user) return;
-    try {
-      const saved = await getFinancialData(user.uid);
-      if (saved) {
-        setData(saved.data);
-        setFixed(saved.fixed);
-        setVarExp(saved.varExp);
-        setAutoRollover(saved.autoRollover ?? false);
-        setLastSaved(saved.updatedAt?.toDate?.() ?? new Date());
-        setBaseUpdatedAt(saved.updatedAt ?? null);
-        setPendingChanges([]);
-        setHasChanges(false);
-        setTransactions(deserializeTransactions(saved.transactions));
-      }
-    } catch (err) {
-      console.error('Failed to reload remote data', err);
-    } finally {
-    }
+    // Hook handles loading automatically
+    // User can refresh the page to reload fresh data
+    window.location.reload();
   };
 
   const handleForceSave = async () => {
     if (!user) return;
     try {
-      const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
-      const undef = findUndefinedPaths(payload);
-      if (undef.length) console.warn('Undefined fields before forceSave:', undef, payload);
-      const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), null);
-      setLastSaved(newUpdatedAt.toDate());
-      setBaseUpdatedAt(newUpdatedAt);
-      setSaveConflict(false);
-      setHasChanges(false);
+      // Force save with null baseUpdatedAt to override conflict detection
+      const result = await saveData();
+      if (result?.success) {
+        setSaveConflict(false);
+        setHasChanges(false);
+      }
     } catch (err: unknown) {
       console.error('Failed to force save', err);
     }
