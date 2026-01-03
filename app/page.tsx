@@ -5,6 +5,7 @@ import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
 import { useFixedExpenses } from "@/lib/hooks/useFixedExpenses";
+import { useVariableExpenses } from "@/lib/hooks/useVariableExpenses";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -99,8 +100,8 @@ export default function FinancialPlanner() {
     setData,
     fixed,
     setFixed,
-    varExp,
-    setVarExp,
+    varExp: varExpFromState,
+    setVarExp: setVarExpState,
     transactions,
     setTransactions,
     autoRollover,
@@ -114,6 +115,23 @@ export default function FinancialPlanner() {
     setSaveConflict,
     saveData
   } = useFinancialState();
+
+  // Variable expense management hook
+  const {
+    varExp,
+    setVarExp,
+    updateGroceryBudget,
+    updateEntertainmentBudget,
+    updateGrocerySpending,
+    updateEntertainmentSpending,
+    applyBudgetToFutureMonths,
+    applyBudgetToRange,
+    clearMonthSpending,
+    clearAllSpending,
+    getRemainingForMonth,
+    getOverspendForMonth,
+    resetVariableExpenses
+  } = useVariableExpenses(varExpFromState, setVarExpState);
   const [transModal, setTransModal] = useState<TransactionModal>({ open:false, type:'groc' });
   const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);

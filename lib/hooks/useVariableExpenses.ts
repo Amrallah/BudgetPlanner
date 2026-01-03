@@ -1,86 +1,82 @@
-import { useState } from 'react';
 import type { VarExp } from '@/lib/types';
 
-export function useVariableExpenses() {
-  const [varExp, setVarExp] = useState<VarExp>({
-    grocBudg: Array(60).fill(0),
-    grocSpent: Array(60).fill(0),
-    entBudg: Array(60).fill(0),
-    entSpent: Array(60).fill(0)
-  });
+export function useVariableExpenses(initialVarExp: VarExp, setVarExpExternal: (varExp: VarExp) => void) {
+  // Use external state instead of internal useState
+  const varExp = initialVarExp;
+  const setVarExp = setVarExpExternal;
 
   // Budget setting operations
   const updateGroceryBudget = (monthIndex: number, amount: number) => {
     if (monthIndex < 0 || monthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      grocBudg: prev.grocBudg.map((amt, idx) => idx === monthIndex ? amount : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      grocBudg: varExp.grocBudg.map((amt, idx) => idx === monthIndex ? amount : amt)
+    });
   };
 
   const updateEntertainmentBudget = (monthIndex: number, amount: number) => {
     if (monthIndex < 0 || monthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      entBudg: prev.entBudg.map((amt, idx) => idx === monthIndex ? amount : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      entBudg: varExp.entBudg.map((amt, idx) => idx === monthIndex ? amount : amt)
+    });
   };
 
   const applyBudgetToFutureMonths = (startMonthIndex: number, grocAmount: number, entAmount: number) => {
     if (startMonthIndex < 0 || startMonthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      grocBudg: prev.grocBudg.map((amt, idx) => idx >= startMonthIndex ? grocAmount : amt),
-      entBudg: prev.entBudg.map((amt, idx) => idx >= startMonthIndex ? entAmount : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      grocBudg: varExp.grocBudg.map((amt, idx) => idx >= startMonthIndex ? grocAmount : amt),
+      entBudg: varExp.entBudg.map((amt, idx) => idx >= startMonthIndex ? entAmount : amt)
+    });
   };
 
   const applyBudgetToRange = (startIdx: number, endIdx: number, grocAmount?: number, entAmount?: number) => {
     if (startIdx < 0 || endIdx >= 60 || startIdx > endIdx) return;
-    setVarExp(prev => ({
-      ...prev,
+    setVarExp({
+      ...varExp,
       grocBudg: grocAmount !== undefined 
-        ? prev.grocBudg.map((amt, idx) => idx >= startIdx && idx <= endIdx ? grocAmount : amt)
-        : prev.grocBudg,
+        ? varExp.grocBudg.map((amt, idx) => idx >= startIdx && idx <= endIdx ? grocAmount : amt)
+        : varExp.grocBudg,
       entBudg: entAmount !== undefined
-        ? prev.entBudg.map((amt, idx) => idx >= startIdx && idx <= endIdx ? entAmount : amt)
-        : prev.entBudg
-    }));
+        ? varExp.entBudg.map((amt, idx) => idx >= startIdx && idx <= endIdx ? entAmount : amt)
+        : varExp.entBudg
+    });
   };
 
   // Spending operations
   const updateGrocerySpending = (monthIndex: number, amount: number) => {
     if (monthIndex < 0 || monthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      grocSpent: prev.grocSpent.map((amt, idx) => idx === monthIndex ? amount : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      grocSpent: varExp.grocSpent.map((amt, idx) => idx === monthIndex ? amount : amt)
+    });
   };
 
   const updateEntertainmentSpending = (monthIndex: number, amount: number) => {
     if (monthIndex < 0 || monthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      entSpent: prev.entSpent.map((amt, idx) => idx === monthIndex ? amount : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      entSpent: varExp.entSpent.map((amt, idx) => idx === monthIndex ? amount : amt)
+    });
   };
 
   // Clear operations
   const clearMonthSpending = (monthIndex: number) => {
     if (monthIndex < 0 || monthIndex >= 60) return;
-    setVarExp(prev => ({
-      ...prev,
-      grocSpent: prev.grocSpent.map((amt, idx) => idx === monthIndex ? 0 : amt),
-      entSpent: prev.entSpent.map((amt, idx) => idx === monthIndex ? 0 : amt)
-    }));
+    setVarExp({
+      ...varExp,
+      grocSpent: varExp.grocSpent.map((amt, idx) => idx === monthIndex ? 0 : amt),
+      entSpent: varExp.entSpent.map((amt, idx) => idx === monthIndex ? 0 : amt)
+    });
   };
 
   const clearAllSpending = () => {
-    setVarExp(prev => ({
-      ...prev,
+    setVarExp({
+      ...varExp,
       grocSpent: Array(60).fill(0),
       entSpent: Array(60).fill(0)
-    }));
+    });
   };
 
   // Calculation helpers
