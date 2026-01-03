@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Split } from '../types';
 
 /**
@@ -33,20 +33,20 @@ export function useExtraSplitModal() {
    * Opens extra split modal
    * Clears any previous error on open
    */
-  const openExtraSplit = () => {
+  const openExtraSplit = useCallback(() => {
     setExtraSplitActive(true);
     setExtraSplitError('');
-  };
+  }, []);
 
   /**
    * Closes extra split modal
    * Clears error and resets adjustments
    */
-  const closeExtraSplit = () => {
+  const closeExtraSplit = useCallback(() => {
     setExtraSplitActive(false);
     setExtraAdj({ groc: 0, ent: 0, save: 0 });
     setExtraSplitError('');
-  };
+  }, []);
 
   // ============================================================================
   // Adjustment Updates
@@ -56,37 +56,37 @@ export function useExtraSplitModal() {
    * Updates groceries adjustment amount
    * Clears any validation error
    */
-  const updateGroceriesAdj = (value: number) => {
+  const updateGroceriesAdj = useCallback((value: number) => {
     setExtraAdj(prev => ({ ...prev, groc: value }));
     setExtraSplitError('');
-  };
+  }, []);
 
   /**
    * Updates entertainment adjustment amount
    * Clears any validation error
    */
-  const updateEntertainmentAdj = (value: number) => {
+  const updateEntertainmentAdj = useCallback((value: number) => {
     setExtraAdj(prev => ({ ...prev, ent: value }));
     setExtraSplitError('');
-  };
+  }, []);
 
   /**
    * Updates savings adjustment amount
    * Clears any validation error
    */
-  const updateSavingsAdj = (value: number) => {
+  const updateSavingsAdj = useCallback((value: number) => {
     setExtraAdj(prev => ({ ...prev, save: value }));
     setExtraSplitError('');
-  };
+  }, []);
 
   /**
    * Sets all adjustment values at once
    * Clears any validation error
    */
-  const setAllAdjustments = (adjustments: Split) => {
+  const setAllAdjustments = useCallback((adjustments: Split) => {
     setExtraAdj(adjustments);
     setExtraSplitError('');
-  };
+  }, []);
 
   // ============================================================================
   // Error Handling
@@ -95,16 +95,16 @@ export function useExtraSplitModal() {
   /**
    * Sets validation error message
    */
-  const setError = (message: string) => {
+  const setError = useCallback((message: string) => {
     setExtraSplitError(message);
-  };
+  }, []);
 
   /**
    * Clears current validation error
    */
-  const clearError = () => {
+  const clearError = useCallback(() => {
     setExtraSplitError('');
-  };
+  }, []);
 
   // ============================================================================
   // Reset Operations
@@ -113,11 +113,11 @@ export function useExtraSplitModal() {
   /**
    * Resets all state components to initial values
    */
-  const resetAll = () => {
+  const resetAll = useCallback(() => {
     setExtraSplitActive(false);
     setExtraAdj({ groc: 0, ent: 0, save: 0 });
     setExtraSplitError('');
-  };
+  }, []);
 
   return {
     // State
