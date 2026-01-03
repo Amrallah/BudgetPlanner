@@ -7,14 +7,20 @@ import { useFinancialState } from "@/lib/hooks/useFinancialState";
 import { useFixedExpenses } from "@/lib/hooks/useFixedExpenses";
 import { useVariableExpenses } from "@/lib/hooks/useVariableExpenses";
 import { useTransactions } from "@/lib/hooks/useTransactions";
+import { useModalState } from "@/lib/hooks/useModalState";
+import { useBudgetRebalanceModal } from "@/lib/hooks/useBudgetRebalanceModal";
+import { useForceRebalanceModal } from "@/lib/hooks/useForceRebalanceModal";
+import { useSalarySplitModal } from "@/lib/hooks/useSalarySplitModal";
+import { useExtraSplitModal } from "@/lib/hooks/useExtraSplitModal";
+import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
+import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
+import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
 import { signOut } from 'firebase/auth';
-import { validateBudgetBalance as validateBudgetBalanceHelper, computeBudgetIssues } from '@/lib/budgetBalance';
 import { auth } from '@/lib/firebase';
 import type {
-  MonthItem,
   Split,
   Change,
   FixedExpense,
@@ -25,44 +31,28 @@ import type {
   Transactions
 } from '@/lib/types';
 import type {
-  BudgetRebalanceModal,
-  NewExpenseSplit,
-  TransactionModal,
   TransactionEdit,
   AdjustmentHistory,
-  UndoPrompt,
   LastExtraApply,
   ExpenseEdit,
   SetupStep
 } from '@/lib/hooks/types';
 
 export default function FinancialPlanner() {
-  const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
-    const d = new Date(2025, 11, 25);
-    d.setMonth(d.getMonth() + i);
-    return { name: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }), date: d, day: 25 };
-  });
-
-  const [months] = useState<MonthItem[]>(genMonths(60));
-  const [sel, setSel] = useState(0);
+  const { months, sel, setSel, isPassed } = useMonthSelection();
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
   const [adj, setAdj] = useState({ groc: 0, ent: 0 });
   const [editPrev, setEditPrev] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Change[]>([]);
-  const [changeModal, setChangeModal] = useState<Change | null>(null);
-  const [deleteModal, setDeleteModal] = useState<Change | null>(null);
   const [newTrans, setNewTrans] = useState<Record<'groc'|'ent', string>>({ groc: '', ent: '' });
   const [showRollover, setShowRollover] = useState(false);
   const [editSpent, setEditSpent] = useState({ groc: false, ent: false });
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
   const [applySavingsForward, setApplySavingsForward] = useState<number | null>(null);
-  const [extraAdj, setExtraAdj] = useState<Split>({ groc: 0, ent: 0, save: 0 });
-  const [extraSplitActive, setExtraSplitActive] = useState(false);
   const [splitError, setSplitError] = useState('');
-  const [extraSplitError, setExtraSplitError] = useState('');
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,26 +64,68 @@ export default function FinancialPlanner() {
   const [grocInput, setGrocInput] = useState('');
   const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
   const [salaryInitial, setSalaryInitial] = useState<number>(0);
-  const [salarySplitActive, setSalarySplitActive] = useState(false);
-  const [salarySplitAdj, setSalarySplitAdj] = useState<Split>({ groc: 0, ent: 0, save: 0 });
-  const [salarySplitError, setSalarySplitError] = useState('');
-  const [salarySplitApplyFuture, setSalarySplitApplyFuture] = useState(false);
   const [savingsInitial, setSavingsInitial] = useState<number>(0);
-  const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<BudgetRebalanceModal | null>(null);
-  const [budgetRebalanceError, setBudgetRebalanceError] = useState('');
-  const [budgetRebalanceApplyFuture, setBudgetRebalanceApplyFuture] = useState(false);
-  const [forceRebalanceOpen, setForceRebalanceOpen] = useState(false);
-  const [forceRebalanceError, setForceRebalanceError] = useState('');
-  const [forceRebalanceValues, setForceRebalanceValues] = useState<Split>({ save: 0, groc: 0, ent: 0 });
-  const [forceRebalanceTarget, setForceRebalanceTarget] = useState<number | null>(null);
-  const forceRebalanceInitialized = useRef(false);
-  const lastLoggedIssue = useRef<{ idx: number; save: number; groc: number; ent: number } | null>(null);
-  const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
-  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
-  const [newExpenseSplit, setNewExpenseSplit] = useState<NewExpenseSplit | null>(null);
-  const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
   const [lastAddedExpenseId, setLastAddedExpenseId] = useState<number | null>(null);
   const [lastExtraApply, setLastExtraApply] = useState<LastExtraApply | null>(null);
+  const {
+    changeModal,
+    setChangeModal,
+    deleteModal,
+    setDeleteModal,
+    transModal,
+    setTransModal,
+    undoPrompt,
+    setUndoPrompt
+  } = useModalState();
+  const {
+    budgetRebalanceModal,
+    budgetRebalanceError,
+    budgetRebalanceApplyFuture,
+    setBudgetRebalanceModal,
+    setValidationError: setBudgetRebalanceError,
+    setApplyFuture: setBudgetRebalanceApplyFuture
+  } = useBudgetRebalanceModal();
+  const {
+    forceRebalanceOpen,
+    forceRebalanceError,
+    forceRebalanceValues,
+    forceRebalanceTarget,
+    forceRebalanceInitialized,
+    setForceRebalanceOpen,
+    setForceRebalanceError,
+    setForceRebalanceValues,
+    setForceRebalanceTarget
+  } = useForceRebalanceModal();
+  const {
+    salarySplitActive,
+    salarySplitAdj,
+    salarySplitError,
+    salarySplitApplyFuture,
+    openSalarySplit,
+    closeSalarySplit,
+    setAllAdjustments: setSalarySplitAdj,
+    setError: setSalarySplitError,
+    setApplyFuture: setSalarySplitApplyFuture
+  } = useSalarySplitModal();
+  const setSalarySplitActive = useCallback((value: boolean) => (value ? openSalarySplit() : closeSalarySplit()), [closeSalarySplit, openSalarySplit]);
+  const {
+    extraSplitActive,
+    extraAdj,
+    extraSplitError,
+    openExtraSplit,
+    closeExtraSplit,
+    setAllAdjustments: setExtraAdj,
+    setError: setExtraSplitError
+  } = useExtraSplitModal();
+  const setExtraSplitActive = useCallback((value: boolean) => (value ? openExtraSplit() : closeExtraSplit()), [closeExtraSplit, openExtraSplit]);
+  const {
+    newExpenseSplit,
+    newExpenseSplitError,
+    setNewExpenseSplit,
+    setError: setNewExpenseSplitError
+  } = useNewExpenseSplitModal();
+  const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
+  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
   
   // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving)
   const {
@@ -107,11 +139,8 @@ export default function FinancialPlanner() {
     setTransactions: setTransactionsState,
     autoRollover,
     setAutoRollover,
-    isLoading: financialLoading,
-    error: financialError,
     hydrated: financialHydrated,
     lastSaved,
-    baseUpdatedAt,
     saveConflict,
     setSaveConflict,
     saveData
@@ -120,45 +149,18 @@ export default function FinancialPlanner() {
   // Variable expense management hook
   const {
     varExp,
-    setVarExp,
-    updateGroceryBudget,
-    updateEntertainmentBudget,
-    updateGrocerySpending,
-    updateEntertainmentSpending,
-    applyBudgetToFutureMonths,
-    applyBudgetToRange,
-    clearMonthSpending,
-    clearAllSpending,
-    getRemainingForMonth,
-    getOverspendForMonth,
-    resetVariableExpenses
+    setVarExp
   } = useVariableExpenses(varExpFromState, setVarExpState);
 
   // Transaction management hook
   const {
     transactions,
-    setTransactions,
-    copyTransactions,
-    addGroceryTransaction,
-    addEntertainmentTransaction,
-    deleteGroceryTransaction,
-    deleteEntertainmentTransaction,
-    editGroceryTransaction,
-    editEntertainmentTransaction,
-    addExtraAllocation,
-    deleteExtraAllocation,
-    getTotalSpentForMonth,
-    getTotalExtraAllocatedForMonth,
-    getTransactionCount,
-    clearMonthTransactions,
-    clearAllTransactions,
-    resetTransactions
+    setTransactions
   } = useTransactions(transactionsFromState, setTransactionsState);
-  const [transModal, setTransModal] = useState<TransactionModal>({ open:false, type:'groc' });
+  const { validateBudgetBalance, checkForIssues, evaluateManualRebalance } = useBudgetValidation({ data, varExp, fixed, months, hydrated: financialHydrated });
   const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
   const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
-  const [undoPrompt, setUndoPrompt] = useState<UndoPrompt | null>(null);
   
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
@@ -175,7 +177,6 @@ export default function FinancialPlanner() {
   // Fixed expense management
   const {
     setupFixedExpenses,
-    setSetupFixedExpenses,
     setupFixedName,
     setSetupFixedName,
     setupFixedAmt,
@@ -187,101 +188,10 @@ export default function FinancialPlanner() {
     createFromSetup
   } = useFixedExpenses();
   
-  const { user, loading } = useAuth();
-
-  const resetStateToInitial = useCallback(() => {
-    setSel(0);
-    setShowAdd(false);
-    setNewExp({ name: '', amt: 0, type: 'monthly', start: 0 });
-    setEditPrev(false);
-    // Note: data, fixed, varExp, transactions, autoRollover managed by hook (reset on logout)
-    setEntSavingsPercent(10);
-    setPendingChanges([]);
-    setChangeModal(null);
-    setDeleteModal(null);
-    setLastAdjustments({});
-    setUndoPrompt(null);
-    setBudgetBalanceIssues([]);
-    setSaveConflict(false);
-    setHasChanges(false);
-    setForceRebalanceOpen(false);
-    setForceRebalanceError('');
-    setForceRebalanceTarget(null);
-    setForceRebalanceValues({ save: 0, groc: 0, ent: 0 });
-    setLastAddedExpenseId(null);
-    setNewExpenseSplit(null);
-    setNewExpenseSplitError('');
-    setTransModal({ open: false, type: 'groc' });
-    setTransEdit({ idx: null, value: '' });
-    setBudgetRebalanceModal(null);
-    setBudgetRebalanceError('');
-    setBudgetRebalanceApplyFuture(false);
-    setShowSetup(true);
-    setSetupStep('prev');
-    setSetupPrev('');
-    setSetupSalary('');
-    setSetupSalaryApplyAll(false);
-    setSetupExtraInc('0');
-    setSetupFixedExpenses([]);
-    setSetupFixedName('');
-    setSetupFixedAmt('');
-    setSetupSave('');
-    setSetupGroc('');
-    setSetupEnt('');
-    setSetupBudgetsApplyAll(false);
-    setSetupError('');
-    setSavingEdited(false);
-    setAdj({ groc: 0, ent: 0 });
-    setApplyFuture(false);
-    setApplySavingsForward(null);
-    setExtraSplitActive(false);
-    setExtraAdj({ groc: 0, ent: 0, save: 0 });
-    setSplitError('');
-    setExtraSplitError('');
-    setWithdrawAmount(0);
-    setSalarySplitActive(false);
-    setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-    setSalarySplitApplyFuture(false);
-    setSalarySplitError('');
-    forceRebalanceInitialized.current = false;
-  }, []);
-
-  const validateBudgetBalance = useCallback((monthIdx: number, save: number, groc: number, ent: number, opts?: { dataOverride?: DataItem[]; fixedOverride?: FixedExpense[] }) => {
-    const dataSource = opts?.dataOverride ?? data;
-    const fixedSource = opts?.fixedOverride ?? fixed;
-    return validateBudgetBalanceHelper({ monthIdx, save, groc, ent, data: dataSource, fixed: fixedSource, months });
-  }, [data, fixed, months]);
+  const { user } = useAuth();
 
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
-    if (!financialHydrated && !opts) return;
-    const dataSource = opts?.dataOverride ?? data;
-    const varSource = opts?.varOverride ?? varExp;
-    const fixedSource = opts?.fixedOverride ?? fixed;
-
-    const result = computeBudgetIssues({ data: dataSource, varExp: varSource, fixed: fixedSource, months });
-
-    if (result.firstIssue) {
-      const current = result.firstIssue;
-      const last = lastLoggedIssue.current;
-      if (!last || last.idx !== current.idx || last.save !== current.saveTotal || last.groc !== current.grocTotal || last.ent !== current.entTotal) {
-        console.debug('Force rebalance - first issue', {
-          idx: current.idx,
-          month: months[current.idx]?.name,
-          saveTotal: current.saveTotal,
-          grocTotal: current.grocTotal,
-          entTotal: current.entTotal,
-          totalBudgets: current.saveTotal + current.grocTotal + current.entTotal,
-          available: current.available,
-          deficit: current.deficit,
-          issuesCount: result.issues.length
-        });
-        lastLoggedIssue.current = { idx: current.idx, save: current.saveTotal, groc: current.grocTotal, ent: current.entTotal };
-      }
-    } else if (result.issues.length > 0) {
-      console.debug('Force rebalance - issues found but no summary', { issuesCount: result.issues.length });
-    } else {
-      lastLoggedIssue.current = null;
-    }
+    const result = checkForIssues(opts);
 
     setBudgetBalanceIssues(result.issues);
 
@@ -306,7 +216,16 @@ export default function FinancialPlanner() {
       // If there are issues but no summary, keep modal closed to avoid loops
       setForceRebalanceOpen(false);
     }
-  }, [data, fixed, financialHydrated, months, varExp, forceRebalanceOpen]);
+  }, [
+    checkForIssues,
+    forceRebalanceInitialized,
+    forceRebalanceOpen,
+    setBudgetBalanceIssues,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setForceRebalanceValues
+  ]);
 
   const recomputeBudgetIssuesRef = useRef(recomputeBudgetIssues);
   useEffect(() => {
@@ -428,7 +347,7 @@ export default function FinancialPlanner() {
     }
     setUndoPrompt(null);
     setHasChanges(true);
-  }, [data, lastAdjustments, transactions, undoPrompt, varExp]);
+  }, [data, lastAdjustments, setData, setFixed, setHasChanges, setLastAdjustments, setTransactions, setUndoPrompt, setVarExp, transactions, undoPrompt, varExp]);
 
 
   // Warn before leaving with unsaved changes
@@ -552,7 +471,7 @@ export default function FinancialPlanner() {
       console.error('Failed to log out from setup wizard', err);
       setSetupError('Failed to log out. Please try again.');
     }
-  }, []);
+  }, [setSetupError]);
 
   // Reset split-related states on month change
   useEffect(() => {
@@ -563,9 +482,8 @@ export default function FinancialPlanner() {
     setSplitError('');
     setExtraSplitError('');
     setWithdrawAmount(0);
-  }, [sel]);
+  }, [sel, setAdj, setExtraAdj, setExtraSplitActive, setExtraSplitError, setSavingEdited, setSplitError, setWithdrawAmount]);
 
-  const isPassed = (i: number) => new Date() >= months[i].date;
   const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
   const calc = calcResult.items;
 
@@ -594,7 +512,7 @@ export default function FinancialPlanner() {
         }
       }
     });
-  }, [autoRollover, calc, data]);
+  }, [autoRollover, calc, data, setData, setHasChanges]);
 
   const cur = calc[sel];
 
@@ -661,28 +579,16 @@ export default function FinancialPlanner() {
     }
 
     const idx = forceRebalanceTarget;
-    const total = forceRebalanceValues.save + forceRebalanceValues.groc + forceRebalanceValues.ent;
-
-    if (forceRebalanceValues.save < 0 || forceRebalanceValues.groc < 0 || forceRebalanceValues.ent < 0) {
-      setForceRebalanceError('Budgets cannot be negative.');
-      return;
-    }
-
-    // Recalculate available balance fresh from current data
-    const monthData = data[idx];
-    const freshAvailable = (monthData.inc || 0) + (monthData.extraInc || 0) - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
-    
-    // Check that total equals available (not just less than)
-    // Match server-side/library tolerance to avoid tiny float mismatches
-    const tolerance = 0.5;
-    console.debug('Force rebalance apply check', { idx, total, freshAvailable, tolerance });
-    if (Math.abs(total - freshAvailable) > tolerance) {
-      const diff = total - freshAvailable;
-      if (diff > 0) {
-        setForceRebalanceError(`Total budgets exceed available by ${diff.toFixed(0)} SEK. Please reduce.`);
-      } else {
-        setForceRebalanceError(`Total budgets are ${Math.abs(diff).toFixed(0)} SEK below available. Please allocate all funds.`);
-      }
+    const evaluation = evaluateManualRebalance({
+      monthIdx: idx,
+      save: forceRebalanceValues.save,
+      groc: forceRebalanceValues.groc,
+      ent: forceRebalanceValues.ent,
+      dataOverride: data,
+      fixedOverride: fixed
+    });
+    if (!evaluation.valid) {
+      setForceRebalanceError(evaluation.error ?? 'Budgets are not balanced.');
       return;
     }
 
@@ -729,10 +635,31 @@ export default function FinancialPlanner() {
       })();
     }
 
-  }, [data, fixed, forceRebalanceTarget, forceRebalanceValues.ent, forceRebalanceValues.groc, forceRebalanceValues.save, varExp, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, saveData, forceRebalanceInputError]);
+  }, [
+    data,
+    evaluateManualRebalance,
+    fixed,
+    forceRebalanceInputError,
+    forceRebalanceTarget,
+    forceRebalanceValues.ent,
+    forceRebalanceValues.groc,
+    forceRebalanceValues.save,
+    forceRebalanceInitialized,
+    recomputeBudgetIssues,
+    saveData,
+    setBudgetBalanceIssues,
+    setData,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setHasChanges,
+    setVarExp,
+    user,
+    varExp
+  ]);
 
   const applyForceRebalanceToAll = useCallback(() => {
-    const result = computeBudgetIssues({ data, varExp, fixed, months });
+    const result = checkForIssues();
     if (result.issues.length === 0) {
       setForceRebalanceOpen(false);
       return;
@@ -747,7 +674,8 @@ export default function FinancialPlanner() {
 
     // Apply equal split to all problematic months
     result.issues.forEach((_, issueIdx) => {
-      const issue = computeBudgetIssues({ data: tempData, varExp: tempVar, fixed, months }).issues[issueIdx];
+      const recalculated = checkForIssues({ dataOverride: tempData, varOverride: tempVar, fixedOverride: fixed });
+      const issue = recalculated.issues[issueIdx];
       if (!issue) return;
 
       const monthMatch = issue.match(/Month ([^:]+):/);
@@ -802,7 +730,24 @@ export default function FinancialPlanner() {
       })();
     }
 
-  }, [data, fixed, varExp, months, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, saveData]);
+  }, [
+    checkForIssues,
+    data,
+    fixed,
+    forceRebalanceInitialized,
+    months,
+    recomputeBudgetIssues,
+    saveData,
+    setBudgetBalanceIssues,
+    setData,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setHasChanges,
+    setVarExp,
+    user,
+    varExp
+  ]);
 
   const saveChanges = () => {
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });

@@ -155,21 +155,21 @@ export function useFinancialState() {
           const des = deserializeTransactions(saved.transactions);
           setTransactions(des);
           
-          const savedData = saved.data as DataItem[];
-          const savedFixed = saved.fixed as FixedExpense[];
+          const savedData = saved.data;
+          const savedFixed = saved.fixed;
           setData(savedData);
           setFixed(savedFixed);
           
           // Migration: ensure varExp has entBudg array for old data
-          const varExpData = saved.varExp as VarExp;
+          const varExpData = saved.varExp;
           if (!varExpData.entBudg || !Array.isArray(varExpData.entBudg)) {
             varExpData.entBudg = Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 0);
           }
           setVarExp(varExpData);
           
           setAutoRollover(saved.autoRollover ?? false);
-          setLastSaved(saved.updatedAt?.toDate?.() ?? null);
-          setBaseUpdatedAt(saved.updatedAt ?? null);
+          setLastSaved((saved.updatedAt as Timestamp | undefined)?.toDate?.() ?? null);
+          setBaseUpdatedAt((saved.updatedAt as Timestamp | null | undefined) ?? null);
           lastLoadedUid.current = user.uid;
         } else {
           // No data found, initialize empty state

@@ -107,57 +107,19 @@ This refactoring plan follows a **5-phase approach** to safely extract logic whi
 - Updated `app/page.tsx` imports to use new hook types
 - Result: Clear separation between domain and UI state types
 
-### Step 1.3: Organize Type File Structure
+### Step 1.3: Organize Type File Structure ✅ COMPLETED
 
-**Status**: PENDING
+**Changes Made**:
+- Added `lib/types/core.ts` (domain types) and `lib/types/ui.ts` (UI and hook types) with a `lib/types/index.ts` barrel
+- Kept `lib/types.ts` and `lib/hooks/types.ts` as compatibility barrels so existing imports continue to work
+- Verified imports across app/hooks/tests resolve without cycles
 
-**Objective**: Create subdirectories and organize types by domain
+### Step 1.4: Add Type Guards and Validators ✅ COMPLETED
 
-**TDD Requirements**:
-
-**Positive Test Cases**:
-- All existing types are still importable from their current locations
-- All imports in `page.tsx`, `calc.ts`, `budgetBalance.ts` resolve correctly
-- No runtime errors after reorganization
-
-**Negative Test Cases**:
-- Circular imports do not occur
-- Unused types don't break imports
-- Missing type files raise proper TypeScript errors
-
-**Implementation**:
-- Create `lib/types/core.ts` for domain types
-- Create `lib/types/ui.ts` for UI state types
-- Create `lib/types/index.ts` for barrel exports
-- Update all imports across the codebase
-- Verify no import cycles
-
-### Step 1.4: Add Type Guards and Validators
-
-**Status**: PENDING
-
-**Objective**: Create runtime validation functions for key types
-
-**TDD Requirements**:
-
-**Positive Test Cases**:
-- Valid MonthItem objects pass validation
-- Valid DataItem objects pass validation
-- Valid FixedExpense objects pass validation
-- Valid Transactions objects pass validation
-- Valid Firestore data passes validation
-
-**Negative Test Cases**:
-- Invalid objects fail validation with descriptive errors
-- Partial objects fail validation
-- Type guards correctly identify type mismatches
-- Schema validation catches Firestore corruption
-
-**Implementation**:
-- Create `lib/validators.ts`
-- Implement type guards for: MonthItem, DataItem, FixedExpense, Split, Transactions
-- Add Zod or io-ts schemas for Firestore data validation
-- Update `lib/finance.ts` to validate on read
+**Changes Made**:
+- Added `lib/validators.ts` with runtime guards/sanitizers for DataItem, FixedExpense, VarExp, Transactions, Change, and full FinancialDoc validation
+- Integrated validation into `lib/finance.ts` `getFinancialData` to warn on corruption and return sanitized data
+- Added unit coverage in `tests/lib/validators.test.ts`
 
 ---
 
@@ -167,268 +129,43 @@ This refactoring plan follows a **5-phase approach** to safely extract logic whi
 
 **Total Steps**: 4 | **Estimated Difficulty**: Medium
 
-### Step 2.1: Extract useFinancialState Hook
+### Step 2.1: Extract useFinancialState Hook ✅ COMPLETED
 
-**Status**: PENDING
+**Changes Made**:
+- Core financial state + autosave extracted to `lib/hooks/useFinancialState.ts` and integrated into `app/page.tsx`
+- Firestore load/save flows preserved; added validation on load via `lib/finance.ts`
+- Tests: existing suite passing
 
-**Objective**: Create a hook that manages core financial state and persistence
+### Step 2.2: Extract useTransactions Hook ✅ COMPLETED
 
-**TDD Requirements Before Implementation**:
+**Changes Made**:
+- Transaction CRUD and modal helpers extracted to `lib/hooks/useTransactions.ts` with TDD coverage; integrated into `app/page.tsx`
+- Additional Phase 2 deliverables completed: `useFixedExpenses` and `useVariableExpenses` hooks (not in original plan) with full tests and integration
 
-**Analyze Current Behavior**:
-- Study lines 76-150 in `app/page.tsx` (state initialization)
-- Study state setters for `data`, `fixed`, `varExp`
-- Identify debounce logic (currently 1s debounce on save)
-- Document initialization flow from Firestore
+### Step 2.3: Extract useBudgetValidation Hook ✅ COMPLETED
 
-**Positive Test Cases**:
-- `useFinancialState` initializes with correct default structure (60 months, proper field types)
-- Loading data from Firestore populates state correctly
-- Changes to state trigger autosave with 1s debounce
-- Multiple rapid changes debounce correctly (only one save)
-- Firebase errors don't crash the hook
-- User data loads after authentication
-- Undo/rollback functions restore previous state correctly
+**Changes Made**:
+- Created `lib/hooks/useBudgetValidation.ts` to wrap balance validation, issue detection, and manual rebalance checks; integrated into `app/page.tsx`
+- Added tests in `tests/hooks/useBudgetValidation.test.ts`
 
-**Negative Test Cases**:
-- Hook handles undefined user gracefully (no save)
-- Hook handles Firestore read errors without crashing
-- Hook handles Firestore write errors with user notification
-- Invalid data from Firestore is caught by validators
-- Memory leaks are prevented on unmount
-- Debounce cleanup on unmount
+### Step 2.4: Extract useMonthSelection Hook ✅ COMPLETED
 
-**Implementation Steps**:
-1. Create `lib/hooks/useFinancialState.ts`
-2. Extract state initialization logic (lines 76-150)
-3. Move data/fixed/varExp state setters
-4. Move autosave debounce logic
-5. Create internal state consistency check function
-6. Export hook with signature: `useFinancialState(userId: string): { data, fixed, varExp, setData, setFixed, setVarExp, loading, error }`
-7. Update `app/page.tsx` to use hook
-8. Run all tests: `npm test` ✓
-9. Manual browser test (load app, verify data loads)
-
-**Validation Checklist**:
-- [ ] All 90 tests pass
-- [ ] Lint: `npm run lint` ✓
-- [ ] Build: `npm run build` ✓
-- [ ] Manual test: Data loads correctly
-- [ ] Manual test: Changes autosave
-- [ ] Manual test: No visual differences
-
-### Step 2.2: Extract useTransactions Hook
-
-**Status**: PENDING
-
-**Objective**: Create a hook that manages transaction state and logic
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study transaction state in `app/page.tsx` (transactions, transModal, transEdit)
-- Study transaction mutation logic (add, edit, delete)
-- Identify all transaction-related calculations
-- Document modal open/close behavior
-
-**Positive Test Cases**:
-- Transactions state initializes as 60-month array structure
-- Adding transaction updates state correctly
-- Editing transaction applies changes to correct month
-- Deleting transaction removes entry properly
-- Modal state (open/close) works correctly
-- Transaction modal filtering works (by category)
-- Undo transaction logic reverses the transaction
-
-**Negative Test Cases**:
-- Adding to wrong month index fails gracefully
-- Editing non-existent transaction doesn't crash
-- Deleting from empty array is handled
-- Modal doesn't allow invalid amounts
-- Concurrent edits are handled safely
-- Invalid category is rejected
-
-**Implementation Steps**:
-1. Create `lib/hooks/useTransactions.ts`
-2. Extract transaction state (transactions, transModal, transEdit)
-3. Move all transaction setters
-4. Create transaction CRUD functions
-5. Create modal state functions
-6. Export hook with signature: `useTransactions(): { transactions, transModal, transEdit, addTransaction, editTransaction, deleteTransaction, setTransModal, setTransEdit }`
-7. Update `app/page.tsx` to use hook
-8. Run tests: `npm test` ✓
-9. Manual test (add, edit, delete transactions)
-
-### Step 2.3: Extract useBudgetValidation Hook
-
-**Status**: PENDING
-
-**Objective**: Create a hook for budget balance checking and rebalancing logic
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study `validateBudgetBalance` function in `page.tsx`
-- Study `applyForceRebalance` and `applyForceRebalanceToAll` logic
-- Identify all balance checking rules
-- Document rebalance modal behavior
-
-**Positive Test Cases**:
-- Valid budget allocations pass validation
-- Sum of budgets equals income validation passes
-- Budget deficit is calculated correctly
-- Force rebalance applies fixes correctly
-- Equal split option distributes correctly
-- All rebalance options preserve total amount
-
-**Negative Test Cases**:
-- Over-allocated budgets are caught
-- Negative budgets are rejected
-- NaN/Infinity values are caught
-- Circular rebalancing scenarios are handled
-- Multiple issue months are detected
-
-**Implementation Steps**:
-1. Create `lib/hooks/useBudgetValidation.ts`
-2. Extract validation functions
-3. Extract rebalance logic
-4. Create helper functions for deficit calculation
-5. Export hook with signature: `useBudgetValidation(): { validateBudgetBalance, checkForIssues, applyRebalance }`
-6. Update `app/page.tsx` to use hook
-7. Run tests: `npm test` ✓
-8. Manual test (trigger budget issues, apply fixes)
-
-### Step 2.4: Extract useMonthSelection Hook
-
-**Status**: PENDING
-
-**Objective**: Create a hook for month selection and navigation
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study month selection state (sel, setSel)
-- Study month navigation (prev/next)
-- Study rollover month logic
-- Document passed month behavior
-
-**Positive Test Cases**:
-- Month index selection works (0-59)
-- Next month navigation increments correctly
-- Previous month navigation decrements correctly
-- Cannot go before month 0
-- Cannot go after month 59
-- Passed months are identified correctly
-- Rollover days calculation is correct
-
-**Negative Test Cases**:
-- Invalid month index is rejected
-- Out-of-bounds navigation is clamped
-- Negative indices fail
-- Index > 59 fails
-
-**Implementation Steps**:
-1. Create `lib/hooks/useMonthSelection.ts`
-2. Extract selection state and logic
-3. Create navigation functions (prev, next, goto)
-4. Create helper functions for passed/rollover logic
-5. Export hook with signature: `useMonthSelection(): { sel, setSel, goNext, goPrev, goToMonth, isPassed, rolloverDays }`
-6. Update `app/page.tsx` to use hook
-7. Run tests: `npm test` ✓
-8. Manual test (navigate months, verify rollover logic)
+**Changes Made**:
+- Added `lib/hooks/useMonthSelection.ts` with month generation, clamped navigation, passed detection, and rollover day helper; integrated into `app/page.tsx`
+- Added tests in `tests/hooks/useMonthSelection.test.ts`
 
 ---
 
-## Phase 3: Extract Modal Logic Hooks
+## Phase 3: Extract Modal Logic Hooks ✅ COMPLETED
 
 **Objective**: Extract complex modal and adjustment logic into specialized hooks
 
-**Total Steps**: 4 | **Estimated Difficulty**: High
-
-### Step 3.1: Extract useSalarySplit Hook
-
-**Status**: PENDING
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study salary split modal logic (lines ~1500-1750)
-- Study salary change detection
-- Study undo logic for salary changes
-- Document "apply to future months" behavior
-
-**Positive Test Cases**:
-- Salary increase detection works
-- Salary decrease detection works
-- Split validation passes with correct totals
-- Split validation fails with incorrect totals
-- "Apply to future" applies to all future months
-- Undo restores previous salary and adjustments
-- Balance check prevents invalid adjustments
-
-**Negative Test Cases**:
-- Incomplete splits are rejected
-- Over-allocated splits are rejected
-- Undo on invalid state handled gracefully
-
-### Step 3.2: Extract useExtraIncomeSplit Hook
-
-**Status**: PENDING
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study extra income split logic (lines ~1545-1650)
-- Study split application
-- Study undo logic
-
-**Positive Test Cases**:
-- Extra income split calculates correctly
-- Split totals equal income amount
-- Transactions are created correctly
-
-**Negative Test Cases**:
-- Zero extra income doesn't trigger split
-- Invalid splits are rejected
-
-### Step 3.3: Extract useBudgetRebalance Hook
-
-**Status**: PENDING
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study budget rebalance modal (lines ~1900-2050)
-- Study rebalance calculation
-- Study multi-month rebalance
-
-**Positive Test Cases**:
-- Rebalance modal calculates correctly
-- Multi-month application works
-- Undo restores previous budgets
-
-**Negative Test Cases**:
-- Invalid allocations rejected
-
-### Step 3.4: Extract useNewExpenseAllocation Hook
-
-**Status**: PENDING
-
-**TDD Requirements Before Implementation**:
-
-**Analyze Current Behavior**:
-- Study new expense modal (lines ~2300-2500)
-- Study split logic for new expenses
-- Study multi-month expense handling
-
-**Positive Test Cases**:
-- New expense allocation works
-- Multi-month allocation works
-- Balance preserved after allocation
-
-**Negative Test Cases**:
-- Invalid allocations rejected
-- Over-allocated expenses rejected
+**Delivered**:
+- Step 3.1: Basic modal state hooks (change/delete/trans/undo) — completed with tests
+- Step 3.2: Force rebalance modal hook — completed with tests
+- Step 3.3: Budget rebalance modal hook — completed with tests
+- Step 3.4: Split modals (salary, extra income, new expense) — completed with tests
+- Step 3.5: Integrated all Phase 3 modal hooks into `app/page.tsx`
 
 ---
 
@@ -505,19 +242,16 @@ This refactoring plan follows a **5-phase approach** to safely extract logic whi
 ## Progress Tracking
 
 ### Completed ✅
-- Phase 1 Step 1.1: Consolidate core types (commit ca1ca8c)
-- Phase 1 Step 1.2: Separate hook types (commit d3d2548)
+- Phase 1: Steps 1.1–1.4 (type consolidation, split core/ui type modules, runtime validators + Firestore validation)
+- Phase 2: Steps 2.1–2.4 (useFinancialState, useTransactions, useBudgetValidation, useMonthSelection) plus additional hooks `useFixedExpenses` and `useVariableExpenses`
+- Phase 3: Steps 3.1–3.5 (modal state, force/budget rebalance, split modals, integration)
 
 ### In Progress 🔄
 - None currently
 
 ### Pending ⏳
-- Phase 1 Step 1.3: Organize type file structure
-- Phase 1 Step 1.4: Add type guards and validators
-- Phase 2 Steps 2.1-2.4: Extract business logic hooks
-- Phase 3 Steps 3.1-3.4: Extract modal logic hooks
-- Phase 4 Steps 4.1-4.5: Break down UI components
-- Phase 5 Steps 5.1-5.2: Cleanup and optimization
+- Phase 4 Steps 4.1–4.5: Break down UI components
+- Phase 5 Steps 5.1–5.2: Cleanup and optimization
 
 ---
 
