@@ -63,10 +63,10 @@ const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
   };
 
   const bgClasses = {
-    blue: 'bg-blue-50 border-blue-200',
-    green: 'bg-green-50 border-green-200',
-    purple: 'bg-purple-50 border-purple-200',
-    orange: 'bg-orange-50 border-orange-200'
+    blue: 'bg-blue-100/80 border-blue-300',
+    green: 'bg-green-100/80 border-green-300',
+    purple: 'bg-purple-100/80 border-purple-300',
+    orange: 'bg-orange-100/80 border-orange-300'
   };
 
   return (
@@ -114,14 +114,14 @@ export default memo(function AnalyticsSection({
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-        <Card label="Savings" value={totalSavings} icon={PiggyBank} color="blue" />
-        <Card label="Balance" value={balance} icon={TrendingUp} color="green" />
         <Card label="Income" value={income} icon={Calendar} color="purple" />
+        <Card label="Balance" value={balance} icon={TrendingUp} color="blue" />
+        <Card label="Savings" value={totalSavings} icon={PiggyBank} color="green" />
         <Card 
           label="Groceries" 
           value={groceriesRemaining} 
           icon={ShoppingCart} 
-          color="green" 
+          color="purple" 
           sub={`of ${groceriesBudget.toFixed(0)} SEK`} 
         />
         <Card 
@@ -134,12 +134,12 @@ export default memo(function AnalyticsSection({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <div className="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
+        <div className="bg-green-100/50 rounded-2xl border border-green-300 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <PiggyBank className="w-4 h-4 text-emerald-600" />
+            <PiggyBank className="w-4 h-4 text-green-600" />
             Emergency buffer
           </div>
-          <div className="text-2xl font-bold text-emerald-700">
+          <div className="text-2xl font-bold text-green-700">
             {emergencyBufferMonths !== null ? `${emergencyBufferMonths.toFixed(1)} months` : 'Add savings'}
           </div>
           <p className="text-sm text-gray-600 leading-snug">
@@ -147,12 +147,12 @@ export default memo(function AnalyticsSection({
           </p>
         </div>
 
-        <div className="bg-blue-50 rounded-2xl border border-blue-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
+        <div className="bg-green-100/50 rounded-2xl border border-green-300 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <Clock className="w-4 h-4 text-blue-600" />
+            <Clock className="w-4 h-4 text-green-600" />
             Savings runway
           </div>
-          <div className={`text-2xl font-bold ${savingsRunwayMonths === null ? 'text-emerald-700' : 'text-blue-700'}`}>
+          <div className={`text-2xl font-bold ${savingsRunwayMonths === null ? 'text-green-700' : 'text-green-700'}`}>
             {savingsRunwayMonths === null ? 'Stable / Growing' : `${savingsRunwayMonths.toFixed(1)} months`}
           </div>
           <p className="text-sm text-gray-600 leading-snug">
@@ -162,10 +162,10 @@ export default memo(function AnalyticsSection({
           </p>
         </div>
 
-        <div className="bg-indigo-50 rounded-2xl border border-indigo-200 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
+        <div className="bg-blue-100/50 rounded-2xl border border-blue-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-indigo-600" />
+              <TrendingUp className="w-4 h-4 text-blue-600" />
               What-if preview
             </div>
             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full border border-gray-200">Live estimate</span>
@@ -178,7 +178,7 @@ export default memo(function AnalyticsSection({
             step={1}
             value={whatIfSalaryDelta}
             onChange={(e) => onWhatIfSalaryDeltaChange(parseInt(e.target.value))}
-            className="w-full accent-indigo-600"
+            className="w-full accent-blue-600"
           />
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -190,12 +190,12 @@ export default memo(function AnalyticsSection({
             Reduce groceries by 5%
           </label>
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <div className={`text-2xl font-bold ${((whatIfProjection?.projectedNet ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'}`}>
+            <div className={`text-2xl font-bold ${((whatIfProjection?.projectedNet ?? 0) >= 0) ? 'text-green-700' : 'text-red-700'}`}>
               {(whatIfProjection?.projectedNet ?? 0).toFixed(0)} SEK
             </div>
             <p className="text-sm text-gray-600">
               Monthly net after tweaks (
-              <span className={`${((whatIfProjection?.delta ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'} font-semibold`}>
+              <span className={`${((whatIfProjection?.delta ?? 0) >= 0) ? 'text-green-700' : 'text-red-700'} font-semibold`}>
                 {((whatIfProjection?.delta ?? 0) >= 0 ? '+' : '') + (whatIfProjection?.delta ?? 0).toFixed(0)}
               </span>
               {' '}vs current)

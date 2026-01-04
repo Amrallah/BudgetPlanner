@@ -1468,88 +1468,7 @@ return (
             }}
           />
 
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
-              <h3 className="font-bold text-purple-900 mb-3 flex items-center gap-2">
-                <Wallet className="w-5 h-5" />
-                Withdraw from Savings
-              </h3>
-              <p className="text-sm text-purple-800 mb-3">Take money out of your total savings (e.g., for emergencies)</p>
-              <div className="flex gap-2">
-                <input 
-                  type="number" 
-                  min="0"
-                  max={cur.totSave}
-                  placeholder="Amount to withdraw" 
-                  value={withdrawAmount || ''} 
-                  onChange={(e) => {
-                    const val = sanitizeNumberInput(e.target.value);
-                    setWithdrawAmount(Math.min(val, cur.totSave));
-                  }}
-                  className="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
-                />
-                <button 
-                  onClick={() => {
-                    if (!withdrawAmount || withdrawAmount <= 0) {
-                      alert('Please enter a valid withdrawal amount');
-                      return;
-                    }
-                    if (withdrawAmount > cur.totSave) {
-                      alert(`Cannot withdraw more than total savings (${cur.totSave.toFixed(0)} SEK)`);
-                      return;
-                    }
-                    const n = [...data];
-                    
-                    // Cascade: Previous savings first, then current month
-                    if (withdrawAmount <= cur.prev) {
-                      // Sufficient in previous savings
-                      n[sel].prev = cur.prev - withdrawAmount;
-                      n[sel].prevManual = true;
-                      alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK from previous savings`);
-                    } else {
-                      // Need both previous and current
-                      const fromPrev = cur.prev;
-                      const fromCurrent = withdrawAmount - fromPrev;
-                      n[sel].prev = 0;
-                      n[sel].prevManual = true;
-                      n[sel].save = Math.max(0, n[sel].save - fromCurrent);
-                      alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK (${fromPrev.toFixed(0)} from previous + ${fromCurrent.toFixed(0)} from current)`);
-                    }
-                    
-                    setData(n);
-                    setWithdrawAmount(0);
-                    setHasChanges(true);
-                  }}
-                  className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all whitespace-nowrap"
-                >
-                  Withdraw
-                </button>
-              </div>
-            </div>
 
-            <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-              <h3 className="font-bold text-orange-900 mb-3">Entertainment from Savings %</h3>
-              <p className="text-sm text-orange-800 mb-3">Calculate how much you can spend from savings on entertainment</p>
-              <div className="flex items-center gap-2 mb-2">
-                <input 
-                  type="number" 
-                  min="0"
-                  max="100"
-                  value={entSavingsPercent} 
-                  onChange={(e) => {
-                    const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-                    setEntSavingsPercent(val);
-                  }}
-                  className="w-20 p-2 border-2 border-gray-300 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all"
-                />
-                <span className="text-sm text-gray-700">% of {cur.totSave.toFixed(0)} SEK</span>
-              </div>
-              <div className="bg-white p-3 rounded-lg border-2 border-orange-200">
-                <div className="text-2xl font-bold text-orange-900">{((cur.totSave * entSavingsPercent) / 100).toFixed(0)} SEK</div>
-                <div className="text-xs text-orange-700 mt-1">Available for entertainment</div>
-              </div>
-            </div>
-          </div>
           {salarySplitActive && (
             <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
               <div className="flex items-center gap-2 mb-3">
@@ -2609,6 +2528,111 @@ return (
           }}
           onEditValueChange={(value) => setTransEdit({ ...transEdit, value })}
         />
+
+        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Fixed Expenses</h3>
+            <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-2 shadow-md transition-all">
+              <Plus size={18}/>Add Expense
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6">
+          <div className="bg-purple-100/80 border-2 border-purple-300 rounded-2xl shadow-xl p-4 sm:p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 text-white flex items-center justify-center shadow-md">
+                <Wallet className="w-5 h-5" />
+              </div>
+              <h3 className="font-semibold text-gray-700">Withdraw from Savings</h3>
+            </div>
+            <p className="text-sm text-gray-600">Take money out of your total savings (e.g., for emergencies)</p>
+            <div className="flex flex-col gap-2">
+              <input 
+                type="number" 
+                min="0"
+                max={cur.totSave}
+                placeholder="Amount to withdraw" 
+                value={withdrawAmount || ''} 
+                onChange={(e) => {
+                  const val = sanitizeNumberInput(e.target.value);
+                  setWithdrawAmount(Math.min(val, cur.totSave));
+                }}
+                className="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
+              />
+              <button 
+                onClick={() => {
+                  if (!withdrawAmount || withdrawAmount <= 0) {
+                    alert('Please enter a valid withdrawal amount');
+                    return;
+                  }
+                  if (withdrawAmount > cur.totSave) {
+                    alert(`Cannot withdraw more than total savings (${cur.totSave.toFixed(0)} SEK)`);
+                    return;
+                  }
+                  const n = [...data];
+                  
+                  // Cascade: Previous savings first, then current month
+                  if (withdrawAmount <= cur.prev) {
+                    // Sufficient in previous savings
+                    n[sel].prev = cur.prev - withdrawAmount;
+                    n[sel].prevManual = true;
+                    alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK from previous savings`);
+                  } else {
+                    // Need both previous and current
+                    const fromPrev = cur.prev;
+                    const fromCurrent = withdrawAmount - fromPrev;
+                    n[sel].prev = 0;
+                    n[sel].prevManual = true;
+                    n[sel].save = Math.max(0, n[sel].save - fromCurrent);
+                    alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK (${fromPrev.toFixed(0)} from previous + ${fromCurrent.toFixed(0)} from current)`);
+                  }
+                  
+                  setData(n);
+                  setWithdrawAmount(0);
+                  setHasChanges(true);
+                }}
+                className="bg-purple-600 text-white px-4 py-2 rounded-xl hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all whitespace-nowrap w-full"
+              >
+                Withdraw
+              </button>
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Available: {cur.totSave.toFixed(0)} SEK</div>
+          </div>
+
+          <div className="bg-orange-100/80 border-2 border-orange-300 rounded-2xl shadow-xl p-4 sm:p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-md">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <h3 className="font-semibold text-gray-700">Entertainment from Savings %</h3>
+            </div>
+            <p className="text-sm text-gray-600">Calculate how much you can spend from savings on entertainment</p>
+            <div className="flex items-center gap-2 mb-2">
+              <input 
+                type="number" 
+                min="0"
+                max="100"
+                value={entSavingsPercent} 
+                onChange={(e) => {
+                  const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                  setEntSavingsPercent(val);
+                }}
+                className="w-16 p-2 border-2 border-gray-300 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all"
+              />
+              <span className="text-xs text-gray-700">%</span>
+            </div>
+            <div className="bg-white p-3 rounded-lg border-2 border-orange-200">
+              <div className="text-lg font-bold text-orange-900">{((cur.totSave * entSavingsPercent) / 100).toFixed(0)} SEK</div>
+              <div className="text-xs text-orange-700 mt-1">Available for entertainment</div>
+            </div>
+          </div>
+
+          <div className="bg-gray-100/50 border-2 border-gray-300 rounded-2xl shadow-xl p-4 sm:p-5 flex flex-col items-center justify-center gap-2 text-center">
+            <div className="text-sm text-gray-500 font-medium">Additional Card Slot</div>
+            <p className="text-xs text-gray-400">Reserved for future features</p>
+          </div>
+        </div>
 
         <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
