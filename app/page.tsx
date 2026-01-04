@@ -17,6 +17,7 @@ import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
 import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
 import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
+import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -2718,97 +2719,46 @@ return (
           onOpenHistory={handleOpenHistory}
         />
 
-        {transModal.open && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-lg">
-                  Transactions — {transModal.type === 'groc' ? 'Groceries' : transModal.type === 'ent' ? 'Entertainment' : 'Extra Allocations'} — {months[sel].name}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {transModal.type !== 'extra' ? (
-                  (transactions[transModal.type][sel].length === 0 ? (
-                    <div className="text-sm text-gray-500">No transactions for this month.</div>
-                  ) : (
-                    transactions[transModal.type][sel].map((t, i) => {
-                      const txType = transModal.type as 'groc' | 'ent';
-                      return (
-                        <div key={i} className="flex items-center justify-between border-b py-2">
-                          <div className="flex items-center gap-4">
-                            {transEdit.idx === i ? (
-                              <div className="flex items-center gap-2">
-                                <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
-                                <button onClick={()=>handleSaveTransactionEdit(txType, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                                <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
-                                <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
-                            <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(txType, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ))
-                ) : (
-                  // extra allocations view (with edit/delete)
-                  (transactions.extra[sel] && transactions.extra[sel].length > 0) ? (
-                    transactions.extra[sel].map((ex, i) => (
-                      <div key={i} className="flex items-center justify-between border-b py-2">
-                        <div className="flex items-center gap-4">
-                          <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                          <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => {
-                            if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
-                            const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                            const removed = tcopy.extra[sel].splice(i, 1)[0];
-                            setTransactions(tcopy);
-                            const n = [...data];
-                            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
-                            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
-                            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
-                            // Also reduce permanent inc by the total allocation amount
-                            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
-                            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
-                            setData(n);
-                            setHasChanges(true);
-                          }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )
-                )}
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
-                  {transactions.extra[sel] && transactions.extra[sel].length > 0 ? (
-                    transactions.extra[sel].map((ex, j) => (
-                      <div key={j} className="flex items-center justify-between border-b py-2">
-                        <div className="text-sm">Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — Savings: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                        <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <TransactionModal
+          isOpen={transModal.open}
+          type={transModal.type as TransactionType}
+          monthName={months[sel].name}
+          transactions={transModal.type === 'extra' ? [] : transactions[transModal.type][sel] || []}
+          extraAllocations={transactions.extra[sel] || []}
+          editingIndex={transEdit.idx}
+          editingValue={transEdit.value}
+          onClose={() => setTransModal({ open: false, type: transModal.type })}
+          onEdit={(index, value) => setTransEdit({ idx: index, value })}
+          onSaveEdit={() => {
+            if (transModal.type !== 'extra') {
+              handleSaveTransactionEdit(transModal.type as 'groc' | 'ent', sel, transEdit.idx!);
+            }
+          }}
+          onCancelEdit={() => setTransEdit({ idx: null, value: '' })}
+          onDelete={(index) => {
+            if (transModal.type !== 'extra') {
+              handleDeleteTransaction(transModal.type as 'groc' | 'ent', sel, index);
+            }
+          }}
+          onDeleteExtra={(index) => {
+            const tcopy = { 
+              groc: transactions.groc.map(a => a.slice()), 
+              ent: transactions.ent.map(a => a.slice()), 
+              extra: transactions.extra.map(a => a.slice()) 
+            } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+            const removed = tcopy.extra[sel].splice(index, 1)[0];
+            setTransactions(tcopy);
+            const n = [...data];
+            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
+            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
+            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
+            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
+            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
+            setData(n);
+            setHasChanges(true);
+          }}
+          onEditValueChange={(value) => setTransEdit({ ...transEdit, value })}
+        />
 
         <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
