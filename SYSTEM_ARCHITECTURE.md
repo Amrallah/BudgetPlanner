@@ -651,6 +651,7 @@ for each month i:
 - `currentIssueIndex: number` - Which issue being fixed
 - `quickFixOption: string` - Selected quick-fix type
 - `manualAllocations: {save, groc, ent}` - Manual override
+- `userSelectedOption: "adjust-save" | "adjust-groc" | "adjust-ent" | "equal-split" | "manual"` - Tracks which option user picked
 
 **Quick-Fix Options:**
 1. `"adjust-save"`: `newSave = available - groc - ent`
@@ -659,9 +660,9 @@ for each month i:
 4. `"equal-split"`: All 3 = available / 3
 
 **Key Functions:**
-- `applyQuickFix(option)`: Applies selected fix
-- `applyManualFix(save, groc, ent)`: Applies manual override
-- `applyToAllMonths()`: Fixes all issues with equal split
+- `applyQuickFix(option)`: Applies selected fix to current month, records option selection
+- `applyManualFix(save, groc, ent)`: Applies manual override to current month, records manual option
+- `applyToAllMonths()`: Applies the user's selected option (quick-fix or manual) to ALL problematic months. Only shown when issues.length > 1
 - `moveToNextIssue()`: Shows next problematic month
 - `cancel()`: Discards changes
 

@@ -466,8 +466,8 @@
 4. **Equal Split:** Divide available equally across all 3
 
 **Buttons:**
-- "Apply This Month" - Fixes current month, moves to next issue
-- "Fix All N Months" - Applies equal split to all problematic months at once
+- "Apply This Month" - Fixes current month using selected option, moves to next issue
+- "Fix All N Months" - Applies selected option (quick-fix or manual values) to all problematic months at once. Button only shows when multiple months have balance issues.
 - Closes on completion with success message
 
 ### Modal 4: Extra Income Split Modal

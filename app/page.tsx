@@ -96,10 +96,12 @@ export default function FinancialPlanner() {
     forceRebalanceValues,
     forceRebalanceTarget,
     forceRebalanceInitialized,
+    selectedOption,
     setForceRebalanceOpen,
     setForceRebalanceError,
     setForceRebalanceValues,
-    setForceRebalanceTarget
+    setForceRebalanceTarget,
+    setSelectedOption
   } = useForceRebalanceModal();
   const {
     salarySplitActive,
@@ -1037,6 +1039,12 @@ export default function FinancialPlanner() {
   ]);
 
   const applyForceRebalanceToAll = useCallback(() => {
+    // Require that user has selected an option before applying to all months
+    if (!selectedOption) {
+      setForceRebalanceError('Please select an option or enter manual values first');
+      return;
+    }
+
     const result = checkForIssues();
     if (result.issues.length === 0) {
       setForceRebalanceOpen(false);
@@ -1050,7 +1058,7 @@ export default function FinancialPlanner() {
       entBudg: [...varExp.entBudg]
     };
 
-    // Apply equal split to all problematic months
+    // Apply the user's selected option to all problematic months
     result.issues.forEach((_, issueIdx) => {
       const recalculated = checkForIssues({ dataOverride: tempData, varOverride: tempVar, fixedOverride: fixed });
       const issue = recalculated.issues[issueIdx];
@@ -1066,25 +1074,86 @@ export default function FinancialPlanner() {
       const availableBudget = monthData.inc + monthData.extraInc - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
       const grocExtras = (tempData[idx]?.grocBonus || 0) + (tempData[idx]?.grocExtra || 0);
       const entExtras = (tempData[idx]?.entBonus || 0) + (tempData[idx]?.entExtra || 0);
-
-      // Non-adjustable portion (extras) + adjustable portion should equal available
       const adjustable = availableBudget - grocExtras - entExtras;
-      const baseSplit = adjustable / 3;
-      const saveTotal = baseSplit;
-      const grocTotal = baseSplit + grocExtras;
-      const entTotal = baseSplit + entExtras;
 
-      tempData[idx].save = saveTotal;
-      tempData[idx].defSave = saveTotal;
-      // Clear prior extras so this forced split becomes the new base
-      tempData[idx].grocBonus = 0;
-      tempData[idx].grocExtra = 0;
-      tempData[idx].entBonus = 0;
-      tempData[idx].entExtra = 0;
-      tempData[idx].saveExtra = 0;
-      // With extras cleared, base budgets should equal the desired totals
-      tempVar.grocBudg[idx] = Math.max(0, grocTotal);
-      tempVar.entBudg[idx] = Math.max(0, entTotal);
+      // Get the current values to use for other categories
+      const currentSave = tempData[idx].save || 0;
+      const currentGroc = (tempVar.grocBudg[idx] || 0) - grocExtras;
+      const currentEnt = (tempVar.entBudg[idx] || 0) - entExtras;
+
+      // Apply the selected option type
+      switch (selectedOption) {
+        case 'adjust-save': {
+          // Keep groceries and entertainment unchanged, adjust savings
+          const newSave = Math.max(0, availableBudget - ((tempVar.grocBudg[idx] || 0) - grocExtras + grocExtras) - ((tempVar.entBudg[idx] || 0) - entExtras + entExtras));
+          tempData[idx].save = newSave;
+          tempData[idx].defSave = newSave;
+          // Clear extras so forced split becomes new base
+          tempData[idx].grocBonus = 0;
+          tempData[idx].grocExtra = 0;
+          tempData[idx].entBonus = 0;
+          tempData[idx].entExtra = 0;
+          tempData[idx].saveExtra = 0;
+          break;
+        }
+        case 'adjust-groc': {
+          // Keep savings and entertainment unchanged, adjust groceries
+          const newGroc = Math.max(0, availableBudget - tempData[idx].save - ((tempVar.entBudg[idx] || 0) - entExtras + entExtras));
+          tempVar.grocBudg[idx] = Math.max(0, newGroc);
+          // Clear extras so forced split becomes new base
+          tempData[idx].grocBonus = 0;
+          tempData[idx].grocExtra = 0;
+          tempData[idx].entBonus = 0;
+          tempData[idx].entExtra = 0;
+          tempData[idx].saveExtra = 0;
+          break;
+        }
+        case 'adjust-ent': {
+          // Keep savings and groceries unchanged, adjust entertainment
+          const newEnt = Math.max(0, availableBudget - tempData[idx].save - ((tempVar.grocBudg[idx] || 0) - grocExtras + grocExtras));
+          tempVar.entBudg[idx] = Math.max(0, newEnt);
+          // Clear extras so forced split becomes new base
+          tempData[idx].grocBonus = 0;
+          tempData[idx].grocExtra = 0;
+          tempData[idx].entBonus = 0;
+          tempData[idx].entExtra = 0;
+          tempData[idx].saveExtra = 0;
+          break;
+        }
+        case 'equal-split': {
+          // Apply equal split: divide available equally across all three categories
+          const baseSplit = adjustable / 3;
+          const saveTotal = baseSplit;
+          const grocTotal = baseSplit + grocExtras;
+          const entTotal = baseSplit + entExtras;
+          
+          tempData[idx].save = saveTotal;
+          tempData[idx].defSave = saveTotal;
+          tempVar.grocBudg[idx] = Math.max(0, grocTotal);
+          tempVar.entBudg[idx] = Math.max(0, entTotal);
+          // Clear extras so forced split becomes new base
+          tempData[idx].grocBonus = 0;
+          tempData[idx].grocExtra = 0;
+          tempData[idx].entBonus = 0;
+          tempData[idx].entExtra = 0;
+          tempData[idx].saveExtra = 0;
+          break;
+        }
+        case 'manual': {
+          // Apply the manual values the user entered
+          tempData[idx].save = forceRebalanceValues.save;
+          tempData[idx].defSave = forceRebalanceValues.save;
+          // Clear extras so manual values become new base
+          tempData[idx].grocBonus = 0;
+          tempData[idx].grocExtra = 0;
+          tempData[idx].entBonus = 0;
+          tempData[idx].entExtra = 0;
+          tempData[idx].saveExtra = 0;
+          tempVar.grocBudg[idx] = Math.max(0, forceRebalanceValues.groc);
+          tempVar.entBudg[idx] = Math.max(0, forceRebalanceValues.ent);
+          break;
+        }
+      }
     });
 
     setData(tempData);
@@ -1092,6 +1161,7 @@ export default function FinancialPlanner() {
     setHasChanges(true);
     setForceRebalanceOpen(false);
     setForceRebalanceError('');
+    setSelectedOption(null);
     forceRebalanceInitialized.current = false;
     setBudgetBalanceIssues([]);
     setForceRebalanceTarget(null);
@@ -1791,6 +1861,7 @@ return (
                       onClick={() => {
                         const newSave = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
                         setForceRebalanceValues({ save: Math.max(0, newSave), groc: forceRebalanceTotals?.grocTotal ?? 0, ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setSelectedOption('adjust-save');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg text-left transition-all">
@@ -1802,6 +1873,7 @@ return (
                       onClick={() => {
                         const newGroc = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
                         setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: Math.max(0, newGroc), ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setSelectedOption('adjust-groc');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-green-50 hover:bg-green-100 border border-green-300 rounded-lg text-left transition-all">
@@ -1813,6 +1885,7 @@ return (
                       onClick={() => {
                         const newEnt = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0);
                         setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: forceRebalanceTotals?.grocTotal ?? 0, ent: Math.max(0, newEnt) });
+                        setSelectedOption('adjust-ent');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded-lg text-left transition-all">
@@ -1824,6 +1897,7 @@ return (
                       onClick={() => {
                         const equalSplit = (forceRebalanceTotals?.available ?? 0) / 3;
                         setForceRebalanceValues({ save: equalSplit, groc: equalSplit, ent: equalSplit });
+                        setSelectedOption('equal-split');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg text-left transition-all">
@@ -1847,6 +1921,7 @@ return (
                         value={forceRebalanceValues.save || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, save: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -1860,6 +1935,7 @@ return (
                         value={forceRebalanceValues.groc || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, groc: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -1873,6 +1949,7 @@ return (
                         value={forceRebalanceValues.ent || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, ent: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -1896,7 +1973,7 @@ return (
                     <button
                       onClick={applyForceRebalanceToAll}
                       className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all font-semibold"
-                      title={`Fix all ${budgetBalanceIssues.length} problematic months at once with equal splits`}
+                      title={`Apply selected option to all ${budgetBalanceIssues.length} problematic months at once`}
                     >
                       Fix All ({budgetBalanceIssues.length})
                     </button>

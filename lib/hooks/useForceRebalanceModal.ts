@@ -37,6 +37,9 @@ export function useForceRebalanceModal() {
   
   // Initialization flag to prevent re-opening during updates
   const forceRebalanceInitialized = useRef(false);
+  
+  // Track which option user selected (for multi-month "Fix All" behavior)
+  const [selectedOption, setSelectedOption] = useState<'adjust-save' | 'adjust-groc' | 'adjust-ent' | 'equal-split' | 'manual' | null>(null);
 
   // Open modal with issue data
   const openForceRebalance = (idx: number, saveTotal: number, grocTotal: number, entTotal: number) => {
@@ -44,6 +47,7 @@ export function useForceRebalanceModal() {
     setForceRebalanceValues({ save: saveTotal, groc: grocTotal, ent: entTotal });
     forceRebalanceInitialized.current = true;
     setForceRebalanceError('');
+    setSelectedOption(null); // Reset option selection when opening modal
     setForceRebalanceOpen(true);
   };
 
@@ -54,6 +58,7 @@ export function useForceRebalanceModal() {
     setForceRebalanceTarget(null);
     setForceRebalanceValues({ save: 0, groc: 0, ent: 0 });
     forceRebalanceInitialized.current = false;
+    setSelectedOption(null); // Reset option selection when closing modal
   };
 
   // Update savings value
@@ -135,12 +140,14 @@ export function useForceRebalanceModal() {
     forceRebalanceValues,
     forceRebalanceTarget,
     forceRebalanceInitialized,
+    selectedOption,
 
     // Core setters (for direct state control when needed)
     setForceRebalanceOpen,
     setForceRebalanceError,
     setForceRebalanceValues,
     setForceRebalanceTarget,
+    setSelectedOption,
 
     // Operations
     openForceRebalance,

@@ -79,7 +79,7 @@ The **Finance Dashboard** is a personal financial planning application that mode
   3. **Adjust Entertainment:** Set entertainment to absorb the difference (keep save/groc unchanged)
   4. **Equal Split:** Divide available balance equally across all 3 categories
 - **Manual Override:** Users can manually enter any combination that totals to available balance
-- **Multi-Month Fix:** "Fix All (N)" button applies equal split to ALL problematic months at once
+- **Multi-Month Fix:** "Fix All (N)" button appears when > 1 problematic month exists. Applies whichever option user selected (quick-fix OR manual values) to ALL problematic months at once
 - **Immediate Persistence:** Force rebalance saves immediately to Firestore after apply
 
 ### F5: Comprehensive Undo System
