@@ -38,10 +38,25 @@ export type _OmittedMonthlyCalcItemFields = {
   rolloverDaysRemaining?: number | null;
 };
 
+/**
+ * Determines if a month date has passed relative to current date
+ * @param monthDate - First day of the month to check
+ * @param now - Current date for comparison
+ * @returns true if month has passed (now >= monthDate)
+ * @internal
+ */
 function isPassed(monthDate: Date, now: Date) {
   return now >= monthDate;
 }
 
+/**
+ * Calculates days remaining before budget rollover date (month date + 5 days)
+ * Used to determine when unspent budget becomes unavailable
+ * @param monthDate - First day of the month
+ * @param now - Current date
+ * @returns Number of days remaining (>0) or null if already passed
+ * @internal
+ */
 function getRolloverDaysRemaining(monthDate: Date, now: Date): number | null {
   // mirror original logic: rolloverDate = monthDate + 5 days
   const rolloverDate = new Date(monthDate);
@@ -58,6 +73,45 @@ export function calculateMonthly(params: {
   months: MonthItem[];
   now?: Date;
 }): CalculationResult {
+  /**
+   * Main monthly calculation engine
+   * 
+   * Computes all 60 months with:
+   * - Income, savings, budget allocations
+   * - Fixed & variable expense deductions
+   * - Overspending detection (savings drawdown, previous month impact)
+   * - Balance (net position after all transactions)
+   * - Rollover eligibility (unspent budget from previous month)
+   * 
+   * Algorithm:
+   * 1. Loop through all 60 months
+   * 2. For each month, calculate:
+   *    - Fixed expenses (bills) sum
+   *    - Grocery & entertainment totals (base + bonuses + extras)
+   *    - Overspending (if spent > budgeted)
+   *    - Actual savings (budgeted - overspend)
+   *    - Total savings (previous + actual)
+   *    - Balance (income + previous - all spending)
+   * 3. Track previous savings carryover for next month
+   * 4. Detect critical overspending (savings insufficient)
+   * 5. Flag manual overrides (manual prev savings)
+   * 
+   * @param params.data - 60-month data array (income, savings, bonuses)
+   * @param params.fixed - Fixed expense list (bills, subscriptions)
+   * @param params.varExp - Variable expenses (grocery/entertainment budgets & spent)
+   * @param params.months - 60-month array with dates and names
+   * @param params.now - Current date (for passed month detection), defaults to today
+   * @returns CalculationResult with 60 monthly items
+   * 
+   * @example
+   * const result = calculateMonthly({
+   *   data, fixed, varExp, months,
+   *   now: new Date('2025-01-15')
+   * });
+   * const jan = result[0]; // First month (January)
+   * console.log(jan.totSave);   // Total savings at month end
+   * console.log(jan.overspendWarning); // "Overspending by 2000 SEK..."
+   */
   const { data, fixed, varExp, months } = params;
   const now = params.now ?? new Date();
   const res: MonthlyCalcItem[] = [];
