@@ -15,6 +15,7 @@ import { useExtraSplitModal } from "@/lib/hooks/useExtraSplitModal";
 import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
+import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -126,7 +127,6 @@ export default function FinancialPlanner() {
   } = useNewExpenseSplitModal();
   const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
   const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
-  
   // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving)
   const {
     data,
@@ -157,11 +157,12 @@ export default function FinancialPlanner() {
     transactions,
     setTransactions
   } = useTransactions(transactionsFromState, setTransactionsState);
+
   const { validateBudgetBalance, checkForIssues, evaluateManualRebalance } = useBudgetValidation({ data, varExp, fixed, months, hydrated: financialHydrated });
   const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
   const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
-  
+
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
   const [setupStep, setSetupStep] = useState<SetupStep>('prev');
@@ -173,7 +174,7 @@ export default function FinancialPlanner() {
   const [setupGroc, setSetupGroc] = useState('');
   const [setupEnt, setSetupEnt] = useState('');
   const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
-  
+
   // Fixed expense management
   const {
     setupFixedExpenses,
@@ -187,7 +188,7 @@ export default function FinancialPlanner() {
     handleRemoveFixedExpense,
     createFromSetup
   } = useFixedExpenses();
-  
+
   const { user } = useAuth();
 
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
@@ -251,16 +252,16 @@ export default function FinancialPlanner() {
   useEffect(() => {
     if (financialHydrated) {
       setIsLoading(false);
-      
+
       // Auto-manage wizard visibility based on data existence
       // Don't interfere if wizard is actively being used (user has entered data in wizard fields)
       const hasWizardInput = setupPrev || setupSalary || setupExtraInc !== '0' || setupFixedExpenses.length > 0 || setupSave || setupGroc || setupEnt;
       const isActivelyUsingWizard = showSetup && setupStep !== 'prev' && hasWizardInput;
-      
+
       if (user && !isActivelyUsingWizard) {
         // Check if user has existing data in the main app state
         const hasData = data.some(d => d.inc > 0 || d.save > 0) || fixed.length > 0;
-        
+
         if (hasData) {
           // User has data, close wizard
           setShowSetup(false);
@@ -515,6 +516,192 @@ export default function FinancialPlanner() {
   }, [autoRollover, calc, data, setData, setHasChanges]);
 
   const cur = calc[sel];
+
+  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
+    { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: true },
+    { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: true },
+    {
+      label: 'Previous',
+      value: cur.prev,
+      key: 'prev',
+      editable: editPrev,
+      button: (
+        <button onClick={() => setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800">
+          <Edit2 size={14} />
+        </button>
+      )
+    },
+    { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
+    { label: 'Savings', value: data[sel].save, key: 'save', editable: true },
+    { label: 'Actual', value: cur.actSave, key: 'act', editable: false }
+  ]), [cur.actSave, cur.bal, cur.prev, data, editPrev, sel]);
+
+  const handleMonthlyFocus = (key: MonthlyFieldKey) => {
+    if (key === 'extraInc') {
+      setExtraIncInitial(data[sel].extraInc);
+    } else if (key === 'inc') {
+      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
+    } else if (key === 'save') {
+      setSavingsInitial(data[sel].save);
+    }
+  };
+
+  const handleMonthlyChange = (key: MonthlyFieldKey, value: number) => {
+    if (key === 'inc') {
+      const n = [...data];
+      n[sel].inc = value;
+      n[sel].baseSalary = value;
+      setData(n);
+    } else if (key === 'extraInc') {
+      const n = [...data];
+      n[sel].extraInc = value;
+      setData(n);
+    } else if (key === 'prev') {
+      const n = [...data];
+      n[sel].prev = value;
+      n[sel].prevManual = true;
+      setData(n);
+    } else if (key === 'save') {
+      setSavingEdited(true);
+      const n = [...data];
+      n[sel].save = value;
+      setData(n);
+    }
+    setHasChanges(true);
+  };
+
+  const handleMonthlyBlur = (key: MonthlyFieldKey, value: number) => {
+    if (key === 'inc') {
+      if (lastAdjustments.salary && Math.abs(value - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'salary', payload: lastAdjustments.salary });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.salary.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.salary.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setSalarySplitActive(false);
+          setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+          setSalarySplitError('');
+          setSalarySplitApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, salary: undefined }));
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = salaryInitial;
+      const n = [...data];
+      n[sel].inc = value;
+      n[sel].baseSalary = value;
+      if (value !== oldVal) {
+        setSalarySplitActive(true);
+        setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+      }
+      setData(n);
+      setHasChanges(true);
+    } else if (key === 'extraInc') {
+      if (lastAdjustments.extra && lastAdjustments.extra.sel === sel && Math.abs(value - lastAdjustments.extra.prev.extraInc) < 0.01) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'extra', payload: lastAdjustments.extra });
+        } else {
+          const n = [...data].map(d => ({ ...d }));
+          const tcopy = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+          if (lastAdjustments.extra.txIdx !== null && tcopy.extra[sel][lastAdjustments.extra.txIdx]) {
+            tcopy.extra[sel].splice(lastAdjustments.extra.txIdx, 1);
+          }
+          n[sel].grocExtra = lastAdjustments.extra.prev.grocExtra;
+          n[sel].entExtra = lastAdjustments.extra.prev.entExtra;
+          n[sel].saveExtra = lastAdjustments.extra.prev.saveExtra;
+          n[sel].extraInc = lastAdjustments.extra.prev.extraInc;
+          n[sel].inc = lastAdjustments.extra.prev.inc;
+          setData(n);
+          setTransactions(tcopy);
+          setExtraAdj({ groc: 0, ent: 0, save: 0 });
+          setExtraSplitActive(false);
+          setExtraSplitError('');
+          setLastExtraApply(null);
+          setLastAdjustments(prev => ({ ...prev, extra: undefined }));
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = extraIncInitial;
+      const n = [...data];
+      n[sel].extraInc = value;
+      if (value > 0 && value !== oldVal) {
+        setExtraSplitActive(true);
+        setExtraAdj({ groc: 0, ent: 0, save: 0 });
+      } else if (value === 0) {
+        n[sel].grocExtra = 0;
+        n[sel].entExtra = 0;
+        n[sel].saveExtra = 0;
+        setExtraAdj({ groc: 0, ent: 0, save: 0 });
+        setExtraSplitActive(false);
+        setExtraSplitError('');
+      }
+      setData(n);
+      setHasChanges(true);
+    } else if (key === 'save') {
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'save' && Math.abs(value - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setSavingEdited(false);
+          setAdj({ groc: 0, ent: 0 });
+          setApplyFuture(false);
+          setApplySavingsForward(null);
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = savingsInitial;
+      const n = [...data];
+      n[sel].save = value;
+      if (Math.abs(value - oldVal) > 0.01) {
+        setBudgetRebalanceModal({
+          type: 'save',
+          oldVal: oldVal,
+          newVal: value,
+          split: { a: 0, b: 0 }
+        });
+        setBudgetRebalanceError('');
+      }
+      setAdj({ groc: 0, ent: 0 });
+      setApplyFuture(false);
+      setApplySavingsForward(null);
+      setData(n);
+    }
+  };
 
   const monthlyExpenseBaseline = useMemo(() => {
     if (!cur) return 0;
@@ -1233,229 +1420,21 @@ return (
         )}
 
         <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {cur.month}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {[
-              {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
-              {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
-              {l:'Previous',v:cur.prev,k:'prev',e:editPrev,btn:<button onClick={()=>setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800"><Edit2 size={14}/></button>},
-              {l:'Balance',v:cur.bal,k:'bal',e:false},
-              {l:'Savings',v:data[sel].save,k:'save',e:true,adj:true},
-              {l:'Actual',v:cur.actSave,k:'act',e:false}
-            ].map((f,i)=>(
-              <div key={i}>
-                <label className="block text-sm font-semibold leading-snug mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  max="1000000"
-                  placeholder="0" 
-                  value={f.v === 0 ? '' : f.v.toFixed(0)}
-                  onFocus={()=>{
-                    if(f.k === 'extraInc') {
-                      setExtraIncInitial(data[sel].extraInc);
-                    } else if(f.k === 'inc') {
-                      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
-                    } else if(f.k === 'save') {
-                      setSavingsInitial(data[sel].save);
-                    }
-                  }}
-                  onChange={(e)=>{
-                    if(!f.e)return;
-                    const val=sanitizeNumberInput(e.target.value);
-                    
-                    if (f.k === 'inc') {
-                      const n=[...data];
-                      n[sel].inc = val;
-                      n[sel].baseSalary = val;
-                      setData(n);
-                    }
-                    else if (f.k === 'extraInc') {
-                      // Just buffer input while typing - split logic deferred to onBlur
-                      const n=[...data];
-                      n[sel].extraInc = val;
-                      setData(n);
-                    }
-                    else if (f.k === 'prev') {
-                      const n=[...data];
-                      n[sel].prev = val;
-                      n[sel].prevManual = true;
-                      setData(n);
-                    }
-                    else if (f.k === 'save') {
-                      // Just buffer input while typing - split logic deferred to onBlur
-                      setSavingEdited(true);
-                      const n=[...data];
-                      n[sel].save = val;
-                      setData(n);
-                    }
-                    setHasChanges(true);
-                  }}
-                  onBlur={(e)=>{
-                    if(!f.e)return;
-                    const val=sanitizeNumberInput(e.target.value);
-                    
-                    if (f.k === 'inc') {
-                      if (lastAdjustments.salary && Math.abs(val - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'salary', payload: lastAdjustments.salary });
-                        } else {
-                          const revertedData = [...data].map(d => ({ ...d }));
-                          const revertedVar = {
-                            ...varExp,
-                            grocBudg: [...varExp.grocBudg],
-                            entBudg: [...varExp.entBudg]
-                          };
-                          lastAdjustments.salary.dataSnapshots.forEach(snap => {
-                            revertedData[snap.idx] = { ...snap.data };
-                          });
-                          lastAdjustments.salary.varSnapshots.forEach(snap => {
-                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                            revertedVar.entBudg[snap.idx] = snap.entBudg;
-                          });
-                          setData(revertedData);
-                          setVarExp(revertedVar);
-                          setSalarySplitActive(false);
-                          setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-                          setSalarySplitError('');
-                          setSalarySplitApplyFuture(false);
-                          setLastAdjustments(prev => ({ ...prev, salary: undefined }));
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      const oldVal = salaryInitial;
-                      const n=[...data];
-                      n[sel].inc = val;
-                      n[sel].baseSalary = val;
-                      // Trigger split modal if salary changed
-                      if (val !== oldVal) {
-                        setSalarySplitActive(true);
-                        setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-                      }
-                      setData(n);
-                      setHasChanges(true);
-                    } else if (f.k === 'extraInc') {
-                      if (lastAdjustments.extra && lastAdjustments.extra.sel === sel && Math.abs(val - lastAdjustments.extra.prev.extraInc) < 0.01) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'extra', payload: lastAdjustments.extra });
-                        } else {
-                          const n = [...data].map(d => ({ ...d }));
-                          const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                          if (lastAdjustments.extra.txIdx !== null && tcopy.extra[sel][lastAdjustments.extra.txIdx]) {
-                            tcopy.extra[sel].splice(lastAdjustments.extra.txIdx, 1);
-                          }
-                          n[sel].grocExtra = lastAdjustments.extra.prev.grocExtra;
-                          n[sel].entExtra = lastAdjustments.extra.prev.entExtra;
-                          n[sel].saveExtra = lastAdjustments.extra.prev.saveExtra;
-                          n[sel].extraInc = lastAdjustments.extra.prev.extraInc;
-                          n[sel].inc = lastAdjustments.extra.prev.inc;
-                          setData(n);
-                          setTransactions(tcopy);
-                          setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                          setExtraSplitActive(false);
-                          setExtraSplitError('');
-                          setLastExtraApply(null);
-                          setLastAdjustments(prev => ({ ...prev, extra: undefined }));
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      // Use the initial value captured on focus
-                      const oldVal = extraIncInitial;
-                      const n=[...data];
-                      n[sel].extraInc = val;
-                      // Only trigger split if value is positive and changed
-                      if (val > 0 && val !== oldVal) {
-                        setExtraSplitActive(true);
-                        setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                      } else if (val === 0) {
-                        n[sel].grocExtra = 0;
-                        n[sel].entExtra = 0;
-                        n[sel].saveExtra = 0;
-                        setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                        setExtraSplitActive(false);
-                        setExtraSplitError('');
-                      }
-                      setData(n);
-                      setHasChanges(true);
-                    } else if (f.k === 'save') {
-                      if (lastAdjustments.budget && lastAdjustments.budget.type === 'save' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                        } else {
-                          const revertedData = [...data].map(d => ({ ...d }));
-                          const revertedVar = {
-                            ...varExp,
-                            grocBudg: [...varExp.grocBudg],
-                            entBudg: [...varExp.entBudg]
-                          };
-                          lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                            revertedData[snap.idx] = { ...snap.data };
-                          });
-                          lastAdjustments.budget.varSnapshots.forEach(snap => {
-                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                            revertedVar.entBudg[snap.idx] = snap.entBudg;
-                          });
-                          setData(revertedData);
-                          setVarExp(revertedVar);
-                          setBudgetRebalanceModal(null);
-                          setBudgetRebalanceError('');
-                          setBudgetRebalanceApplyFuture(false);
-                          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                          setSavingEdited(false);
-                          setAdj({ groc: 0, ent: 0 });
-                          setApplyFuture(false);
-                          setApplySavingsForward(null);
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      const oldVal = savingsInitial;
-                      const n=[...data];
-                      n[sel].save = val;
-                      // Trigger budget rebalance modal if savings changed
-                      if (Math.abs(val - oldVal) > 0.01) {
-                        setBudgetRebalanceModal({ 
-                          type: 'save', 
-                          oldVal: oldVal, 
-                          newVal: val, 
-                          split: { a: 0, b: 0 } 
-                        });
-                        setBudgetRebalanceError('');
-                      }
-                      setAdj({ groc: 0, ent: 0 });
-                      setApplyFuture(false);
-                      setApplySavingsForward(null);
-                      setData(n);
-                    }
-                  }}
-                  disabled={!f.e} 
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                />
-                {f.k === 'extraInc' && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <button onClick={() => setTransModal({ open: true, type: 'extra' })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Extra Allocations History</button>
-                  </div>
-                )}
-                {f.k==='save'&& savingEdited &&(
-                  <label className="flex items-center gap-2 mt-2 text-sm text-gray-700">
-                    <input 
-                      type="checkbox" 
-                      checked={applyFuture} 
-                      onChange={(e)=>{
-                        const checked = e.target.checked;
-                        setApplyFuture(checked);
-                        setApplySavingsForward(checked ? sel : null);
-                      }} 
-                      className="w-4 h-4 rounded"
-                    />
-                    Apply to future months
-                  </label>
-                )}
-              </div>
-            ))}
-          </div>
+          <MonthlySection
+            monthLabel={cur.month}
+            fields={monthlyFields}
+            savingEdited={savingEdited}
+            applyFuture={applyFuture}
+            wrapInCard={false}
+            onFocus={handleMonthlyFocus}
+            onChange={handleMonthlyChange}
+            onBlur={handleMonthlyBlur}
+            onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
+            onToggleApplyFuture={(checked) => {
+              setApplyFuture(checked);
+              setApplySavingsForward(checked ? sel : null);
+            }}
+          />
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
