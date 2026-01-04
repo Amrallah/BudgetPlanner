@@ -62,8 +62,15 @@ const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
     orange: 'from-orange-500 to-orange-600'
   };
 
+  const bgClasses = {
+    blue: 'bg-blue-50 border-blue-200',
+    green: 'bg-green-50 border-green-200',
+    purple: 'bg-purple-50 border-purple-200',
+    orange: 'bg-orange-50 border-orange-200'
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
+    <div className={`${bgClasses[color as keyof typeof bgClasses]} rounded-2xl border shadow-xl p-4 sm:p-5 flex flex-col gap-2`}>
       <div className="flex items-center gap-2">
         <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} text-white flex items-center justify-center shadow-md`}>
           <Icon className="w-5 h-5" />
@@ -127,7 +134,7 @@ export default memo(function AnalyticsSection({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
+        <div className="bg-emerald-50 rounded-2xl border border-emerald-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
             <PiggyBank className="w-4 h-4 text-emerald-600" />
             Emergency buffer
@@ -140,7 +147,7 @@ export default memo(function AnalyticsSection({
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
+        <div className="bg-blue-50 rounded-2xl border border-blue-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
             <Clock className="w-4 h-4 text-blue-600" />
             Savings runway
@@ -155,7 +162,7 @@ export default memo(function AnalyticsSection({
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
+        <div className="bg-indigo-50 rounded-2xl border border-indigo-200 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-indigo-600" />
