@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { memo } from 'react';
 import { sanitizeNumberInput } from '@/lib/uiHelpers';
 
 export type MonthlyFieldKey = 'inc' | 'extraInc' | 'prev' | 'bal' | 'save' | 'act';
@@ -27,7 +27,7 @@ export type MonthlySectionProps = {
   onToggleApplyFuture: (checked: boolean) => void;
 };
 
-export default function MonthlySection({
+export default memo(function MonthlySection({
   monthLabel,
   fields,
   savingEdited,
@@ -108,4 +108,18 @@ export default function MonthlySection({
       {content}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if fields or key props change
+  return (
+    JSON.stringify(prevProps.fields) === JSON.stringify(nextProps.fields) &&
+    prevProps.monthLabel === nextProps.monthLabel &&
+    prevProps.savingEdited === nextProps.savingEdited &&
+    prevProps.applyFuture === nextProps.applyFuture &&
+    prevProps.wrapInCard === nextProps.wrapInCard &&
+    prevProps.onFocus === nextProps.onFocus &&
+    prevProps.onChange === nextProps.onChange &&
+    prevProps.onBlur === nextProps.onBlur &&
+    prevProps.onOpenExtraHistory === nextProps.onOpenExtraHistory &&
+    prevProps.onToggleApplyFuture === nextProps.onToggleApplyFuture
+  );
+});

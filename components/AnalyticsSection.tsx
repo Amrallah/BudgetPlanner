@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { PiggyBank, TrendingUp, Calendar, ShoppingCart, DollarSign, Clock, AlertTriangle } from 'lucide-react';
 
 interface Card {
@@ -76,7 +76,7 @@ const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
   );
 };
 
-export default function AnalyticsSection({
+export default memo(function AnalyticsSection({
   totalSavings,
   balance,
   income,
@@ -259,4 +259,35 @@ export default function AnalyticsSection({
       )}
     </>
   );
-}
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render if actual values change
+  return (
+    prevProps.totalSavings === nextProps.totalSavings &&
+    prevProps.balance === nextProps.balance &&
+    prevProps.income === nextProps.income &&
+    prevProps.groceriesRemaining === nextProps.groceriesRemaining &&
+    prevProps.groceriesBudget === nextProps.groceriesBudget &&
+    prevProps.entertainmentRemaining === nextProps.entertainmentRemaining &&
+    prevProps.entertainmentBudget === nextProps.entertainmentBudget &&
+    prevProps.emergencyBufferMonths === nextProps.emergencyBufferMonths &&
+    prevProps.monthlyExpenseBaseline === nextProps.monthlyExpenseBaseline &&
+    prevProps.savingsRunwayMonths === nextProps.savingsRunwayMonths &&
+    prevProps.monthlyNet === nextProps.monthlyNet &&
+    prevProps.whatIfSalaryDelta === nextProps.whatIfSalaryDelta &&
+    prevProps.whatIfGrocCut === nextProps.whatIfGrocCut &&
+    prevProps.whatIfProjection?.projectedNet === nextProps.whatIfProjection?.projectedNet &&
+    prevProps.whatIfProjection?.delta === nextProps.whatIfProjection?.delta &&
+    prevProps.overspendWarning === nextProps.overspendWarning &&
+    prevProps.criticalOverspend === nextProps.criticalOverspend &&
+    prevProps.hasRollover === nextProps.hasRollover &&
+    prevProps.showRollover === nextProps.showRollover &&
+    prevProps.rolloverAmount === nextProps.rolloverAmount &&
+    prevProps.rolloverDaysRemaining === nextProps.rolloverDaysRemaining &&
+    prevProps.autoRollover === nextProps.autoRollover &&
+    prevProps.onWhatIfSalaryDeltaChange === nextProps.onWhatIfSalaryDeltaChange &&
+    prevProps.onWhatIfGrocCutChange === nextProps.onWhatIfGrocCutChange &&
+    prevProps.onShowRolloverClick === nextProps.onShowRolloverClick &&
+    prevProps.onConfirmRollover === nextProps.onConfirmRollover &&
+    prevProps.onCancelRollover === nextProps.onCancelRollover
+  );
+});

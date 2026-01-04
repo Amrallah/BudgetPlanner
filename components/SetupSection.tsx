@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import type { SetupStep } from '@/lib/hooks/types';
 import type { SetupFixedExpense } from '@/lib/types';
 
@@ -33,7 +33,7 @@ export interface SetupSectionProps {
   onLogout: () => void;
 }
 
-export default function SetupSection({
+export default memo(function SetupSection({
   isOpen,
   setupStep,
   setupPrev,
@@ -265,4 +265,36 @@ export default function SetupSection({
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if actual state values change
+  return (
+    prevProps.isOpen === nextProps.isOpen &&
+    prevProps.setupStep === nextProps.setupStep &&
+    prevProps.setupPrev === nextProps.setupPrev &&
+    prevProps.setupSalary === nextProps.setupSalary &&
+    prevProps.setupSalaryApplyAll === nextProps.setupSalaryApplyAll &&
+    prevProps.setupExtraInc === nextProps.setupExtraInc &&
+    prevProps.setupSave === nextProps.setupSave &&
+    prevProps.setupGroc === nextProps.setupGroc &&
+    prevProps.setupEnt === nextProps.setupEnt &&
+    prevProps.setupBudgetsApplyAll === nextProps.setupBudgetsApplyAll &&
+    JSON.stringify(prevProps.setupFixedExpenses) === JSON.stringify(nextProps.setupFixedExpenses) &&
+    prevProps.setupFixedName === nextProps.setupFixedName &&
+    prevProps.setupFixedAmt === nextProps.setupFixedAmt &&
+    prevProps.setupError === nextProps.setupError &&
+    prevProps.onSetupPrevChange === nextProps.onSetupPrevChange &&
+    prevProps.onSetupSalaryChange === nextProps.onSetupSalaryChange &&
+    prevProps.onSetupSalaryApplyAllChange === nextProps.onSetupSalaryApplyAllChange &&
+    prevProps.onSetupExtraIncChange === nextProps.onSetupExtraIncChange &&
+    prevProps.onSetupSaveChange === nextProps.onSetupSaveChange &&
+    prevProps.onSetupGrocChange === nextProps.onSetupGrocChange &&
+    prevProps.onSetupEntChange === nextProps.onSetupEntChange &&
+    prevProps.onSetupBudgetsApplyAllChange === nextProps.onSetupBudgetsApplyAllChange &&
+    prevProps.onSetupFixedNameChange === nextProps.onSetupFixedNameChange &&
+    prevProps.onSetupFixedAmtChange === nextProps.onSetupFixedAmtChange &&
+    prevProps.onNext === nextProps.onNext &&
+    prevProps.onAddFixedExpense === nextProps.onAddFixedExpense &&
+    prevProps.onRemoveFixedExpense === nextProps.onRemoveFixedExpense &&
+    prevProps.onLogout === nextProps.onLogout
+  );
+});

@@ -1,4 +1,5 @@
 import { Edit2 } from "lucide-react";
+import { memo } from "react";
 
 export type BudgetType = 'groc' | 'ent';
 
@@ -35,7 +36,7 @@ export interface BudgetSectionProps {
   onOpenHistory: (type: BudgetType) => void;
 }
 
-export default function BudgetSection({
+export default memo(function BudgetSection({
   fields,
   onFocus,
   onChange,
@@ -162,4 +163,17 @@ export default function BudgetSection({
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if fields array or handlers change
+  return (
+    JSON.stringify(prevProps.fields) === JSON.stringify(nextProps.fields) &&
+    prevProps.onFocus === nextProps.onFocus &&
+    prevProps.onChange === nextProps.onChange &&
+    prevProps.onBlur === nextProps.onBlur &&
+    prevProps.onToggleEditSpent === nextProps.onToggleEditSpent &&
+    prevProps.onSpentChange === nextProps.onSpentChange &&
+    prevProps.onAddTransaction === nextProps.onAddTransaction &&
+    prevProps.onTransactionInputChange === nextProps.onTransactionInputChange &&
+    prevProps.onOpenHistory === nextProps.onOpenHistory
+  );
+});

@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 export type TransactionType = 'groc' | 'ent' | 'extra';
 
 export interface Transaction {
@@ -29,7 +31,7 @@ export interface TransactionModalProps {
   onEditValueChange?: (value: string) => void;
 }
 
-export default function TransactionModal({
+export default memo(function TransactionModal({
   isOpen,
   type,
   monthName,
@@ -181,4 +183,22 @@ export default function TransactionModal({
       </div>
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  // Only re-render if modal state or content changes
+  return (
+    prevProps.isOpen === nextProps.isOpen &&
+    prevProps.type === nextProps.type &&
+    prevProps.monthName === nextProps.monthName &&
+    JSON.stringify(prevProps.transactions) === JSON.stringify(nextProps.transactions) &&
+    JSON.stringify(prevProps.extraAllocations) === JSON.stringify(nextProps.extraAllocations) &&
+    prevProps.editingIndex === nextProps.editingIndex &&
+    prevProps.editingValue === nextProps.editingValue &&
+    prevProps.onClose === nextProps.onClose &&
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.onSaveEdit === nextProps.onSaveEdit &&
+    prevProps.onCancelEdit === nextProps.onCancelEdit &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onDeleteExtra === nextProps.onDeleteExtra &&
+    prevProps.onEditValueChange === nextProps.onEditValueChange
+  );
+});
