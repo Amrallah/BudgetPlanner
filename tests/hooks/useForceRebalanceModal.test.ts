@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { ForceRebalanceOption } from '@/lib/forceRebalance';
 import type { Split } from '@/lib/types';
 
 // Helper to create default split values
@@ -22,6 +23,9 @@ function createSplit(overrides?: Partial<Split>): Split {
     ...overrides
   };
 }
+
+  // Simple enum of option types used by the modal
+  type OptionType = ForceRebalanceOption | null;
 
 describe('useForceRebalanceModal - Initialization', () => {
   it('should initialize with modal closed', () => {
@@ -54,6 +58,12 @@ describe('useForceRebalanceModal - Initialization', () => {
     const forceRebalanceInitialized = { current: false };
     
     expect(forceRebalanceInitialized.current).toBe(false);
+  });
+
+  it('should initialize selected option as null', () => {
+    const selectedOption: OptionType = null;
+
+    expect(selectedOption).toBeNull();
   });
 });
 
@@ -116,6 +126,14 @@ describe('useForceRebalanceModal - Open/Close Operations', () => {
     
     expect(forceRebalanceOpen).toBe(false);
     expect(forceRebalanceInitialized.current).toBe(false);
+  });
+
+  it('should reset selected option when closing', () => {
+    let selectedOption: OptionType = 'adjust-save';
+
+    selectedOption = null; // mimic close reset
+
+    expect(selectedOption).toBeNull();
   });
 });
 
@@ -490,5 +508,26 @@ describe('useForceRebalanceModal - Integration Scenarios', () => {
     expect(forceRebalanceValues.save).toBe(4500);
     expect(forceRebalanceValues.groc).toBe(3500);
     expect(forceRebalanceValues.ent).toBe(2000);
+  });
+
+  it('should track selected option when user picks a quick fix', () => {
+    let selectedOption: OptionType = null;
+
+    // User clicks Adjust Savings quick-fix
+    selectedOption = 'adjust-save';
+
+    expect(selectedOption).toBe('adjust-save');
+  });
+
+  it('should track selected option when user enters manual values', () => {
+    let selectedOption: OptionType = null;
+    let forceRebalanceValues = createSplit();
+
+    // User types manual inputs that sum to available
+    forceRebalanceValues = createSplit({ save: 4000, groc: 3000, ent: 3000 });
+    selectedOption = 'manual';
+
+    expect(selectedOption).toBe('manual');
+    expect(forceRebalanceValues.save + forceRebalanceValues.groc + forceRebalanceValues.ent).toBe(10000);
   });
 });

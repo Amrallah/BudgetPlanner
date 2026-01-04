@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef } from 'react';
+import type { ForceRebalanceOption } from '@/lib/forceRebalance';
 import type { Split } from '@/lib/types';
 
 export function useForceRebalanceModal() {
@@ -39,7 +40,7 @@ export function useForceRebalanceModal() {
   const forceRebalanceInitialized = useRef(false);
   
   // Track which option user selected (for multi-month "Fix All" behavior)
-  const [selectedOption, setSelectedOption] = useState<'adjust-save' | 'adjust-groc' | 'adjust-ent' | 'equal-split' | 'manual' | null>(null);
+  const [selectedOption, setSelectedOption] = useState<ForceRebalanceOption | null>(null);
 
   // Open modal with issue data
   const openForceRebalance = (idx: number, saveTotal: number, grocTotal: number, entTotal: number) => {

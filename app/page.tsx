@@ -20,6 +20,7 @@ import BudgetSection, { type BudgetField, type BudgetType } from "@/components/B
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import SetupSection from "@/components/SetupSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
+import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -1051,109 +1052,19 @@ export default function FinancialPlanner() {
       return;
     }
 
-    const tempData = data.map(d => ({ ...d }));
-    const tempVar = {
-      ...varExp,
-      grocBudg: [...varExp.grocBudg],
-      entBudg: [...varExp.entBudg]
-    };
+    const issueMonthIndices = extractIssueMonthIndices(result.issues, months);
+    if (issueMonthIndices.length === 0) {
+      setForceRebalanceOpen(false);
+      return;
+    }
 
-    // Apply the user's selected option to all problematic months
-    result.issues.forEach((_, issueIdx) => {
-      const recalculated = checkForIssues({ dataOverride: tempData, varOverride: tempVar, fixedOverride: fixed });
-      const issue = recalculated.issues[issueIdx];
-      if (!issue) return;
-
-      const monthMatch = issue.match(/Month ([^:]+):/);
-      if (!monthMatch) return;
-      const monthName = monthMatch[1];
-      const idx = months.findIndex(m => m.name === monthName);
-      if (idx === -1) return;
-
-      const monthData = tempData[idx];
-      const availableBudget = monthData.inc + monthData.extraInc - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
-      const grocExtras = (tempData[idx]?.grocBonus || 0) + (tempData[idx]?.grocExtra || 0);
-      const entExtras = (tempData[idx]?.entBonus || 0) + (tempData[idx]?.entExtra || 0);
-      const adjustable = availableBudget - grocExtras - entExtras;
-
-      // Get the current values to use for other categories
-      const currentSave = tempData[idx].save || 0;
-      const currentGroc = (tempVar.grocBudg[idx] || 0) - grocExtras;
-      const currentEnt = (tempVar.entBudg[idx] || 0) - entExtras;
-
-      // Apply the selected option type
-      switch (selectedOption) {
-        case 'adjust-save': {
-          // Keep groceries and entertainment unchanged, adjust savings
-          const newSave = Math.max(0, availableBudget - ((tempVar.grocBudg[idx] || 0) - grocExtras + grocExtras) - ((tempVar.entBudg[idx] || 0) - entExtras + entExtras));
-          tempData[idx].save = newSave;
-          tempData[idx].defSave = newSave;
-          // Clear extras so forced split becomes new base
-          tempData[idx].grocBonus = 0;
-          tempData[idx].grocExtra = 0;
-          tempData[idx].entBonus = 0;
-          tempData[idx].entExtra = 0;
-          tempData[idx].saveExtra = 0;
-          break;
-        }
-        case 'adjust-groc': {
-          // Keep savings and entertainment unchanged, adjust groceries
-          const newGroc = Math.max(0, availableBudget - tempData[idx].save - ((tempVar.entBudg[idx] || 0) - entExtras + entExtras));
-          tempVar.grocBudg[idx] = Math.max(0, newGroc);
-          // Clear extras so forced split becomes new base
-          tempData[idx].grocBonus = 0;
-          tempData[idx].grocExtra = 0;
-          tempData[idx].entBonus = 0;
-          tempData[idx].entExtra = 0;
-          tempData[idx].saveExtra = 0;
-          break;
-        }
-        case 'adjust-ent': {
-          // Keep savings and groceries unchanged, adjust entertainment
-          const newEnt = Math.max(0, availableBudget - tempData[idx].save - ((tempVar.grocBudg[idx] || 0) - grocExtras + grocExtras));
-          tempVar.entBudg[idx] = Math.max(0, newEnt);
-          // Clear extras so forced split becomes new base
-          tempData[idx].grocBonus = 0;
-          tempData[idx].grocExtra = 0;
-          tempData[idx].entBonus = 0;
-          tempData[idx].entExtra = 0;
-          tempData[idx].saveExtra = 0;
-          break;
-        }
-        case 'equal-split': {
-          // Apply equal split: divide available equally across all three categories
-          const baseSplit = adjustable / 3;
-          const saveTotal = baseSplit;
-          const grocTotal = baseSplit + grocExtras;
-          const entTotal = baseSplit + entExtras;
-          
-          tempData[idx].save = saveTotal;
-          tempData[idx].defSave = saveTotal;
-          tempVar.grocBudg[idx] = Math.max(0, grocTotal);
-          tempVar.entBudg[idx] = Math.max(0, entTotal);
-          // Clear extras so forced split becomes new base
-          tempData[idx].grocBonus = 0;
-          tempData[idx].grocExtra = 0;
-          tempData[idx].entBonus = 0;
-          tempData[idx].entExtra = 0;
-          tempData[idx].saveExtra = 0;
-          break;
-        }
-        case 'manual': {
-          // Apply the manual values the user entered
-          tempData[idx].save = forceRebalanceValues.save;
-          tempData[idx].defSave = forceRebalanceValues.save;
-          // Clear extras so manual values become new base
-          tempData[idx].grocBonus = 0;
-          tempData[idx].grocExtra = 0;
-          tempData[idx].entBonus = 0;
-          tempData[idx].entExtra = 0;
-          tempData[idx].saveExtra = 0;
-          tempVar.grocBudg[idx] = Math.max(0, forceRebalanceValues.groc);
-          tempVar.entBudg[idx] = Math.max(0, forceRebalanceValues.ent);
-          break;
-        }
-      }
+    const { data: tempData, varExp: tempVar } = applyForceRebalanceAcrossMonths({
+      monthIndices: issueMonthIndices,
+      selectedOption,
+      forceRebalanceValues,
+      data,
+      varExp,
+      fixed
     });
 
     setData(tempData);
@@ -1183,9 +1094,7 @@ export default function FinancialPlanner() {
     data,
     fixed,
     forceRebalanceInitialized,
-    forceRebalanceValues.ent,
-    forceRebalanceValues.groc,
-    forceRebalanceValues.save,
+    forceRebalanceValues,
     months,
     recomputeBudgetIssues,
     saveData,
