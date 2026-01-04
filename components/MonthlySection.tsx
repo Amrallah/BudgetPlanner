@@ -110,8 +110,18 @@ export default memo(function MonthlySection({
   );
 }, (prevProps, nextProps) => {
   // Only re-render if fields or key props change
+  // Deep compare fields array without JSON.stringify (which fails on circular refs)
+  const fieldsEqual = prevProps.fields.length === nextProps.fields.length &&
+    prevProps.fields.every((field, idx) => {
+      const nextField = nextProps.fields[idx];
+      return field.key === nextField.key &&
+        field.label === nextField.label &&
+        field.value === nextField.value &&
+        field.editable === nextField.editable;
+    });
+
   return (
-    JSON.stringify(prevProps.fields) === JSON.stringify(nextProps.fields) &&
+    fieldsEqual &&
     prevProps.monthLabel === nextProps.monthLabel &&
     prevProps.savingEdited === nextProps.savingEdited &&
     prevProps.applyFuture === nextProps.applyFuture &&
