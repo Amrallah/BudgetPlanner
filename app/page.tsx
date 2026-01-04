@@ -16,6 +16,7 @@ import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
 import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
+import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -535,6 +536,193 @@ export default function FinancialPlanner() {
     { label: 'Savings', value: data[sel].save, key: 'save', editable: true },
     { label: 'Actual', value: cur.actSave, key: 'act', editable: false }
   ]), [cur.actSave, cur.bal, cur.prev, data, editPrev, sel]);
+
+  const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
+    {
+      type: 'groc',
+      label: '🛒 Groceries',
+      totalBudget: varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0),
+      baseBudget: varExp.grocBudg[sel],
+      bonus: data[sel].grocBonus,
+      extra: data[sel].grocExtra || 0,
+      spent: varExp.grocSpent[sel],
+      remaining: cur.grocRem,
+      isEditing: editingGroc,
+      inputValue: grocInput,
+      editSpent: editSpent.groc,
+      recentTransactions: transactions.groc[sel]?.slice(-5) || [],
+      newTransactionValue: newTrans.groc
+    },
+    {
+      type: 'ent',
+      label: '🎭 Entertainment',
+      totalBudget: cur.entBudg,
+      baseBudget: varExp.entBudg[sel],
+      bonus: data[sel].entBonus,
+      extra: data[sel].entExtra || 0,
+      spent: varExp.entSpent[sel],
+      remaining: cur.entRem,
+      isEditing: editingEnt,
+      inputValue: entInput,
+      editSpent: editSpent.ent,
+      recentTransactions: transactions.ent[sel]?.slice(-5) || [],
+      newTransactionValue: newTrans.ent
+    }
+  ]), [cur.entBudg, cur.entRem, cur.grocRem, data, editSpent.ent, editSpent.groc, editingEnt, editingGroc, entInput, grocInput, newTrans.ent, newTrans.groc, sel, transactions.ent, transactions.groc, varExp.entBudg, varExp.entSpent, varExp.grocBudg, varExp.grocSpent]);
+
+  const handleBudgetFocus = (type: BudgetType) => {
+    if (type === 'groc') {
+      setEditingGroc(true);
+      setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
+    } else if (type === 'ent') {
+      setEditingEnt(true);
+      setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
+    }
+  };
+
+  const handleBudgetChange = (type: BudgetType, value: string) => {
+    if (type === 'groc') {
+      setGrocInput(value);
+    } else if (type === 'ent') {
+      setEntInput(value);
+    }
+  };
+
+  const handleBudgetBlur = (type: BudgetType, value: string) => {
+    const val = sanitizeNumberInput(value);
+    if (type === 'groc') {
+      const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+      const difference = val - currentTotal;
+
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setHasChanges(true);
+        }
+        setEditingGroc(false);
+        setGrocInput('');
+        return;
+      }
+
+      setEditingGroc(false);
+      setGrocInput('');
+
+      if (Math.abs(difference) > 0.01) {
+        setBudgetRebalanceModal({ 
+          type: 'groc', 
+          oldVal: currentTotal, 
+          newVal: val, 
+          split: { a: 0, b: 0 } 
+        });
+        setBudgetRebalanceError('');
+      }
+    } else if (type === 'ent') {
+      const currentTotal = cur.entBudg;
+      const difference = val - currentTotal;
+
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setHasChanges(true);
+        }
+        setEditingEnt(false);
+        setEntInput('');
+        return;
+      }
+      
+      setEditingEnt(false);
+      setEntInput('');
+      
+      if (Math.abs(difference) > 0.01) {
+        setBudgetRebalanceModal({ 
+          type: 'ent', 
+          oldVal: currentTotal, 
+          newVal: val, 
+          split: { a: 0, b: 0 } 
+        });
+        setBudgetRebalanceError('');
+      }
+    }
+  };
+
+  const handleToggleEditSpent = (type: BudgetType) => {
+    setEditSpent({ ...editSpent, [type]: !editSpent[type] });
+  };
+
+  const handleSpentChange = (type: BudgetType, value: string) => {
+    if (editSpent[type]) {
+      const val = sanitizeNumberInput(value);
+      const n = { ...varExp };
+      n[type === 'groc' ? 'grocSpent' : 'entSpent'][sel] = val;
+      setVarExp(n);
+      setHasChanges(true);
+    }
+  };
+
+  const handleAddTransaction = (type: BudgetType) => {
+    const amt = sanitizeNumberInput(newTrans[type]);
+    if (!amt || amt <= 0) {
+      alert('Please enter a valid amount between 0 and 1,000,000');
+      return;
+    }
+    const n = { ...varExp };
+    n[type === 'groc' ? 'grocSpent' : 'entSpent'][sel] += amt;
+    setVarExp(n);
+    const now = new Date().toISOString();
+    const nt = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+    if (type === 'groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
+    setTransactions(nt);
+    setNewTrans({ ...newTrans, [type]: '' });
+    setHasChanges(true);
+  };
+
+  const handleTransactionInputChange = (type: BudgetType, value: string) => {
+    setNewTrans({ ...newTrans, [type]: value });
+  };
+
+  const handleOpenHistory = (type: BudgetType) => {
+    setTransModal({ open: true, type });
+  };
 
   const handleMonthlyFocus = (key: MonthlyFieldKey) => {
     if (key === 'extraInc') {
@@ -2518,236 +2706,17 @@ return (
           )}
         </div>
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-          <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
-          <div className="space-y-4">
-            {(['groc','ent'] as ('groc'|'ent')[]).map(type=>(
-              <div key={type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-                <div className="font-semibold mb-3 text-gray-800 text-lg">{type==='groc'?'🛒 Groceries':'🎭 Entertainment'}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">
-                      Total Budget
-                      {type==='groc' && (data[sel].grocBonus > 0 || (data[sel].grocExtra ?? 0) > 0) && (
-                        <span className="text-green-600 ml-1 block text-xs">
-                          (Base: {varExp.grocBudg[sel].toFixed(0)}
-                          {data[sel].grocBonus > 0 && ` +${data[sel].grocBonus.toFixed(0)} freed`}
-                          {(data[sel].grocExtra ?? 0) > 0 && ` +${(data[sel].grocExtra ?? 0).toFixed(0)} extra`})
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1000000"
-                      placeholder="0"
-                      value={type==='groc' ? (editingGroc ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)).toFixed(0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
-                      onFocus={() => {
-                        if (type === 'groc') {
-                          setEditingGroc(true);
-                          setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
-                        } else if (!editingEnt) {
-                          setEditingEnt(true);
-                          setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
-                        }
-                      }}
-                      onChange={(e) => {
-                        if (type === 'groc') {
-                          // Just buffer the input while typing
-                          setGrocInput(e.target.value);
-                        } else if (type === 'ent') {
-                          // buffer raw input while editing to avoid calc overwrites
-                          setEntInput(e.target.value);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (type === 'groc') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
-                          const difference = val - currentTotal;
-
-                            if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                              if (!hasChanges) {
-                                setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                              } else {
-                                const revertedData = [...data].map(d => ({ ...d }));
-                                const revertedVar = {
-                                  ...varExp,
-                                  grocBudg: [...varExp.grocBudg],
-                                  entBudg: [...varExp.entBudg]
-                                };
-                                lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                  revertedData[snap.idx] = { ...snap.data };
-                                });
-                                lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                  revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                  revertedVar.entBudg[snap.idx] = snap.entBudg;
-                                });
-                                setData(revertedData);
-                                setVarExp(revertedVar);
-                                setBudgetRebalanceModal(null);
-                                setBudgetRebalanceError('');
-                                setBudgetRebalanceApplyFuture(false);
-                                setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                                setHasChanges(true);
-                              }
-                              setEditingGroc(false);
-                              setGrocInput('');
-                              return;
-                            }
-
-                          setEditingGroc(false);
-                          setGrocInput('');
-
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'groc', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        } else if (type === 'ent') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = cur.entBudg;
-                          const difference = val - currentTotal;
-
-                          if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                            if (!hasChanges) {
-                              setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                            } else {
-                              const revertedData = [...data].map(d => ({ ...d }));
-                              const revertedVar = {
-                                ...varExp,
-                                grocBudg: [...varExp.grocBudg],
-                                entBudg: [...varExp.entBudg]
-                              };
-                              lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                revertedData[snap.idx] = { ...snap.data };
-                              });
-                              lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                revertedVar.entBudg[snap.idx] = snap.entBudg;
-                              });
-                              setData(revertedData);
-                              setVarExp(revertedVar);
-                              setBudgetRebalanceModal(null);
-                              setBudgetRebalanceError('');
-                              setBudgetRebalanceApplyFuture(false);
-                              setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                              setHasChanges(true);
-                            }
-                            setEditingEnt(false);
-                            setEntInput('');
-                            return;
-                          }
-                          
-                          setEditingEnt(false);
-                          setEntInput('');
-                          
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'ent', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        }
-                      }}
-                      disabled={false}
-                      className={`w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs flex gap-2 items-center font-medium text-gray-700 mb-1">
-                      Spent 
-                      <button 
-                        onClick={()=>setEditSpent({...editSpent,[type]:!editSpent[type]})} 
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <Edit2 size={12}/>
-                      </button>
-                    </label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="1000000"
-                      placeholder="0" 
-                      value={type==='groc'?varExp.grocSpent[sel]:varExp.entSpent[sel]} 
-                      onChange={(e)=>{
-                        if(editSpent[type]){
-                          const val = sanitizeNumberInput(e.target.value);
-                          const n={...varExp};
-                          n[type==='groc'?'grocSpent':'entSpent'][sel]=val;
-                          setVarExp(n);
-                          setHasChanges(true);
-                        }
-                      }} 
-                      disabled={!editSpent[type]} 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Remaining</label>
-                    <input 
-                      type="number" 
-                      value={type==='groc'?cur.grocRem.toFixed(0):cur.entRem.toFixed(0)} 
-                      disabled 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl bg-gray-100"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="number" 
-                    min="0"
-                    max="1000000"
-                    placeholder="Add transaction amount" 
-                    value={newTrans[type]} 
-                    onChange={(e)=>setNewTrans({...newTrans,[type]:e.target.value})} 
-                    className="flex-1 p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  />
-                  <button 
-                    onClick={()=>{
-                      const amt=sanitizeNumberInput(newTrans[type]);
-                      if(!amt || amt<=0) {
-                        alert('Please enter a valid amount between 0 and 1,000,000');
-                        return;
-                      }
-                      const n={...varExp};
-                      n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
-                      setVarExp(n);
-                      // record transaction in transactions state as Tx with timestamp
-                      const now = new Date().toISOString();
-                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                      if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
-                      setTransactions(nt);
-                      setNewTrans({...newTrans,[type]:''});
-                      setHasChanges(true);
-                    }} 
-                    className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all text-lg font-bold"
-                  >
-                    +
-                  </button>
-                </div>
-                <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
-                  <div>
-                    <span className="font-medium">Recent:</span>
-                    {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
-                      <span key={i} className="inline-block mr-2">{(t?.amt ?? 0).toFixed(0)} SEK <span className="text-xs text-gray-400">({t?.ts ? new Date(t.ts).toLocaleTimeString() : ''})</span></span>
-                    ))}
-                  </div>
-                  <button onClick={()=>setTransModal({ open:true, type })} className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Transactions History</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <BudgetSection
+          fields={budgetFields}
+          onFocus={handleBudgetFocus}
+          onChange={handleBudgetChange}
+          onBlur={handleBudgetBlur}
+          onToggleEditSpent={handleToggleEditSpent}
+          onSpentChange={handleSpentChange}
+          onAddTransaction={handleAddTransaction}
+          onTransactionInputChange={handleTransactionInputChange}
+          onOpenHistory={handleOpenHistory}
+        />
 
         {transModal.open && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
