@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
+import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
@@ -19,6 +19,7 @@ import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/compo
 import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import SetupSection from "@/components/SetupSection";
+import AnalyticsSection from "@/components/AnalyticsSection";
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
@@ -1276,35 +1277,6 @@ export default function FinancialPlanner() {
 
   // use `validateSplit` and `sanitizeNumberInput` from `lib/uiHelpers`
 
-  type CardProps = {
-    label: string;
-    value: number;
-    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-    color: 'blue' | 'green' | 'purple' | 'orange';
-    sub?: string;
-  };
-
-  const Card: React.FC<CardProps> = ({ label, value, icon: Icon, color, sub }) => {
-    const colorClasses = {
-      blue: 'bg-gradient-to-br from-blue-500 to-blue-700',
-      green: 'bg-gradient-to-br from-green-500 to-green-700',
-      purple: 'bg-gradient-to-br from-purple-500 to-purple-700',
-      orange: 'bg-gradient-to-br from-orange-500 to-orange-700'
-    };
-    
-    return (
-      <div className={`${colorClasses[color]} rounded-2xl p-4 sm:p-6 text-white shadow-2xl hover:shadow-3xl transition-all transform hover:scale-[1.02] border border-white/20 ring-1 ring-white/10`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs sm:text-sm font-medium opacity-90">{label}</span>
-          <Icon className="w-5 h-5 sm:w-6 sm:h-6 opacity-90" />
-        </div>
-        <div className="text-2xl sm:text-3xl font-bold mb-1">{value.toFixed(0)}</div>
-        {sub && <div className="text-xs sm:text-sm opacity-80 leading-tight">{sub}</div>}
-        {!sub && <div className="text-xs sm:text-sm opacity-80">SEK</div>}
-      </div>
-    );
-  };
-
 if (isLoading) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
@@ -1459,155 +1431,41 @@ return (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
-          <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
-          <Card label="Income" value={data[sel].baseSalary ?? cur.inc} icon={Calendar} color="purple" />
-          <Card label="Groceries" value={cur.grocRem} icon={ShoppingCart} color="green" sub={`of ${cur.grocBudg.toFixed(0)} SEK`} />
-          <Card 
-            label="Entertainment" 
-            value={cur.entRem} 
-            icon={DollarSign} 
-            color="orange" 
-            sub={`of ${cur.entBudg.toFixed(0)} SEK`} 
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-              <PiggyBank className="w-4 h-4 text-emerald-600" />
-              Emergency buffer
-            </div>
-            <div className="text-2xl font-bold text-emerald-700">
-              {emergencyBufferMonths !== null ? `${emergencyBufferMonths.toFixed(1)} months` : 'Add savings'}
-            </div>
-            <p className="text-sm text-gray-600 leading-snug">
-              Current savings cover baseline monthly spend of {monthlyExpenseBaseline.toFixed(0)} SEK.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-              <Clock className="w-4 h-4 text-blue-600" />
-              Savings runway
-            </div>
-            <div className={`text-2xl font-bold ${savingsRunwayMonths === null ? 'text-emerald-700' : 'text-blue-700'}`}>
-              {savingsRunwayMonths === null ? 'Stable / Growing' : `${savingsRunwayMonths.toFixed(1)} months`}
-            </div>
-            <p className="text-sm text-gray-600 leading-snug">
-              {monthlyNet < 0
-                ? `At current burn (${Math.abs(monthlyNet).toFixed(0)} SEK/month), savings reach zero in ~${(savingsRunwayMonths ?? 0).toFixed(1)} months.`
-                : 'Income covers planned spending; savings are not shrinking this month.'}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                What-if preview
-              </div>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full border border-gray-200">Live estimate</span>
-            </div>
-            <label className="text-sm text-gray-700">Salary change ({whatIfSalaryDelta}%)</label>
-            <input
-              type="range"
-              min={-10}
-              max={10}
-              step={1}
-              value={whatIfSalaryDelta}
-              onChange={(e) => setWhatIfSalaryDelta(parseInt(e.target.value))}
-              className="w-full accent-indigo-600"
-            />
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={whatIfGrocCut}
-                onChange={(e) => setWhatIfGrocCut(e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              Reduce groceries by 5%
-            </label>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <div className={`text-2xl font-bold ${((whatIfProjection?.projectedNet ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'}`}>
-                {(whatIfProjection?.projectedNet ?? 0).toFixed(0)} SEK
-              </div>
-              <p className="text-sm text-gray-600">
-                Monthly net after tweaks (
-                <span className={`${((whatIfProjection?.delta ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'} font-semibold`}>
-                  {((whatIfProjection?.delta ?? 0) >= 0 ? '+' : '') + (whatIfProjection?.delta ?? 0).toFixed(0)}
-                </span>
-                {' '}vs current)
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Adjusted salary {(whatIfProjection?.adjSalary ?? 0).toFixed(0)} SEK · Groceries {(whatIfProjection?.grocAdj ?? 0).toFixed(0)} SEK
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {cur.overspendWarning && (
-          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
-            <div className="flex items-start gap-3">
-              <AlertTriangle className={`w-5 h-5 mt-0.5 ${cur.criticalOverspend ? 'text-red-700' : 'text-yellow-700'}`} />
-              <div>
-                <h3 className={`font-bold ${cur.criticalOverspend ? 'text-red-900' : 'text-yellow-900'} mb-1`}>
-                  {cur.criticalOverspend ? '🚨 Critical Budget Alert' : '⚠️ Budget Warning'}
-                </h3>
-                <p className={`text-sm ${cur.criticalOverspend ? 'text-red-800' : 'text-yellow-800'}`}>{cur.overspendWarning}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {cur.hasRollover && !showRollover && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
-            <div className="flex-1">
-              <h3 className="font-bold text-green-900 text-base sm:text-lg flex items-center gap-2 mb-1">
-                <PiggyBank className="w-5 h-5" />
-                Unspent from Last Month
-              </h3>
-                <p className="text-sm text-green-800">
-                You have {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK unused budget
-              </p>
-              {(cur.rolloverDaysRemaining ?? 0) > 0 && (
-                <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {autoRollover ? `Auto-rollover in ${cur.rolloverDaysRemaining ?? 0} days` : `Available in ${cur.rolloverDaysRemaining ?? 0} days`}
-                </p>
-              )}
-            </div>
-            <button onClick={() => setShowRollover(true)} className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 transition-all shadow-md whitespace-nowrap">
-              Add to Savings Now
-            </button>
-          </div>
-        )}
-
-        {showRollover && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
-            <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK to savings?</h3>
-            <p className="text-sm text-green-800 mb-3">This will move your unused budget from last month into savings.</p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button 
-                  onClick={() => { 
-                  const n = [...data]; 
-                  n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0); 
-                  n[sel].rolloverProcessed = true;
-                  setData(n); 
-                  setShowRollover(false); 
-                  setHasChanges(true); 
-                }} 
-                className="flex-1 bg-green-600 text-white px-4 py-3 rounded-xl hover:bg-green-700 flex items-center justify-center gap-2 shadow-md transition-all"
-              >
-                <Check size={18} />Yes, Add to Savings
-              </button>
-              <button onClick={() => setShowRollover(false)} className="flex-1 bg-gray-400 text-white px-4 py-3 rounded-xl hover:bg-gray-500 flex items-center justify-center gap-2 shadow-md transition-all">
-                <X size={18} />Keep as Budget
-              </button>
-            </div>
-          </div>
-        )}
+        <AnalyticsSection
+          totalSavings={cur.totSave}
+          balance={cur.bal}
+          income={data[sel].baseSalary ?? cur.inc}
+          groceriesRemaining={cur.grocRem}
+          groceriesBudget={cur.grocBudg}
+          entertainmentRemaining={cur.entRem}
+          entertainmentBudget={cur.entBudg}
+          emergencyBufferMonths={emergencyBufferMonths}
+          monthlyExpenseBaseline={monthlyExpenseBaseline}
+          savingsRunwayMonths={savingsRunwayMonths}
+          monthlyNet={monthlyNet}
+          whatIfSalaryDelta={whatIfSalaryDelta}
+          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
+          whatIfGrocCut={whatIfGrocCut}
+          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
+          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
+          overspendWarning={cur.overspendWarning ?? null}
+          criticalOverspend={cur.criticalOverspend ?? false}
+          hasRollover={cur.hasRollover ?? false}
+          showRollover={showRollover}
+          rolloverAmount={(cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)}
+          rolloverDaysRemaining={cur.rolloverDaysRemaining ?? null}
+          autoRollover={autoRollover}
+          onShowRolloverClick={() => setShowRollover(true)}
+          onConfirmRollover={() => {
+            const n = [...data];
+            n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0);
+            n[sel].rolloverProcessed = true;
+            setData(n);
+            setShowRollover(false);
+            setHasChanges(true);
+          }}
+          onCancelRollover={() => setShowRollover(false)}
+        />
 
         <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
           <MonthlySection
