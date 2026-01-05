@@ -1,125 +1,70 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, TrendingUp, PiggyBank, Plus, Trash2, Calendar, Edit2, Save, Check, X, AlertTriangle, Clock, Wallet, ShoppingCart } from 'lucide-react';
+import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload } from "lucide-react";
+import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
+import type { CompensationOption } from "@/components/CompensationModal";
+import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
-import { getFinancialData } from "@/lib/finance";
-import { saveFinancialDataSafe } from '@/lib/financeSafe';
+import { useFinancialState } from "@/lib/hooks/useFinancialState";
+import { useFixedExpenses } from "@/lib/hooks/useFixedExpenses";
+import { useVariableExpenses } from "@/lib/hooks/useVariableExpenses";
+import { useTransactions } from "@/lib/hooks/useTransactions";
+import { useModalState } from "@/lib/hooks/useModalState";
+import { useBudgetRebalanceModal } from "@/lib/hooks/useBudgetRebalanceModal";
+import { useForceRebalanceModal } from "@/lib/hooks/useForceRebalanceModal";
+import { useSalarySplitModal } from "@/lib/hooks/useSalarySplitModal";
+import { useExtraSplitModal } from "@/lib/hooks/useExtraSplitModal";
+import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
+import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
+import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
+import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
+import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
+import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
+import SetupSection from "@/components/SetupSection";
+import AnalyticsSection from "@/components/AnalyticsSection";
+import AdditionalFeaturesSection from "@/components/AdditionalFeaturesSection";
+import UtilityCardsRow from "@/components/UtilityCardsRow";
+import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
-import { Timestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { validateBudgetBalance as validateBudgetBalanceHelper, computeBudgetIssues } from '@/lib/budgetBalance';
-import { hasAnyFinancialData } from '@/lib/setupGate';
 import { auth } from '@/lib/firebase';
-
-
-// -- Types
-type MonthItem = { name: string; date: Date; day: number };
-
-type Split = { save: number; groc: number; ent: number };
-
-type Change = {
-  type?: 'delete' | 'amount';
-  scope: 'month' | 'future' | 'forever';
-  idx: number;
-  monthIdx?: number;
-  newAmt?: number;
-  oldAmt?: number;
-  amt?: number;
-  split: Split;
-};
-
-type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[] };
-
-type DataItem = {
-  inc: number;
-  baseSalary?: number;
-  prev: number | null;
-  prevManual: boolean;
-  save: number;
-  defSave: number;
-  extraInc: number;
-  grocBonus: number;
-  entBonus: number;
-  grocExtra?: number;
-  entExtra?: number;
-  saveExtra?: number;
-  rolloverProcessed: boolean;
-};
-
-type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
-type Tx = { amt: number; ts: string };
-type ExtraAlloc = { groc: number; ent: number; save: number; ts: string };
-type Transactions = { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-type SerializedTransactions = {
-  groc?: Record<string, Tx[]>;
-  ent?: Record<string, Tx[]>;
-  extra?: Record<string, ExtraAlloc[]>;
-};
-type LegacyTransactions = { groc?: number[][]; ent?: number[][] };
-type FirestoreSafe = null | boolean | number | string | FirestoreSafe[] | { [k: string]: FirestoreSafe };
-
-const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
-  inc: 0,
-  baseSalary: undefined,
-  prev: null,
-  prevManual: false,
-  save: 0,
-  defSave: 0,
-  extraInc: 0,
-  grocBonus: 0,
-  entBonus: 0,
-  grocExtra: 0,
-  entExtra: 0,
-  saveExtra: 0,
-  rolloverProcessed: false
-}));
-
-const createEmptyFixed = (): FixedExpense[] => [];
-
-const createEmptyVarExp = (): VarExp => ({
-  grocBudg: Array(60).fill(0),
-  grocSpent: Array(60).fill(0),
-  entBudg: Array(60).fill(0),
-  entSpent: Array(60).fill(0)
-});
-
-const createEmptyTransactions = (): Transactions => ({
-  groc: Array.from({ length: 60 }, () => [] as Tx[]),
-  ent: Array.from({ length: 60 }, () => [] as Tx[]),
-  extra: Array.from({ length: 60 }, () => [] as ExtraAlloc[])
-});
+import type {
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  CompensationSource,
+  Tx,
+  ExtraAlloc,
+  Transactions
+} from '@/lib/types';
+import type {
+  TransactionEdit,
+  AdjustmentHistory,
+  LastExtraApply,
+  ExpenseEdit,
+  SetupStep
+} from '@/lib/hooks/types';
 
 export default function FinancialPlanner() {
-  const genMonths = (c: number) => Array(c).fill(0).map((_, i) => {
-    const d = new Date(2025, 11, 25);
-    d.setMonth(d.getMonth() + i);
-    return { name: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }), date: d, day: 25 };
-  });
-
-  const [months] = useState<MonthItem[]>(genMonths(60));
-  const [sel, setSel] = useState(0);
+  const { months, sel, setSel, isPassed } = useMonthSelection();
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
   const [adj, setAdj] = useState({ groc: 0, ent: 0 });
   const [editPrev, setEditPrev] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Change[]>([]);
-  const [changeModal, setChangeModal] = useState<Change | null>(null);
-  const [deleteModal, setDeleteModal] = useState<Change | null>(null);
   const [newTrans, setNewTrans] = useState<Record<'groc'|'ent', string>>({ groc: '', ent: '' });
   const [showRollover, setShowRollover] = useState(false);
   const [editSpent, setEditSpent] = useState({ groc: false, ent: false });
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
   const [applySavingsForward, setApplySavingsForward] = useState<number | null>(null);
-  const [extraAdj, setExtraAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
-  const [extraSplitActive, setExtraSplitActive] = useState(false);
   const [splitError, setSplitError] = useState('');
-  const [extraSplitError, setExtraSplitError] = useState('');
-  const [autoRollover, setAutoRollover] = useState(false);
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -130,235 +75,154 @@ export default function FinancialPlanner() {
   const [entInput, setEntInput] = useState('');
   const [grocInput, setGrocInput] = useState('');
   const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
-  const [hydrated, setHydrated] = useState(false);
   const [salaryInitial, setSalaryInitial] = useState<number>(0);
-  const [salarySplitActive, setSalarySplitActive] = useState(false);
-  const [salarySplitAdj, setSalarySplitAdj] = useState<{ groc: number; ent: number; save: number }>({ groc: 0, ent: 0, save: 0 });
-  const [salarySplitError, setSalarySplitError] = useState('');
-  const [salarySplitApplyFuture, setSalarySplitApplyFuture] = useState(false);
   const [savingsInitial, setSavingsInitial] = useState<number>(0);
-  const [budgetRebalanceModal, setBudgetRebalanceModal] = useState<{ type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; split: { a: number; b: number } } | null>(null);
-  const [budgetRebalanceError, setBudgetRebalanceError] = useState('');
-  const [budgetRebalanceApplyFuture, setBudgetRebalanceApplyFuture] = useState(false);
-  const [forceRebalanceOpen, setForceRebalanceOpen] = useState(false);
-  const [forceRebalanceError, setForceRebalanceError] = useState('');
-  const [forceRebalanceValues, setForceRebalanceValues] = useState<{ save: number; groc: number; ent: number }>({ save: 0, groc: 0, ent: 0 });
-  const [forceRebalanceTarget, setForceRebalanceTarget] = useState<number | null>(null);
-  const forceRebalanceInitialized = useRef(false);
-  const lastLoggedIssue = useRef<{ idx: number; save: number; groc: number; ent: number } | null>(null);
-  const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
-  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<{ idx: number; monthIdx: number; originalAmt: number } | null>(null);
-  const [newExpenseSplit, setNewExpenseSplit] = useState<{ expense: { name: string; amts: number[]; spent: boolean[]; id: number }; split: { save: number; groc: number; ent: number }; applyToAll: boolean } | null>(null);
-  const [newExpenseSplitError, setNewExpenseSplitError] = useState('');
   const [lastAddedExpenseId, setLastAddedExpenseId] = useState<number | null>(null);
-  const [transactions, setTransactions] = useState<{ groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] }>(() => createEmptyTransactions());
-  const [lastExtraApply, setLastExtraApply] = useState<null | { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; idx: number }>(null);
-  const [transModal, setTransModal] = useState<{ open: boolean; type: 'groc'|'ent'|'extra' }>({ open:false, type:'groc' });
-  const [transEdit, setTransEdit] = useState<{ idx: number | null; value: string }>({ idx: null, value: '' });
+  const [lastExtraApply, setLastExtraApply] = useState<LastExtraApply | null>(null);
+  const {
+    changeModal,
+    setChangeModal,
+    deleteModal,
+    setDeleteModal,
+    transModal,
+    setTransModal,
+    undoPrompt,
+    setUndoPrompt
+  } = useModalState();
+  const {
+    budgetRebalanceModal,
+    budgetRebalanceError,
+    budgetRebalanceApplyFuture,
+    setBudgetRebalanceModal,
+    setValidationError: setBudgetRebalanceError,
+    setApplyFuture: setBudgetRebalanceApplyFuture
+  } = useBudgetRebalanceModal();
+  const {
+    forceRebalanceOpen,
+    forceRebalanceError,
+    forceRebalanceValues,
+    forceRebalanceTarget,
+    forceRebalanceInitialized,
+    selectedOption,
+    setForceRebalanceOpen,
+    setForceRebalanceError,
+    setForceRebalanceValues,
+    setForceRebalanceTarget,
+    setSelectedOption
+  } = useForceRebalanceModal();
+  const {
+    salarySplitActive,
+    salarySplitAdj,
+    salarySplitError,
+    salarySplitApplyFuture,
+    openSalarySplit,
+    closeSalarySplit,
+    setAllAdjustments: setSalarySplitAdj,
+    setError: setSalarySplitError,
+    setApplyFuture: setSalarySplitApplyFuture
+  } = useSalarySplitModal();
+  const setSalarySplitActive = useCallback((value: boolean) => (value ? openSalarySplit() : closeSalarySplit()), [closeSalarySplit, openSalarySplit]);
+  const {
+    extraSplitActive,
+    extraAdj,
+    extraSplitError,
+    openExtraSplit,
+    closeExtraSplit,
+    setAllAdjustments: setExtraAdj,
+    setError: setExtraSplitError
+  } = useExtraSplitModal();
+  const setExtraSplitActive = useCallback((value: boolean) => (value ? openExtraSplit() : closeExtraSplit()), [closeExtraSplit, openExtraSplit]);
+  const {
+    newExpenseSplit,
+    newExpenseSplitError,
+    setNewExpenseSplit,
+    setError: setNewExpenseSplitError
+  } = useNewExpenseSplitModal();
+  const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
+  const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
+  // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving)
+  const {
+    data,
+    setData,
+    fixed,
+    setFixed,
+    varExp: varExpFromState,
+    setVarExp: setVarExpState,
+    transactions: transactionsFromState,
+    setTransactions: setTransactionsState,
+    autoRollover,
+    setAutoRollover,
+    hydrated: financialHydrated,
+    lastSaved,
+    saveConflict,
+    setSaveConflict,
+    saveData
+  } = useFinancialState();
+
+  // Variable expense management hook
+  const {
+    varExp,
+    setVarExp
+  } = useVariableExpenses(varExpFromState, setVarExpState);
+
+  // Transaction management hook
+  const {
+    transactions,
+    setTransactions
+  } = useTransactions(transactionsFromState, setTransactionsState);
+
+  const { validateBudgetBalance, checkForIssues, evaluateManualRebalance } = useBudgetValidation({ data, varExp, fixed, months, hydrated: financialHydrated });
+  const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
+  const [compModalState, setCompModalState] = useState<{
+    open: boolean;
+    mode: 'add' | 'edit';
+    type: 'groc' | 'ent';
+    amount: number;
+    overspend: number;
+    options: CompensationOption[];
+  }>({ open: false, mode: 'add', type: 'groc', amount: 0, overspend: 0, options: [] });
+  const [pendingTx, setPendingTx] = useState<{ type: 'groc' | 'ent'; amount: number } | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<{
+    type: 'groc' | 'ent';
+    monthIdx: number;
+    txIdx: number;
+    amount: number;
+    baseVar: VarExp;
+    baseData: DataItem[];
+  } | null>(null);
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
-  const [lastAdjustments, setLastAdjustments] = useState<{
-    salary?: { oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-    budget?: { type: 'save'|'groc'|'ent'; oldVal: number; newVal: number; months: number[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-    extra?: { sel: number; prev: { grocExtra: number; entExtra: number; saveExtra: number; extraInc: number; inc: number }; txIdx: number | null };
-    newExpense?: { expenseId: number; fixedBefore: FixedExpense[]; dataSnapshots: { idx: number; data: DataItem }[]; varSnapshots: { idx: number; grocBudg: number; entBudg: number }[] };
-  }>({});
-  const [undoPrompt, setUndoPrompt] = useState<null | { kind: 'salary'|'budget'|'extra'|'newExpense'; payload: unknown }>(null);
-  
+  const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
+
   // Setup wizard state
   const [showSetup, setShowSetup] = useState(false);
-  const [setupStep, setSetupStep] = useState<'prev'|'salary'|'extraInc'|'fixedExpenses'|'budgets'>('prev');
+  const [setupStep, setSetupStep] = useState<SetupStep>('prev');
   const [setupPrev, setSetupPrev] = useState('');
   const [setupSalary, setSetupSalary] = useState('');
   const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
   const [setupExtraInc, setSetupExtraInc] = useState('0');
-  const [setupFixedExpenses, setSetupFixedExpenses] = useState<{name: string; amt: string}[]>([]);
-  const [setupFixedName, setSetupFixedName] = useState('');
-  const [setupFixedAmt, setSetupFixedAmt] = useState('');
   const [setupSave, setSetupSave] = useState('');
   const [setupGroc, setSetupGroc] = useState('');
   const [setupEnt, setSetupEnt] = useState('');
   const [setupBudgetsApplyAll, setSetupBudgetsApplyAll] = useState(false);
-  const [setupError, setSetupError] = useState('');
 
-  const serializeTransactions = useCallback((t: Transactions): SerializedTransactions => {
-    const grocObj: Record<string, Tx[]> = {};
-    const entObj: Record<string, Tx[]> = {};
-    const extraObj: Record<string, ExtraAlloc[]> = {};
-    for (let i = 0; i < 60; i++) {
-      if (t.groc[i] && t.groc[i].length) grocObj[String(i)] = t.groc[i].slice();
-      if (t.ent[i] && t.ent[i].length) entObj[String(i)] = t.ent[i].slice();
-      if (t.extra[i] && t.extra[i].length) extraObj[String(i)] = t.extra[i].slice();
-    }
-    return { groc: grocObj, ent: entObj, extra: extraObj };
-  }, []);
+  // Fixed expense management
+  const {
+    setupFixedExpenses,
+    setupFixedName,
+    setSetupFixedName,
+    setupFixedAmt,
+    setSetupFixedAmt,
+    setupError,
+    setSetupError,
+    handleAddFixedExpense,
+    handleRemoveFixedExpense,
+    createFromSetup
+  } = useFixedExpenses();
 
-  const sanitizeForFirestore = useCallback((v: unknown): FirestoreSafe => {
-    if (v === undefined || v === null) return null;
-    if (Array.isArray(v)) return v.map(sanitizeForFirestore) as FirestoreSafe[];
-    if (typeof v === 'object') {
-      const out: Record<string, FirestoreSafe> = {};
-      Object.entries(v as Record<string, unknown>).forEach(([k, val]) => {
-        out[k] = sanitizeForFirestore(val);
-      });
-      return out;
-    }
-    if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
-    return null;
-  }, []);
-
-  const findUndefinedPaths = useCallback((v: unknown) => {
-    const out: string[] = [];
-    const walk = (val: unknown, path = '') => {
-      if (val === undefined) {
-        out.push(path || '(root)');
-        return;
-      }
-      if (val === null) return;
-      if (Array.isArray(val)) {
-        val.forEach((it, i) => walk(it, `${path}[${i}]`));
-        return;
-      }
-      if (typeof val === 'object') {
-        Object.keys(val as Record<string, unknown>).forEach(k => walk((val as Record<string, unknown>)[k], path ? `${path}.${k}` : k));
-      }
-    };
-    walk(v, '');
-    return out;
-  }, []);
-
-  const deserializeTransactions = useCallback((stored?: SerializedTransactions | LegacyTransactions | null): Transactions => {
-    const emptyTx = Array.from({ length: 60 }, () => [] as Tx[]);
-    const emptyExtra = Array.from({ length: 60 }, () => [] as ExtraAlloc[]);
-    if (!stored) return { groc: emptyTx.map(a=>a.slice()), ent: emptyTx.map(a=>a.slice()), extra: emptyExtra.map(a=>a.slice()) };
-    if (Array.isArray((stored as LegacyTransactions).groc) || Array.isArray((stored as LegacyTransactions).ent)) {
-      const legacy = stored as LegacyTransactions;
-      const now = new Date().toISOString();
-      const groc = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.groc?.[i]) ? (legacy.groc[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
-      const ent = Array.from({ length: 60 }, (_, i) => (Array.isArray(legacy.ent?.[i]) ? (legacy.ent[i] as number[]).map(n=>({ amt: n, ts: now })) : []));
-      return { groc, ent, extra: emptyExtra.map(a=>a.slice()) };
-    }
-    const structured = stored as SerializedTransactions;
-    const groc = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.groc?.[String(i)]) ? (structured.groc[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const ent = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.ent?.[String(i)]) ? (structured.ent[String(i)] as Tx[]).map(x=>({ amt: x.amt, ts: x.ts })) : []);
-    const extra = Array.from({ length: 60 }, (_, i) => Array.isArray(structured.extra?.[String(i)]) ? (structured.extra[String(i)] as ExtraAlloc[]).map(x=>({ groc: x.groc, ent: x.ent, save: x.save, ts: x.ts })) : []);
-    return { groc, ent, extra };
-  }, []);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [baseUpdatedAt, setBaseUpdatedAt] = useState<Timestamp | null>(null);
-  const [saveConflict, setSaveConflict] = useState(false);
-  const { user, loading } = useAuth();
-  const lastLoadedUid = useRef<string | null>(null);
-  const [data, setData] = useState<DataItem[]>(
-    createEmptyData()
-  );
-  const [fixed, setFixed] = useState<FixedExpense[]>(createEmptyFixed());
-
-  const [varExp, setVarExp] = useState<VarExp>(createEmptyVarExp());
-
-  const resetStateToInitial = useCallback((opts?: { keepHydrated?: boolean }) => {
-    setSel(0);
-    setShowAdd(false);
-    setNewExp({ name: '', amt: 0, type: 'monthly', start: 0 });
-    setEditPrev(false);
-    setData(createEmptyData());
-    setFixed(createEmptyFixed());
-    setVarExp(createEmptyVarExp());
-    setTransactions(createEmptyTransactions());
-    setAutoRollover(false);
-    setEntSavingsPercent(10);
-    setPendingChanges([]);
-    setChangeModal(null);
-    setDeleteModal(null);
-    setLastAdjustments({});
-    setUndoPrompt(null);
-    setBudgetBalanceIssues([]);
-    setSaveConflict(false);
-    setLastSaved(null);
-    setBaseUpdatedAt(null);
-    setHasChanges(false);
-    setForceRebalanceOpen(false);
-    setForceRebalanceError('');
-    setForceRebalanceTarget(null);
-    setForceRebalanceValues({ save: 0, groc: 0, ent: 0 });
-    setLastAddedExpenseId(null);
-    setNewExpenseSplit(null);
-    setNewExpenseSplitError('');
-    setTransModal({ open: false, type: 'groc' });
-    setTransEdit({ idx: null, value: '' });
-    setBudgetRebalanceModal(null);
-    setBudgetRebalanceError('');
-    setBudgetRebalanceApplyFuture(false);
-    setShowSetup(true);
-    setSetupStep('prev');
-    setSetupPrev('');
-    setSetupSalary('');
-    setSetupSalaryApplyAll(false);
-    setSetupExtraInc('0');
-    setSetupFixedExpenses([]);
-    setSetupFixedName('');
-    setSetupFixedAmt('');
-    setSetupSave('');
-    setSetupGroc('');
-    setSetupEnt('');
-    setSetupBudgetsApplyAll(false);
-    setSetupError('');
-    setSavingEdited(false);
-    setAdj({ groc: 0, ent: 0 });
-    setApplyFuture(false);
-    setApplySavingsForward(null);
-    setExtraSplitActive(false);
-    setExtraAdj({ groc: 0, ent: 0, save: 0 });
-    setSplitError('');
-    setExtraSplitError('');
-    setWithdrawAmount(0);
-    setSalarySplitActive(false);
-    setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-    setSalarySplitApplyFuture(false);
-    setSalarySplitError('');
-    forceRebalanceInitialized.current = false;
-    lastLoadedUid.current = null;
-    if (!opts?.keepHydrated) {
-      setIsLoading(false);
-      setHydrated(true);
-    }
-  }, []);
-
-  const validateBudgetBalance = useCallback((monthIdx: number, save: number, groc: number, ent: number, opts?: { dataOverride?: DataItem[]; fixedOverride?: FixedExpense[] }) => {
-    const dataSource = opts?.dataOverride ?? data;
-    const fixedSource = opts?.fixedOverride ?? fixed;
-    return validateBudgetBalanceHelper({ monthIdx, save, groc, ent, data: dataSource, fixed: fixedSource, months });
-  }, [data, fixed, months]);
+  const { user } = useAuth();
 
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
-    if (!hydrated && !opts) return;
-    const dataSource = opts?.dataOverride ?? data;
-    const varSource = opts?.varOverride ?? varExp;
-    const fixedSource = opts?.fixedOverride ?? fixed;
-
-    const result = computeBudgetIssues({ data: dataSource, varExp: varSource, fixed: fixedSource, months });
-
-    if (result.firstIssue) {
-      const current = result.firstIssue;
-      const last = lastLoggedIssue.current;
-      if (!last || last.idx !== current.idx || last.save !== current.saveTotal || last.groc !== current.grocTotal || last.ent !== current.entTotal) {
-        console.debug('Force rebalance - first issue', {
-          idx: current.idx,
-          month: months[current.idx]?.name,
-          saveTotal: current.saveTotal,
-          grocTotal: current.grocTotal,
-          entTotal: current.entTotal,
-          totalBudgets: current.saveTotal + current.grocTotal + current.entTotal,
-          available: current.available,
-          deficit: current.deficit,
-          issuesCount: result.issues.length
-        });
-        lastLoggedIssue.current = { idx: current.idx, save: current.saveTotal, groc: current.grocTotal, ent: current.entTotal };
-      }
-    } else if (result.issues.length > 0) {
-      console.debug('Force rebalance - issues found but no summary', { issuesCount: result.issues.length });
-    } else {
-      lastLoggedIssue.current = null;
-    }
+    const result = checkForIssues(opts);
 
     setBudgetBalanceIssues(result.issues);
 
@@ -383,7 +247,16 @@ export default function FinancialPlanner() {
       // If there are issues but no summary, keep modal closed to avoid loops
       setForceRebalanceOpen(false);
     }
-  }, [data, fixed, hydrated, months, varExp, forceRebalanceOpen]);
+  }, [
+    checkForIssues,
+    forceRebalanceInitialized,
+    forceRebalanceOpen,
+    setBudgetBalanceIssues,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setForceRebalanceValues
+  ]);
 
   const recomputeBudgetIssuesRef = useRef(recomputeBudgetIssues);
   useEffect(() => {
@@ -405,67 +278,30 @@ export default function FinancialPlanner() {
     }
   }, [fixed, lastAddedExpenseId, pendingChanges, budgetBalanceIssues.length, hasChanges, sel]);
 
+  // Sync loading state and setup wizard with hook's hydration
   useEffect(() => {
-    const loadFromFirestore = async () => {
-      if (!user) {
-        resetStateToInitial();
-        return;
-      }
+    if (financialHydrated) {
+      setIsLoading(false);
 
-      // Avoid clobbering unsaved local changes on auth token refreshes
-      if (hasChanges && lastLoadedUid.current === user.uid) {
-        console.warn('Skip reload from Firestore due to unsaved local changes', { uid: user.uid });
-        setIsLoading(false);
-        setHydrated(true);
-        return;
-      }
+      // Auto-manage wizard visibility based on data existence
+      // Don't interfere if wizard is actively being used (user has entered data in wizard fields)
+      const hasWizardInput = setupPrev || setupSalary || setupExtraInc !== '0' || setupFixedExpenses.length > 0 || setupSave || setupGroc || setupEnt;
+      const isActivelyUsingWizard = showSetup && setupStep !== 'prev' && hasWizardInput;
 
-      // Skip redundant reloads for the same user once hydrated
-      if (hydrated && lastLoadedUid.current === user.uid) return;
+      if (user && !isActivelyUsingWizard) {
+        // Check if user has existing data in the main app state
+        const hasData = data.some(d => d.inc > 0 || d.save > 0) || fixed.length > 0;
 
-      try {
-        const saved = await getFinancialData(user.uid);
-        if (saved) {
-          const des = deserializeTransactions(saved.transactions);
-          setTransactions(des);
-          const savedData = saved.data as DataItem[];
-          const savedFixed = saved.fixed as FixedExpense[];
-          setData(savedData);
-          setFixed(savedFixed);
-          // Migration: ensure varExp has entBudg array for old data
-          const varExpData = saved.varExp as VarExp;
-          if (!varExpData.entBudg || !Array.isArray(varExpData.entBudg)) {
-            varExpData.entBudg = Array(60).fill(0).map((_, i) => i === 0 ? 3000 : 0);
-          }
-          setVarExp(varExpData);
-          setAutoRollover(saved.autoRollover ?? false);
-          setLastSaved(saved.updatedAt?.toDate?.() ?? null);
-          setBaseUpdatedAt(saved.updatedAt ?? null);
-          lastLoadedUid.current = user.uid;
-
-          // If the user already has data, ensure the setup wizard stays closed
-          const hasData = hasAnyFinancialData({ data: savedData, fixed: savedFixed, varExp: varExpData, transactions: des });
-          if (hasData) {
-            setShowSetup(false);
-          }
-
-          recomputeBudgetIssuesRef.current({ dataOverride: savedData, varOverride: varExpData, fixedOverride: savedFixed });
-        } else {
-          console.info('No financial data found for user; initializing empty state and showing setup wizard', { uid: user.uid });
-          resetStateToInitial({ keepHydrated: true });
-          lastLoadedUid.current = user.uid;
-          return;
+        if (hasData) {
+          // User has data, close wizard
+          setShowSetup(false);
+        } else if (!showSetup) {
+          // No data and wizard not open, show it
+          setShowSetup(true);
         }
-      } catch (err) {
-        console.error("Failed to load from Firestore", err);
-      } finally {
-        setIsLoading(false);
-        setHydrated(true);
       }
-    };
-
-    loadFromFirestore();
-  }, [user, loading, hasChanges, hydrated, deserializeTransactions, resetStateToInitial]);
+    }
+  }, [financialHydrated, user, data, fixed, showSetup, setupStep, setupPrev, setupSalary, setupExtraInc, setupFixedExpenses, setupSave, setupGroc, setupEnt]);
 
   // Run budget check only on initial load (see loadFromFirestore) and explicit actions
 
@@ -542,7 +378,7 @@ export default function FinancialPlanner() {
     }
     setUndoPrompt(null);
     setHasChanges(true);
-  }, [data, lastAdjustments, transactions, undoPrompt, varExp]);
+  }, [data, lastAdjustments, setData, setFixed, setHasChanges, setLastAdjustments, setTransactions, setUndoPrompt, setVarExp, transactions, undoPrompt, varExp]);
 
 
   // Warn before leaving with unsaved changes
@@ -556,36 +392,6 @@ export default function FinancialPlanner() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges]);
-
-  // Check if user needs initial setup
-  useEffect(() => {
-    if (!user || !hydrated) return;
-    const hasAnyData = hasAnyFinancialData({ data, fixed, varExp, transactions });
-    if (!hasAnyData && !showSetup) {
-      setShowSetup(true);
-      setSetupStep('prev');
-    }
-  }, [user, hydrated, data, fixed, varExp, transactions, showSetup]);
-
-  const handleAddFixedExpense = () => {
-    if (!setupFixedName.trim()) {
-      setSetupError('Expense name is required');
-      return;
-    }
-    const amt = parseFloat(setupFixedAmt || '0');
-    if (amt < 0) {
-      setSetupError('Amount must be a positive number');
-      return;
-    }
-    setSetupFixedExpenses([...setupFixedExpenses, { name: setupFixedName, amt: setupFixedAmt }]);
-    setSetupFixedName('');
-    setSetupFixedAmt('');
-    setSetupError('');
-  };
-
-  const handleRemoveFixedExpense = (index: number) => {
-    setSetupFixedExpenses(setupFixedExpenses.filter((_, i) => i !== index));
-  };
 
   const handleSetupNext = () => {
     setSetupError('');
@@ -665,13 +471,8 @@ export default function FinancialPlanner() {
       nv.grocBudg[0] = grocVal;
       nv.entBudg[0] = entVal;
       
-      // Create fixed expenses from user input
-      const nf = setupFixedExpenses.map((f, idx) => ({
-        id: idx + 1,
-        name: f.name,
-        amts: Array(60).fill(0).map((_, i) => i === 0 ? parseFloat(f.amt) : 0),
-        spent: Array(60).fill(false)
-      }));
+      // Create fixed expenses from user input using hook function
+      const createdFixed = createFromSetup();
       
       if (setupBudgetsApplyAll) {
         for (let i = 1; i < 60; i++) {
@@ -680,7 +481,7 @@ export default function FinancialPlanner() {
           nv.grocBudg[i] = grocVal;
           nv.entBudg[i] = entVal;
           // Apply fixed expenses to all months
-          nf.forEach(f => {
+          createdFixed.forEach(f => {
             f.amts[i] = f.amts[0];
           });
         }
@@ -688,7 +489,7 @@ export default function FinancialPlanner() {
       
       setData(n);
       setVarExp(nv);
-      setFixed(nf);
+      setFixed(createdFixed);
       setShowSetup(false);
       setHasChanges(true);
     }
@@ -701,7 +502,7 @@ export default function FinancialPlanner() {
       console.error('Failed to log out from setup wizard', err);
       setSetupError('Failed to log out. Please try again.');
     }
-  }, []);
+  }, [setSetupError]);
 
   // Reset split-related states on month change
   useEffect(() => {
@@ -712,9 +513,8 @@ export default function FinancialPlanner() {
     setSplitError('');
     setExtraSplitError('');
     setWithdrawAmount(0);
-  }, [sel]);
+  }, [sel, setAdj, setExtraAdj, setExtraSplitActive, setExtraSplitError, setSavingEdited, setSplitError, setWithdrawAmount]);
 
-  const isPassed = (i: number) => new Date() >= months[i].date;
   const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
   const calc = calcResult.items;
 
@@ -743,9 +543,483 @@ export default function FinancialPlanner() {
         }
       }
     });
-  }, [autoRollover, calc, data]);
+  }, [autoRollover, calc, data, setData, setHasChanges]);
 
   const cur = calc[sel];
+
+  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
+    { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: true },
+    { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: true },
+    {
+      label: 'Previous',
+      value: cur.prev,
+      key: 'prev',
+      editable: editPrev,
+      button: (
+        <button onClick={() => setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800">
+          <Edit2 size={14} />
+        </button>
+      )
+    },
+    { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
+    { label: 'Savings', value: data[sel].save, key: 'save', editable: true }
+  ]), [cur.bal, cur.prev, data, editPrev, sel]);
+
+  const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
+    {
+      type: 'groc',
+      label: '🛒 Groceries',
+      totalBudget: varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0),
+      baseBudget: varExp.grocBudg[sel],
+      bonus: data[sel].grocBonus,
+      extra: data[sel].grocExtra || 0,
+      spent: varExp.grocSpent[sel],
+      remaining: cur.grocRem,
+      isEditing: editingGroc,
+      inputValue: grocInput,
+      editSpent: editSpent.groc,
+      recentTransactions: transactions.groc[sel]?.slice(-5) || [],
+      newTransactionValue: newTrans.groc
+    },
+    {
+      type: 'ent',
+      label: '🎭 Entertainment',
+      totalBudget: cur.entBudg,
+      baseBudget: varExp.entBudg[sel],
+      bonus: data[sel].entBonus,
+      extra: data[sel].entExtra || 0,
+      spent: varExp.entSpent[sel],
+      remaining: cur.entRem,
+      isEditing: editingEnt,
+      inputValue: entInput,
+      editSpent: editSpent.ent,
+      recentTransactions: transactions.ent[sel]?.slice(-5) || [],
+      newTransactionValue: newTrans.ent
+    }
+  ]), [cur.entBudg, cur.entRem, cur.grocRem, data, editSpent.ent, editSpent.groc, editingEnt, editingGroc, entInput, grocInput, newTrans.ent, newTrans.groc, sel, transactions.ent, transactions.groc, varExp.entBudg, varExp.entSpent, varExp.grocBudg, varExp.grocSpent]);
+
+  const handleBudgetFocus = (type: BudgetType) => {
+    if (type === 'groc') {
+      setEditingGroc(true);
+      setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
+    } else if (type === 'ent') {
+      setEditingEnt(true);
+      setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
+    }
+  };
+
+  const handleBudgetChange = (type: BudgetType, value: string) => {
+    if (type === 'groc') {
+      setGrocInput(value);
+    } else if (type === 'ent') {
+      setEntInput(value);
+    }
+  };
+
+  const handleBudgetBlur = (type: BudgetType, value: string) => {
+    const val = sanitizeNumberInput(value);
+    if (type === 'groc') {
+      const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+      const difference = val - currentTotal;
+
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setHasChanges(true);
+        }
+        setEditingGroc(false);
+        setGrocInput('');
+        return;
+      }
+
+      setEditingGroc(false);
+      setGrocInput('');
+
+      if (Math.abs(difference) > 0.01) {
+        setBudgetRebalanceModal({ 
+          type: 'groc', 
+          oldVal: currentTotal, 
+          newVal: val, 
+          split: { a: 0, b: 0 } 
+        });
+        setBudgetRebalanceError('');
+      }
+    } else if (type === 'ent') {
+      const currentTotal = cur.entBudg;
+      const difference = val - currentTotal;
+
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setHasChanges(true);
+        }
+        setEditingEnt(false);
+        setEntInput('');
+        return;
+      }
+      
+      setEditingEnt(false);
+      setEntInput('');
+      
+      if (Math.abs(difference) > 0.01) {
+        setBudgetRebalanceModal({ 
+          type: 'ent', 
+          oldVal: currentTotal, 
+          newVal: val, 
+          split: { a: 0, b: 0 } 
+        });
+        setBudgetRebalanceError('');
+      }
+    }
+  };
+
+  const handleToggleEditSpent = (type: BudgetType) => {
+    setEditSpent({ ...editSpent, [type]: !editSpent[type] });
+  };
+
+  const handleSpentChange = (type: BudgetType, value: string) => {
+    if (editSpent[type]) {
+      const val = sanitizeNumberInput(value);
+      const n = { ...varExp };
+      n[type === 'groc' ? 'grocSpent' : 'entSpent'][sel] = val;
+      setVarExp(n);
+      setHasChanges(true);
+    }
+  };
+
+  const handleAddTransaction = (type: BudgetType) => {
+    const amt = sanitizeNumberInput(newTrans[type]);
+    if (!amt || amt <= 0) {
+      alert('Please enter a valid amount between 0 and 1,000,000');
+      return;
+    }
+
+    const check = checkTransactionOverspend(type, amt, sel, varExp, data[sel]);
+
+    if (check.wouldOverspend) {
+      if (check.availableSources.length === 0) {
+        alert(`This transaction exceeds your budget by ${check.overspendAmount.toFixed(0)} SEK and no sources can cover it.`);
+        return;
+      }
+
+      const options: CompensationOption[] = check.availableSources.map((s) => ({
+        source: s.source,
+        available: s.available,
+        label: getCompensationSourceLabel(s.source),
+        icon: getCompensationSourceIcon(s.source),
+        color: getCompensationSourceColor(s.source)
+      }));
+
+      setPendingTx({ type, amount: amt });
+      setPendingEdit(null);
+      setCompModalState({ open: true, mode: 'add', type, amount: amt, overspend: check.overspendAmount, options });
+      return;
+    }
+
+    // No overspend: add immediately
+    const n = { ...varExp };
+    n[type === 'groc' ? 'grocSpent' : 'entSpent'][sel] += amt;
+    setVarExp(n);
+    const now = new Date().toISOString();
+    const nt = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+    if (type === 'groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
+    setTransactions(nt);
+    setNewTrans({ ...newTrans, [type]: '' });
+    setHasChanges(true);
+  };
+
+  const handleTransactionInputChange = (type: BudgetType, value: string) => {
+    setNewTrans({ ...newTrans, [type]: value });
+  };
+
+  const handleCompensationCancel = () => {
+    setCompModalState(prev => ({ ...prev, open: false }));
+    setPendingTx(null);
+  };
+
+  const applyCompensationSelection = (source: CompensationSource) => {
+    const overspend = compModalState.overspend;
+
+    if (compModalState.mode === 'add') {
+      if (!pendingTx) return;
+      const { type, amount } = pendingTx;
+
+      let newVar: VarExp = {
+        ...varExp,
+        grocBudg: [...varExp.grocBudg],
+        entBudg: [...varExp.entBudg],
+        grocSpent: [...varExp.grocSpent],
+        entSpent: [...varExp.entSpent]
+      };
+      const newData = [...data].map(d => ({ ...d }));
+
+      // Apply the base transaction spend
+      if (type === 'groc') newVar.grocSpent[sel] += amount; else newVar.entSpent[sel] += amount;
+
+      // Apply compensation transforms based on source
+      const applied = applyCompensation(source, overspend, sel, newVar, newData[sel], type);
+      newVar = applied.varExp;
+      newData[sel] = applied.dataItem;
+
+      setVarExp(newVar);
+      setData(newData);
+
+      const now = new Date().toISOString();
+      const nt = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+      const txPayload = { amt: amount, ts: now, compensation: { source, amount: overspend } } as Tx;
+      if (type === 'groc') nt.groc[sel].push(txPayload); else nt.ent[sel].push(txPayload);
+      setTransactions(nt);
+      setNewTrans({ ...newTrans, [type]: '' });
+      setHasChanges(true);
+      setCompModalState(prev => ({ ...prev, open: false }));
+      setPendingTx(null);
+      return;
+    }
+
+    // Edit mode
+    if (!pendingEdit) return;
+    const { type, monthIdx, txIdx, amount, baseVar, baseData } = pendingEdit;
+
+    let newVar: VarExp = {
+      ...baseVar,
+      grocBudg: [...baseVar.grocBudg],
+      entBudg: [...baseVar.entBudg],
+      grocSpent: [...baseVar.grocSpent],
+      entSpent: [...baseVar.entSpent]
+    };
+    const newData = baseData.map(d => ({ ...d }));
+
+    // Apply the base transaction spend
+    if (type === 'groc') newVar.grocSpent[monthIdx] += amount; else newVar.entSpent[monthIdx] += amount;
+
+    // Apply compensation transforms based on source
+    const applied = applyCompensation(source, overspend, monthIdx, newVar, newData[monthIdx], type);
+    newVar = applied.varExp;
+    newData[monthIdx] = applied.dataItem;
+
+    const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
+    const old = txs[type][monthIdx][txIdx];
+    txs[type][monthIdx][txIdx] = { amt: amount, ts: old.ts, compensation: { source, amount: overspend } } as Tx;
+
+    setTransactions(txs);
+    setVarExp(newVar);
+    setData(newData);
+    setTransEdit({ idx: null, value: '' });
+    setHasChanges(true);
+    setCompModalState(prev => ({ ...prev, open: false }));
+    setPendingEdit(null);
+  };
+
+  const handleOpenHistory = (type: BudgetType) => {
+    setTransModal({ open: true, type });
+  };
+
+  const handleMonthlyFocus = (key: MonthlyFieldKey) => {
+    if (key === 'extraInc') {
+      setExtraIncInitial(data[sel].extraInc);
+    } else if (key === 'inc') {
+      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
+    } else if (key === 'save') {
+      setSavingsInitial(data[sel].save);
+    }
+  };
+
+  const handleMonthlyChange = (key: MonthlyFieldKey, value: number) => {
+    if (key === 'inc') {
+      const n = [...data];
+      n[sel].inc = value;
+      n[sel].baseSalary = value;
+      setData(n);
+    } else if (key === 'extraInc') {
+      const n = [...data];
+      n[sel].extraInc = value;
+      setData(n);
+    } else if (key === 'prev') {
+      const n = [...data];
+      n[sel].prev = value;
+      n[sel].prevManual = true;
+      setData(n);
+    } else if (key === 'save') {
+      setSavingEdited(true);
+      const n = [...data];
+      n[sel].save = value;
+      setData(n);
+    }
+    setHasChanges(true);
+  };
+
+  const handleMonthlyBlur = (key: MonthlyFieldKey, value: number) => {
+    if (key === 'inc') {
+      if (lastAdjustments.salary && Math.abs(value - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'salary', payload: lastAdjustments.salary });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.salary.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.salary.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setSalarySplitActive(false);
+          setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+          setSalarySplitError('');
+          setSalarySplitApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, salary: undefined }));
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = salaryInitial;
+      const n = [...data];
+      n[sel].inc = value;
+      n[sel].baseSalary = value;
+      if (value !== oldVal) {
+        setSalarySplitActive(true);
+        setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
+      }
+      setData(n);
+      setHasChanges(true);
+    } else if (key === 'extraInc') {
+      if (lastAdjustments.extra && lastAdjustments.extra.sel === sel && Math.abs(value - lastAdjustments.extra.prev.extraInc) < 0.01) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'extra', payload: lastAdjustments.extra });
+        } else {
+          const n = [...data].map(d => ({ ...d }));
+          const tcopy = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+          if (lastAdjustments.extra.txIdx !== null && tcopy.extra[sel][lastAdjustments.extra.txIdx]) {
+            tcopy.extra[sel].splice(lastAdjustments.extra.txIdx, 1);
+          }
+          n[sel].grocExtra = lastAdjustments.extra.prev.grocExtra;
+          n[sel].entExtra = lastAdjustments.extra.prev.entExtra;
+          n[sel].saveExtra = lastAdjustments.extra.prev.saveExtra;
+          n[sel].extraInc = lastAdjustments.extra.prev.extraInc;
+          n[sel].inc = lastAdjustments.extra.prev.inc;
+          setData(n);
+          setTransactions(tcopy);
+          setExtraAdj({ groc: 0, ent: 0, save: 0 });
+          setExtraSplitActive(false);
+          setExtraSplitError('');
+          setLastExtraApply(null);
+          setLastAdjustments(prev => ({ ...prev, extra: undefined }));
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = extraIncInitial;
+      const n = [...data];
+      n[sel].extraInc = value;
+      if (value > 0 && value !== oldVal) {
+        setExtraSplitActive(true);
+        setExtraAdj({ groc: 0, ent: 0, save: 0 });
+      } else if (value === 0) {
+        n[sel].grocExtra = 0;
+        n[sel].entExtra = 0;
+        n[sel].saveExtra = 0;
+        setExtraAdj({ groc: 0, ent: 0, save: 0 });
+        setExtraSplitActive(false);
+        setExtraSplitError('');
+      }
+      setData(n);
+      setHasChanges(true);
+    } else if (key === 'save') {
+      if (lastAdjustments.budget && lastAdjustments.budget.type === 'save' && Math.abs(value - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
+        if (!hasChanges) {
+          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
+        } else {
+          const revertedData = [...data].map(d => ({ ...d }));
+          const revertedVar = {
+            ...varExp,
+            grocBudg: [...varExp.grocBudg],
+            entBudg: [...varExp.entBudg]
+          };
+          lastAdjustments.budget.dataSnapshots.forEach(snap => {
+            revertedData[snap.idx] = { ...snap.data };
+          });
+          lastAdjustments.budget.varSnapshots.forEach(snap => {
+            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
+            revertedVar.entBudg[snap.idx] = snap.entBudg;
+          });
+          setData(revertedData);
+          setVarExp(revertedVar);
+          setBudgetRebalanceModal(null);
+          setBudgetRebalanceError('');
+          setBudgetRebalanceApplyFuture(false);
+          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
+          setSavingEdited(false);
+          setAdj({ groc: 0, ent: 0 });
+          setApplyFuture(false);
+          setApplySavingsForward(null);
+          setHasChanges(true);
+        }
+        return;
+      }
+      const oldVal = savingsInitial;
+      const n = [...data];
+      n[sel].save = value;
+      if (Math.abs(value - oldVal) > 0.01) {
+        setBudgetRebalanceModal({
+          type: 'save',
+          oldVal: oldVal,
+          newVal: value,
+          split: { a: 0, b: 0 }
+        });
+        setBudgetRebalanceError('');
+      }
+      setAdj({ groc: 0, ent: 0 });
+      setApplyFuture(false);
+      setApplySavingsForward(null);
+      setData(n);
+    }
+  };
 
   const monthlyExpenseBaseline = useMemo(() => {
     if (!cur) return 0;
@@ -810,28 +1084,16 @@ export default function FinancialPlanner() {
     }
 
     const idx = forceRebalanceTarget;
-    const total = forceRebalanceValues.save + forceRebalanceValues.groc + forceRebalanceValues.ent;
-
-    if (forceRebalanceValues.save < 0 || forceRebalanceValues.groc < 0 || forceRebalanceValues.ent < 0) {
-      setForceRebalanceError('Budgets cannot be negative.');
-      return;
-    }
-
-    // Recalculate available balance fresh from current data
-    const monthData = data[idx];
-    const freshAvailable = (monthData.inc || 0) + (monthData.extraInc || 0) - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
-    
-    // Check that total equals available (not just less than)
-    // Match server-side/library tolerance to avoid tiny float mismatches
-    const tolerance = 0.5;
-    console.debug('Force rebalance apply check', { idx, total, freshAvailable, tolerance });
-    if (Math.abs(total - freshAvailable) > tolerance) {
-      const diff = total - freshAvailable;
-      if (diff > 0) {
-        setForceRebalanceError(`Total budgets exceed available by ${diff.toFixed(0)} SEK. Please reduce.`);
-      } else {
-        setForceRebalanceError(`Total budgets are ${Math.abs(diff).toFixed(0)} SEK below available. Please allocate all funds.`);
-      }
+    const evaluation = evaluateManualRebalance({
+      monthIdx: idx,
+      save: forceRebalanceValues.save,
+      groc: forceRebalanceValues.groc,
+      ent: forceRebalanceValues.ent,
+      dataOverride: data,
+      fixedOverride: fixed
+    });
+    if (!evaluation.valid) {
+      setForceRebalanceError(evaluation.error ?? 'Budgets are not balanced.');
       return;
     }
 
@@ -870,11 +1132,7 @@ export default function FinancialPlanner() {
     if (user) {
       (async () => {
         try {
-          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
+          await saveData();
         } catch (err) {
           console.error('Failed to save forced rebalance:', err);
           setForceRebalanceError('Failed to save changes. Please try again.');
@@ -882,56 +1140,55 @@ export default function FinancialPlanner() {
       })();
     }
 
-  }, [data, fixed, forceRebalanceTarget, forceRebalanceValues.ent, forceRebalanceValues.groc, forceRebalanceValues.save, varExp, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions, forceRebalanceInputError]);
+  }, [
+    data,
+    evaluateManualRebalance,
+    fixed,
+    forceRebalanceInputError,
+    forceRebalanceTarget,
+    forceRebalanceValues.ent,
+    forceRebalanceValues.groc,
+    forceRebalanceValues.save,
+    forceRebalanceInitialized,
+    recomputeBudgetIssues,
+    saveData,
+    setBudgetBalanceIssues,
+    setData,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setHasChanges,
+    setVarExp,
+    user,
+    varExp
+  ]);
 
   const applyForceRebalanceToAll = useCallback(() => {
-    const result = computeBudgetIssues({ data, varExp, fixed, months });
+    // Require that user has selected an option before applying to all months
+    if (!selectedOption) {
+      setForceRebalanceError('Please select an option or enter manual values first');
+      return;
+    }
+
+    const result = checkForIssues();
     if (result.issues.length === 0) {
       setForceRebalanceOpen(false);
       return;
     }
 
-    const tempData = data.map(d => ({ ...d }));
-    const tempVar = {
-      ...varExp,
-      grocBudg: [...varExp.grocBudg],
-      entBudg: [...varExp.entBudg]
-    };
+    const issueMonthIndices = extractIssueMonthIndices(result.issues, months);
+    if (issueMonthIndices.length === 0) {
+      setForceRebalanceOpen(false);
+      return;
+    }
 
-    // Apply equal split to all problematic months
-    result.issues.forEach((_, issueIdx) => {
-      const issue = computeBudgetIssues({ data: tempData, varExp: tempVar, fixed, months }).issues[issueIdx];
-      if (!issue) return;
-
-      const monthMatch = issue.match(/Month ([^:]+):/);
-      if (!monthMatch) return;
-      const monthName = monthMatch[1];
-      const idx = months.findIndex(m => m.name === monthName);
-      if (idx === -1) return;
-
-      const monthData = tempData[idx];
-      const availableBudget = monthData.inc + monthData.extraInc - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
-      const grocExtras = (tempData[idx]?.grocBonus || 0) + (tempData[idx]?.grocExtra || 0);
-      const entExtras = (tempData[idx]?.entBonus || 0) + (tempData[idx]?.entExtra || 0);
-
-      // Non-adjustable portion (extras) + adjustable portion should equal available
-      const adjustable = availableBudget - grocExtras - entExtras;
-      const baseSplit = adjustable / 3;
-      const saveTotal = baseSplit;
-      const grocTotal = baseSplit + grocExtras;
-      const entTotal = baseSplit + entExtras;
-
-      tempData[idx].save = saveTotal;
-      tempData[idx].defSave = saveTotal;
-      // Clear prior extras so this forced split becomes the new base
-      tempData[idx].grocBonus = 0;
-      tempData[idx].grocExtra = 0;
-      tempData[idx].entBonus = 0;
-      tempData[idx].entExtra = 0;
-      tempData[idx].saveExtra = 0;
-      // With extras cleared, base budgets should equal the desired totals
-      tempVar.grocBudg[idx] = Math.max(0, grocTotal);
-      tempVar.entBudg[idx] = Math.max(0, entTotal);
+    const { data: tempData, varExp: tempVar } = applyForceRebalanceAcrossMonths({
+      monthIndices: issueMonthIndices,
+      selectedOption,
+      forceRebalanceValues,
+      data,
+      varExp,
+      fixed
     });
 
     setData(tempData);
@@ -939,6 +1196,7 @@ export default function FinancialPlanner() {
     setHasChanges(true);
     setForceRebalanceOpen(false);
     setForceRebalanceError('');
+    setSelectedOption(null);
     forceRebalanceInitialized.current = false;
     setBudgetBalanceIssues([]);
     setForceRebalanceTarget(null);
@@ -948,18 +1206,34 @@ export default function FinancialPlanner() {
     if (user) {
       (async () => {
         try {
-          const payload = { data: tempData, fixed, varExp: tempVar, autoRollover, transactions: serializeTransactions(transactions) };
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
+          await saveData();
         } catch (err) {
           console.error('Failed to save forced rebalance to all months:', err);
         }
       })();
     }
 
-  }, [data, fixed, varExp, months, recomputeBudgetIssues, user, autoRollover, transactions, baseUpdatedAt, sanitizeForFirestore, serializeTransactions]);
+  }, [
+    checkForIssues,
+    data,
+    fixed,
+    forceRebalanceInitialized,
+    forceRebalanceValues,
+    months,
+    recomputeBudgetIssues,
+    saveData,
+    selectedOption,
+    setBudgetBalanceIssues,
+    setData,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setSelectedOption,
+    setHasChanges,
+    setVarExp,
+    user,
+    varExp
+  ]);
 
   const saveChanges = () => {
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });
@@ -974,18 +1248,15 @@ export default function FinancialPlanner() {
     (async () => {
       try {
         if (user) {
-          const payload = { data: nd, fixed: nf, varExp, autoRollover, transactions: serializeTransactions(transactions) };
-          const undef = findUndefinedPaths(payload);
-          if (undef.length) console.warn('Undefined fields before saveChanges:', undef, payload);
-          const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), baseUpdatedAt);
-          setLastSaved(newUpdatedAt.toDate());
-          setBaseUpdatedAt(newUpdatedAt);
-          setSaveConflict(false);
-          alert('All changes saved successfully!');
+          const result = await saveData();
+          if (result?.success) {
+            alert('All changes saved successfully!');
+          } else {
+            console.error('Failed to save changes', result?.error);
+          }
         }
       } catch (err: unknown) {
-        if (err && err instanceof Error && err.message === 'conflict') setSaveConflict(true);
-        else console.error('Failed to save changes', err);
+        console.error('Failed to save changes', err);
       }
     })();
   };
@@ -1038,7 +1309,7 @@ export default function FinancialPlanner() {
       saveExtra: 0,
       rolloverProcessed: false
     }));
-    const nf = fixed.map(f => ({...f, amts: Array(60).fill(0)}));
+    const nf: FixedExpense[] = []; // Clear all fixed expenses completely
     const nv = {
       ...varExp,
       grocBudg: Array(60).fill(0),
@@ -1052,40 +1323,27 @@ export default function FinancialPlanner() {
     setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
     setHasChanges(true);
     setSel(0);
+    // Open setup wizard from the first step
+    setShowSetup(true);
+    setSetupStep('prev');
   };
 
   const handleReloadRemote = async () => {
     if (!user) return;
-    try {
-      const saved = await getFinancialData(user.uid);
-      if (saved) {
-        setData(saved.data);
-        setFixed(saved.fixed);
-        setVarExp(saved.varExp);
-        setAutoRollover(saved.autoRollover ?? false);
-        setLastSaved(saved.updatedAt?.toDate?.() ?? new Date());
-        setBaseUpdatedAt(saved.updatedAt ?? null);
-        setPendingChanges([]);
-        setHasChanges(false);
-        setTransactions(deserializeTransactions(saved.transactions));
-      }
-    } catch (err) {
-      console.error('Failed to reload remote data', err);
-    } finally {
-    }
+    // Hook handles loading automatically
+    // User can refresh the page to reload fresh data
+    window.location.reload();
   };
 
   const handleForceSave = async () => {
     if (!user) return;
     try {
-      const payload = { data, fixed, varExp, autoRollover, transactions: serializeTransactions(transactions) };
-      const undef = findUndefinedPaths(payload);
-      if (undef.length) console.warn('Undefined fields before forceSave:', undef, payload);
-      const newUpdatedAt = await saveFinancialDataSafe(user.uid, sanitizeForFirestore(payload), null);
-      setLastSaved(newUpdatedAt.toDate());
-      setBaseUpdatedAt(newUpdatedAt);
-      setSaveConflict(false);
-      setHasChanges(false);
+      // Force save with null baseUpdatedAt to override conflict detection
+      const result = await saveData();
+      if (result?.success) {
+        setSaveConflict(false);
+        setHasChanges(false);
+      }
     } catch (err: unknown) {
       console.error('Failed to force save', err);
     }
@@ -1097,10 +1355,26 @@ export default function FinancialPlanner() {
     if (!removed) return;
     txs[type][monthIdx].splice(txIdx, 1);
     setTransactions(txs);
-    const nv = { ...varExp };
+    let nv: VarExp = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg],
+      grocSpent: [...varExp.grocSpent],
+      entSpent: [...varExp.entSpent]
+    };
+    const nd = [...data].map(d => ({ ...d }));
+
+    if (removed.compensation) {
+      const comp = removed.compensation;
+      const reverted = reverseCompensation(comp, monthIdx, nv, nd[monthIdx], type);
+      nv = reverted.varExp;
+      nd[monthIdx] = reverted.dataItem;
+    }
+
     if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] - removed.amt);
     else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] - removed.amt);
     setVarExp(nv);
+    setData(nd);
     setHasChanges(true);
   };
 
@@ -1111,50 +1385,70 @@ export default function FinancialPlanner() {
       alert('Please enter a valid amount');
       return;
     }
+
     const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
     const old = txs[type][monthIdx][txIdx];
     if (!old) return;
-    const delta = newAmt - old.amt;
-    txs[type][monthIdx][txIdx] = { amt: newAmt, ts: old.ts };
+
+    // Base copies
+    let baseVar: VarExp = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg],
+      grocSpent: [...varExp.grocSpent],
+      entSpent: [...varExp.entSpent]
+    };
+    const baseData: DataItem[] = [...data].map(d => ({ ...d }));
+
+    // Revert old compensation effects
+    if ((old as Record<string, unknown>).compensation) {
+      const comp = (old as Record<string, unknown>).compensation as { source: CompensationSource; amount: number };
+      const reverted = reverseCompensation(comp, monthIdx, baseVar, baseData[monthIdx], type);
+      baseVar = reverted.varExp;
+      baseData[monthIdx] = reverted.dataItem;
+    }
+
+    // Remove old spent
+    if (type === 'groc') {
+      baseVar.grocSpent[monthIdx] = Math.max(0, baseVar.grocSpent[monthIdx] - old.amt);
+    } else {
+      baseVar.entSpent[monthIdx] = Math.max(0, baseVar.entSpent[monthIdx] - old.amt);
+    }
+
+    // Check new overspend against base state
+    const check = checkTransactionOverspend(type, newAmt, monthIdx, baseVar, baseData[monthIdx]);
+    if (check.wouldOverspend) {
+      if (check.availableSources.length === 0) {
+        alert(`This edit would exceed your budget by ${check.overspendAmount.toFixed(0)} SEK and no sources can cover it.`);
+        return;
+      }
+      const options: CompensationOption[] = check.availableSources.map((s) => ({
+        source: s.source,
+        available: s.available,
+        label: getCompensationSourceLabel(s.source),
+        icon: getCompensationSourceIcon(s.source),
+        color: getCompensationSourceColor(s.source)
+      }));
+
+      setPendingTx(null);
+      setPendingEdit({ type, monthIdx, txIdx, amount: newAmt, baseVar, baseData });
+      setCompModalState({ open: true, mode: 'edit', type, amount: newAmt, overspend: check.overspendAmount, options });
+      return;
+    }
+
+    // No overspend: apply edit directly
+    txs[type][monthIdx][txIdx] = { amt: newAmt, ts: old.ts } as Tx;
     setTransactions(txs);
-    const nv = { ...varExp };
-    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] + delta);
-    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] + delta);
+    const nv = baseVar;
+    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] + newAmt);
+    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] + newAmt);
     setVarExp(nv);
+    setData(baseData);
     setTransEdit({ idx: null, value: '' });
     setHasChanges(true);
   };
 
   // use `validateSplit` and `sanitizeNumberInput` from `lib/uiHelpers`
-
-  type CardProps = {
-    label: string;
-    value: number;
-    icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-    color: 'blue' | 'green' | 'purple' | 'orange';
-    sub?: string;
-  };
-
-  const Card: React.FC<CardProps> = ({ label, value, icon: Icon, color, sub }) => {
-    const colorClasses = {
-      blue: 'bg-gradient-to-br from-blue-500 to-blue-700',
-      green: 'bg-gradient-to-br from-green-500 to-green-700',
-      purple: 'bg-gradient-to-br from-purple-500 to-purple-700',
-      orange: 'bg-gradient-to-br from-orange-500 to-orange-700'
-    };
-    
-    return (
-      <div className={`${colorClasses[color]} rounded-2xl p-4 sm:p-6 text-white shadow-2xl hover:shadow-3xl transition-all transform hover:scale-[1.02] border border-white/20 ring-1 ring-white/10`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs sm:text-sm font-medium opacity-90">{label}</span>
-          <Icon className="w-5 h-5 sm:w-6 sm:h-6 opacity-90" />
-        </div>
-        <div className="text-2xl sm:text-3xl font-bold mb-1">{value.toFixed(0)}</div>
-        {sub && <div className="text-xs sm:text-sm opacity-80 leading-tight">{sub}</div>}
-        {!sub && <div className="text-xs sm:text-sm opacity-80">SEK</div>}
-      </div>
-    );
-  };
 
 if (isLoading) {
   return (
@@ -1229,7 +1523,7 @@ return (
                   {undoPrompt && (
                     <button
                       onClick={handleApplyUndo}
-                      className="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm"
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm min-w-[110px]"
                     >
                       Undo last change
                     </button>
@@ -1238,16 +1532,16 @@ return (
                     <button
                       onClick={saveChanges}
                       disabled={budgetBalanceIssues.length > 0}
-                      className={`px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                      className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
                       title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
                     >
                       <Save size={16} />Save
                     </button>
                   )}
-                  <button onClick={deleteCurrentMonth} className="px-3 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                  <button onClick={deleteCurrentMonth} className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap">
                     <Trash2 size={14} />Reset
                   </button>
-                  <button onClick={deleteAllMonths} className="px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm">
+                  <button onClick={deleteAllMonths} className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-red-700 text-white hover:bg-red-800 active:bg-red-900 flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap">
                     <Trash2 size={14} />Delete all
                   </button>
                 </div>
@@ -1310,465 +1604,60 @@ return (
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
-          <Card label="Savings" value={cur.totSave} icon={PiggyBank} color="blue" />
-          <Card label="Balance" value={cur.bal} icon={TrendingUp} color="green" />
-          <Card label="Income" value={data[sel].baseSalary ?? cur.inc} icon={Calendar} color="purple" />
-          <Card label="Groceries" value={cur.grocRem} icon={ShoppingCart} color="green" sub={`of ${cur.grocBudg.toFixed(0)} SEK`} />
-          <Card 
-            label="Entertainment" 
-            value={cur.entRem} 
-            icon={DollarSign} 
-            color="orange" 
-            sub={`of ${cur.entBudg.toFixed(0)} SEK`} 
-          />
-        </div>
+        <AnalyticsSection
+          totalSavings={cur.totSave}
+          balance={cur.bal}
+          income={data[sel].baseSalary ?? cur.inc}
+          groceriesRemaining={cur.grocRem}
+          groceriesBudget={cur.grocBudg}
+          entertainmentRemaining={cur.entRem}
+          entertainmentBudget={cur.entBudg}
+          emergencyBufferMonths={emergencyBufferMonths}
+          monthlyExpenseBaseline={monthlyExpenseBaseline}
+          savingsRunwayMonths={savingsRunwayMonths}
+          monthlyNet={monthlyNet}
+          overspendWarning={cur.overspendWarning ?? null}
+          criticalOverspend={cur.criticalOverspend ?? false}
+          hasRollover={cur.hasRollover ?? false}
+          showRollover={showRollover}
+          rolloverAmount={(cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)}
+          rolloverDaysRemaining={cur.rolloverDaysRemaining ?? null}
+          autoRollover={autoRollover}
+          onShowRolloverClick={() => setShowRollover(true)}
+          onConfirmRollover={() => {
+            const n = [...data];
+            n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0);
+            n[sel].rolloverProcessed = true;
+            setData(n);
+            setShowRollover(false);
+            setHasChanges(true);
+          }}
+          onCancelRollover={() => setShowRollover(false)}
+        />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-              <PiggyBank className="w-4 h-4 text-emerald-600" />
-              Emergency buffer
-            </div>
-            <div className="text-2xl font-bold text-emerald-700">
-              {emergencyBufferMonths !== null ? `${emergencyBufferMonths.toFixed(1)} months` : 'Add savings'}
-            </div>
-            <p className="text-sm text-gray-600 leading-snug">
-              Current savings cover baseline monthly spend of {monthlyExpenseBaseline.toFixed(0)} SEK.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-              <Clock className="w-4 h-4 text-blue-600" />
-              Savings runway
-            </div>
-            <div className={`text-2xl font-bold ${savingsRunwayMonths === null ? 'text-emerald-700' : 'text-blue-700'}`}>
-              {savingsRunwayMonths === null ? 'Stable / Growing' : `${savingsRunwayMonths.toFixed(1)} months`}
-            </div>
-            <p className="text-sm text-gray-600 leading-snug">
-              {monthlyNet < 0
-                ? `At current burn (${Math.abs(monthlyNet).toFixed(0)} SEK/month), savings reach zero in ~${(savingsRunwayMonths ?? 0).toFixed(1)} months.`
-                : 'Income covers planned spending; savings are not shrinking this month.'}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                What-if preview
-              </div>
-              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full border border-gray-200">Live estimate</span>
-            </div>
-            <label className="text-sm text-gray-700">Salary change ({whatIfSalaryDelta}%)</label>
-            <input
-              type="range"
-              min={-10}
-              max={10}
-              step={1}
-              value={whatIfSalaryDelta}
-              onChange={(e) => setWhatIfSalaryDelta(parseInt(e.target.value))}
-              className="w-full accent-indigo-600"
+        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed) */}
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 mb-6">
+          {/* Left column: Monthly + Variable Expenses stacked */}
+          <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
+            {/* Monthly */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+              <MonthlySection
+              monthLabel={cur.month}
+              fields={monthlyFields}
+              savingEdited={savingEdited}
+              applyFuture={applyFuture}
+              wrapInCard={false}
+              onFocus={handleMonthlyFocus}
+              onChange={handleMonthlyChange}
+              onBlur={handleMonthlyBlur}
+              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
+              onToggleApplyFuture={(checked) => {
+                setApplyFuture(checked);
+                setApplySavingsForward(checked ? sel : null);
+              }}
             />
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={whatIfGrocCut}
-                onChange={(e) => setWhatIfGrocCut(e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              Reduce groceries by 5%
-            </label>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <div className={`text-2xl font-bold ${((whatIfProjection?.projectedNet ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'}`}>
-                {(whatIfProjection?.projectedNet ?? 0).toFixed(0)} SEK
-              </div>
-              <p className="text-sm text-gray-600">
-                Monthly net after tweaks (
-                <span className={`${((whatIfProjection?.delta ?? 0) >= 0) ? 'text-emerald-700' : 'text-red-700'} font-semibold`}>
-                  {((whatIfProjection?.delta ?? 0) >= 0 ? '+' : '') + (whatIfProjection?.delta ?? 0).toFixed(0)}
-                </span>
-                {' '}vs current)
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Adjusted salary {(whatIfProjection?.adjSalary ?? 0).toFixed(0)} SEK · Groceries {(whatIfProjection?.grocAdj ?? 0).toFixed(0)} SEK
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {cur.overspendWarning && (
-          <div className={`${cur.criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
-            <div className="flex items-start gap-3">
-              <AlertTriangle className={`w-5 h-5 mt-0.5 ${cur.criticalOverspend ? 'text-red-700' : 'text-yellow-700'}`} />
-              <div>
-                <h3 className={`font-bold ${cur.criticalOverspend ? 'text-red-900' : 'text-yellow-900'} mb-1`}>
-                  {cur.criticalOverspend ? '🚨 Critical Budget Alert' : '⚠️ Budget Warning'}
-                </h3>
-                <p className={`text-sm ${cur.criticalOverspend ? 'text-red-800' : 'text-yellow-800'}`}>{cur.overspendWarning}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {cur.hasRollover && !showRollover && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
-            <div className="flex-1">
-              <h3 className="font-bold text-green-900 text-base sm:text-lg flex items-center gap-2 mb-1">
-                <PiggyBank className="w-5 h-5" />
-                Unspent from Last Month
-              </h3>
-                <p className="text-sm text-green-800">
-                You have {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK unused budget
-              </p>
-              {(cur.rolloverDaysRemaining ?? 0) > 0 && (
-                <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {autoRollover ? `Auto-rollover in ${cur.rolloverDaysRemaining ?? 0} days` : `Available in ${cur.rolloverDaysRemaining ?? 0} days`}
-                </p>
-              )}
-            </div>
-            <button onClick={() => setShowRollover(true)} className="w-full sm:w-auto bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 transition-all shadow-md whitespace-nowrap">
-              Add to Savings Now
-            </button>
-          </div>
-        )}
-
-        {showRollover && (
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
-            <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {((cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)).toFixed(0)} SEK to savings?</h3>
-            <p className="text-sm text-green-800 mb-3">This will move your unused budget from last month into savings.</p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <button 
-                  onClick={() => { 
-                  const n = [...data]; 
-                  n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0); 
-                  n[sel].rolloverProcessed = true;
-                  setData(n); 
-                  setShowRollover(false); 
-                  setHasChanges(true); 
-                }} 
-                className="flex-1 bg-green-600 text-white px-4 py-3 rounded-xl hover:bg-green-700 flex items-center justify-center gap-2 shadow-md transition-all"
-              >
-                <Check size={18} />Yes, Add to Savings
-              </button>
-              <button onClick={() => setShowRollover(false)} className="flex-1 bg-gray-400 text-white px-4 py-3 rounded-xl hover:bg-gray-500 flex items-center justify-center gap-2 shadow-md transition-all">
-                <X size={18} />Keep as Budget
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {cur.month}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {[
-              {l:'Income',v:data[sel].baseSalary ?? data[sel].inc,k:'inc',e:true},
-              {l:'Extra Income',v:data[sel].extraInc,k:'extraInc',e:true},
-              {l:'Previous',v:cur.prev,k:'prev',e:editPrev,btn:<button onClick={()=>setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800"><Edit2 size={14}/></button>},
-              {l:'Balance',v:cur.bal,k:'bal',e:false},
-              {l:'Savings',v:data[sel].save,k:'save',e:true,adj:true},
-              {l:'Actual',v:cur.actSave,k:'act',e:false}
-            ].map((f,i)=>(
-              <div key={i}>
-                <label className="block text-sm font-semibold leading-snug mb-2 flex gap-2 text-gray-700">{f.l} {f.btn}</label>
-                <input 
-                  type="number" 
-                  min="0" 
-                  max="1000000"
-                  placeholder="0" 
-                  value={f.v === 0 ? '' : f.v.toFixed(0)}
-                  onFocus={()=>{
-                    if(f.k === 'extraInc') {
-                      setExtraIncInitial(data[sel].extraInc);
-                    } else if(f.k === 'inc') {
-                      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
-                    } else if(f.k === 'save') {
-                      setSavingsInitial(data[sel].save);
-                    }
-                  }}
-                  onChange={(e)=>{
-                    if(!f.e)return;
-                    const val=sanitizeNumberInput(e.target.value);
-                    
-                    if (f.k === 'inc') {
-                      const n=[...data];
-                      n[sel].inc = val;
-                      n[sel].baseSalary = val;
-                      setData(n);
-                    }
-                    else if (f.k === 'extraInc') {
-                      // Just buffer input while typing - split logic deferred to onBlur
-                      const n=[...data];
-                      n[sel].extraInc = val;
-                      setData(n);
-                    }
-                    else if (f.k === 'prev') {
-                      const n=[...data];
-                      n[sel].prev = val;
-                      n[sel].prevManual = true;
-                      setData(n);
-                    }
-                    else if (f.k === 'save') {
-                      // Just buffer input while typing - split logic deferred to onBlur
-                      setSavingEdited(true);
-                      const n=[...data];
-                      n[sel].save = val;
-                      setData(n);
-                    }
-                    setHasChanges(true);
-                  }}
-                  onBlur={(e)=>{
-                    if(!f.e)return;
-                    const val=sanitizeNumberInput(e.target.value);
-                    
-                    if (f.k === 'inc') {
-                      if (lastAdjustments.salary && Math.abs(val - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'salary', payload: lastAdjustments.salary });
-                        } else {
-                          const revertedData = [...data].map(d => ({ ...d }));
-                          const revertedVar = {
-                            ...varExp,
-                            grocBudg: [...varExp.grocBudg],
-                            entBudg: [...varExp.entBudg]
-                          };
-                          lastAdjustments.salary.dataSnapshots.forEach(snap => {
-                            revertedData[snap.idx] = { ...snap.data };
-                          });
-                          lastAdjustments.salary.varSnapshots.forEach(snap => {
-                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                            revertedVar.entBudg[snap.idx] = snap.entBudg;
-                          });
-                          setData(revertedData);
-                          setVarExp(revertedVar);
-                          setSalarySplitActive(false);
-                          setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-                          setSalarySplitError('');
-                          setSalarySplitApplyFuture(false);
-                          setLastAdjustments(prev => ({ ...prev, salary: undefined }));
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      const oldVal = salaryInitial;
-                      const n=[...data];
-                      n[sel].inc = val;
-                      n[sel].baseSalary = val;
-                      // Trigger split modal if salary changed
-                      if (val !== oldVal) {
-                        setSalarySplitActive(true);
-                        setSalarySplitAdj({ groc: 0, ent: 0, save: 0 });
-                      }
-                      setData(n);
-                      setHasChanges(true);
-                    } else if (f.k === 'extraInc') {
-                      if (lastAdjustments.extra && lastAdjustments.extra.sel === sel && Math.abs(val - lastAdjustments.extra.prev.extraInc) < 0.01) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'extra', payload: lastAdjustments.extra });
-                        } else {
-                          const n = [...data].map(d => ({ ...d }));
-                          const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                          if (lastAdjustments.extra.txIdx !== null && tcopy.extra[sel][lastAdjustments.extra.txIdx]) {
-                            tcopy.extra[sel].splice(lastAdjustments.extra.txIdx, 1);
-                          }
-                          n[sel].grocExtra = lastAdjustments.extra.prev.grocExtra;
-                          n[sel].entExtra = lastAdjustments.extra.prev.entExtra;
-                          n[sel].saveExtra = lastAdjustments.extra.prev.saveExtra;
-                          n[sel].extraInc = lastAdjustments.extra.prev.extraInc;
-                          n[sel].inc = lastAdjustments.extra.prev.inc;
-                          setData(n);
-                          setTransactions(tcopy);
-                          setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                          setExtraSplitActive(false);
-                          setExtraSplitError('');
-                          setLastExtraApply(null);
-                          setLastAdjustments(prev => ({ ...prev, extra: undefined }));
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      // Use the initial value captured on focus
-                      const oldVal = extraIncInitial;
-                      const n=[...data];
-                      n[sel].extraInc = val;
-                      // Only trigger split if value is positive and changed
-                      if (val > 0 && val !== oldVal) {
-                        setExtraSplitActive(true);
-                        setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                      } else if (val === 0) {
-                        n[sel].grocExtra = 0;
-                        n[sel].entExtra = 0;
-                        n[sel].saveExtra = 0;
-                        setExtraAdj({ groc: 0, ent: 0, save: 0 });
-                        setExtraSplitActive(false);
-                        setExtraSplitError('');
-                      }
-                      setData(n);
-                      setHasChanges(true);
-                    } else if (f.k === 'save') {
-                      if (lastAdjustments.budget && lastAdjustments.budget.type === 'save' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                        if (!hasChanges) {
-                          setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                        } else {
-                          const revertedData = [...data].map(d => ({ ...d }));
-                          const revertedVar = {
-                            ...varExp,
-                            grocBudg: [...varExp.grocBudg],
-                            entBudg: [...varExp.entBudg]
-                          };
-                          lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                            revertedData[snap.idx] = { ...snap.data };
-                          });
-                          lastAdjustments.budget.varSnapshots.forEach(snap => {
-                            revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                            revertedVar.entBudg[snap.idx] = snap.entBudg;
-                          });
-                          setData(revertedData);
-                          setVarExp(revertedVar);
-                          setBudgetRebalanceModal(null);
-                          setBudgetRebalanceError('');
-                          setBudgetRebalanceApplyFuture(false);
-                          setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                          setSavingEdited(false);
-                          setAdj({ groc: 0, ent: 0 });
-                          setApplyFuture(false);
-                          setApplySavingsForward(null);
-                          setHasChanges(true);
-                        }
-                        return;
-                      }
-                      const oldVal = savingsInitial;
-                      const n=[...data];
-                      n[sel].save = val;
-                      // Trigger budget rebalance modal if savings changed
-                      if (Math.abs(val - oldVal) > 0.01) {
-                        setBudgetRebalanceModal({ 
-                          type: 'save', 
-                          oldVal: oldVal, 
-                          newVal: val, 
-                          split: { a: 0, b: 0 } 
-                        });
-                        setBudgetRebalanceError('');
-                      }
-                      setAdj({ groc: 0, ent: 0 });
-                      setApplyFuture(false);
-                      setApplySavingsForward(null);
-                      setData(n);
-                    }
-                  }}
-                  disabled={!f.e} 
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                />
-                {f.k === 'extraInc' && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <button onClick={() => setTransModal({ open: true, type: 'extra' })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Extra Allocations History</button>
-                  </div>
-                )}
-                {f.k==='save'&& savingEdited &&(
-                  <label className="flex items-center gap-2 mt-2 text-sm text-gray-700">
-                    <input 
-                      type="checkbox" 
-                      checked={applyFuture} 
-                      onChange={(e)=>{
-                        const checked = e.target.checked;
-                        setApplyFuture(checked);
-                        setApplySavingsForward(checked ? sel : null);
-                      }} 
-                      className="w-4 h-4 rounded"
-                    />
-                    Apply to future months
-                  </label>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-purple-50 border-2 border-purple-300 rounded-xl p-4">
-              <h3 className="font-bold text-purple-900 mb-3 flex items-center gap-2">
-                <Wallet className="w-5 h-5" />
-                Withdraw from Savings
-              </h3>
-              <p className="text-sm text-purple-800 mb-3">Take money out of your total savings (e.g., for emergencies)</p>
-              <div className="flex gap-2">
-                <input 
-                  type="number" 
-                  min="0"
-                  max={cur.totSave}
-                  placeholder="Amount to withdraw" 
-                  value={withdrawAmount || ''} 
-                  onChange={(e) => {
-                    const val = sanitizeNumberInput(e.target.value);
-                    setWithdrawAmount(Math.min(val, cur.totSave));
-                  }}
-                  className="flex-1 p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
-                />
-                <button 
-                  onClick={() => {
-                    if (!withdrawAmount || withdrawAmount <= 0) {
-                      alert('Please enter a valid withdrawal amount');
-                      return;
-                    }
-                    if (withdrawAmount > cur.totSave) {
-                      alert(`Cannot withdraw more than total savings (${cur.totSave.toFixed(0)} SEK)`);
-                      return;
-                    }
-                    const n = [...data];
-                    
-                    // Cascade: Previous savings first, then current month
-                    if (withdrawAmount <= cur.prev) {
-                      // Sufficient in previous savings
-                      n[sel].prev = cur.prev - withdrawAmount;
-                      n[sel].prevManual = true;
-                      alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK from previous savings`);
-                    } else {
-                      // Need both previous and current
-                      const fromPrev = cur.prev;
-                      const fromCurrent = withdrawAmount - fromPrev;
-                      n[sel].prev = 0;
-                      n[sel].prevManual = true;
-                      n[sel].save = Math.max(0, n[sel].save - fromCurrent);
-                      alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK (${fromPrev.toFixed(0)} from previous + ${fromCurrent.toFixed(0)} from current)`);
-                    }
-                    
-                    setData(n);
-                    setWithdrawAmount(0);
-                    setHasChanges(true);
-                  }}
-                  className="bg-purple-600 text-white px-6 py-3 rounded-xl hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all whitespace-nowrap"
-                >
-                  Withdraw
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-              <h3 className="font-bold text-orange-900 mb-3">Entertainment from Savings %</h3>
-              <p className="text-sm text-orange-800 mb-3">Calculate how much you can spend from savings on entertainment</p>
-              <div className="flex items-center gap-2 mb-2">
-                <input 
-                  type="number" 
-                  min="0"
-                  max="100"
-                  value={entSavingsPercent} 
-                  onChange={(e) => {
-                    const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-                    setEntSavingsPercent(val);
-                  }}
-                  className="w-20 p-2 border-2 border-gray-300 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all"
-                />
-                <span className="text-sm text-gray-700">% of {cur.totSave.toFixed(0)} SEK</span>
-              </div>
-              <div className="bg-white p-3 rounded-lg border-2 border-orange-200">
-                <div className="text-2xl font-bold text-orange-900">{((cur.totSave * entSavingsPercent) / 100).toFixed(0)} SEK</div>
-                <div className="text-xs text-orange-700 mt-1">Available for entertainment</div>
-              </div>
-            </div>
-          </div>
-          {salarySplitActive && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
+            {salarySplitActive && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-blue-700" />
                 <h3 className="font-bold text-blue-900">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
@@ -1992,6 +1881,7 @@ return (
                       onClick={() => {
                         const newSave = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
                         setForceRebalanceValues({ save: Math.max(0, newSave), groc: forceRebalanceTotals?.grocTotal ?? 0, ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setSelectedOption('adjust-save');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg text-left transition-all">
@@ -2003,6 +1893,7 @@ return (
                       onClick={() => {
                         const newGroc = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0);
                         setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: Math.max(0, newGroc), ent: forceRebalanceTotals?.entTotal ?? 0 });
+                        setSelectedOption('adjust-groc');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-green-50 hover:bg-green-100 border border-green-300 rounded-lg text-left transition-all">
@@ -2014,6 +1905,7 @@ return (
                       onClick={() => {
                         const newEnt = (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0);
                         setForceRebalanceValues({ save: forceRebalanceTotals?.saveTotal ?? 0, groc: forceRebalanceTotals?.grocTotal ?? 0, ent: Math.max(0, newEnt) });
+                        setSelectedOption('adjust-ent');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded-lg text-left transition-all">
@@ -2025,6 +1917,7 @@ return (
                       onClick={() => {
                         const equalSplit = (forceRebalanceTotals?.available ?? 0) / 3;
                         setForceRebalanceValues({ save: equalSplit, groc: equalSplit, ent: equalSplit });
+                        setSelectedOption('equal-split');
                         setForceRebalanceError('');
                       }}
                       className="w-full p-3 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg text-left transition-all">
@@ -2048,6 +1941,7 @@ return (
                         value={forceRebalanceValues.save || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, save: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -2061,6 +1955,7 @@ return (
                         value={forceRebalanceValues.groc || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, groc: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -2074,6 +1969,7 @@ return (
                         value={forceRebalanceValues.ent || ''}
                         onChange={(e) => {
                           setForceRebalanceValues(prev => ({ ...prev, ent: sanitizeNumberInput(e.target.value) }));
+                          setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
                         className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
@@ -2097,7 +1993,7 @@ return (
                     <button
                       onClick={applyForceRebalanceToAll}
                       className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all font-semibold"
-                      title={`Fix all ${budgetBalanceIssues.length} problematic months at once with equal splits`}
+                      title={`Apply selected option to all ${budgetBalanceIssues.length} problematic months at once`}
                     >
                       Fix All ({budgetBalanceIssues.length})
                     </button>
@@ -2765,24 +2661,45 @@ return (
               </div>
             </div>
           )}
-        </div>
+            </div>
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Fixed Expenses</h3>
-            <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-2 shadow-md transition-all">
-              <Plus size={18}/>Add Expense
-            </button>
+            {/* Variable Expenses */}
+            <BudgetSection
+              fields={budgetFields}
+              onFocus={handleBudgetFocus}
+              onChange={handleBudgetChange}
+              onBlur={handleBudgetBlur}
+              onToggleEditSpent={handleToggleEditSpent}
+              onSpentChange={handleSpentChange}
+              onAddTransaction={handleAddTransaction}
+              onTransactionInputChange={handleTransactionInputChange}
+              onOpenHistory={handleOpenHistory}
+            />
           </div>
 
+          {/* Right column: Fixed Expenses only */}
+          <div className="w-full lg:w-[480px]">
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-10 rounded-full bg-amber-500" aria-hidden />
+                  <h3 className="text-sm sm:text-base font-semibold tracking-tight text-slate-900">Fixed Expenses</h3>
+                </div>
+                <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 active:bg-amber-800 flex items-center justify-center gap-2 shadow-sm transition-all text-sm font-semibold">
+                  <Plus size={16}/>Add Expense
+                </button>
+              </div>
+              <p className="text-xs text-slate-600 mb-3">Toggle payment status to reflect in your balance.</p>
+
           {showAdd&&(
-            <div className="mb-4 p-4 bg-gray-50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border-2 border-gray-200">
+            <div className="mb-4 p-3 sm:p-4 bg-slate-50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border border-slate-200">
               <input 
                 type="text" 
                 placeholder="Expense Name" 
                 value={newExp.name} 
                 onChange={(e)=>setNewExp({...newExp,name:e.target.value})} 
-                className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
               />
               <input 
                 type="number" 
@@ -2794,15 +2711,15 @@ return (
                   const val = sanitizeNumberInput(e.target.value);
                   setNewExp({...newExp,amt:val});
                 }} 
-                className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
               />
-              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value})} className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
                 <option value="once">Once</option>
                 <option value="monthly">Monthly</option>
                 <option value="2">Every 2 months</option>
                 <option value="3">Every 3 months</option>
               </select>
-              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
+              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
                 {months.slice(0,12).map((m,i)=><option key={i} value={i}>{m.name}</option>)}
               </select>
               <button 
@@ -2841,14 +2758,14 @@ return (
                   setNewExp({name:'',amt:0,type:'monthly',start:0});
                   setShowAdd(false);
                 }} 
-                className="bg-green-600 text-white rounded-xl hover:bg-green-700 active:bg-green-800 shadow-md transition-all"
+                className="h-9 px-4 bg-amber-600 text-white rounded-lg hover:bg-amber-700 active:bg-amber-800 shadow-sm transition-all text-sm font-semibold"
               >
                 Add
               </button>
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2.5 sm:space-y-3">
             {previewFixed.map((e) => {
               if (e.amts[sel] <= 0) return null;
               const originalIndex = fixed.findIndex(f => f.id === e.id);
@@ -2857,16 +2774,10 @@ return (
               const isPaid = e.spent[sel];
               const monthLocked = !cur.passed;
               return (
-                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-4 p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all">
+                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex-1 w-full">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-gray-900">{e.name}</span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border ${isPaid ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
-                        {isPaid ? <Check className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                        {isPaid ? 'Paid' : (monthLocked ? 'Upcoming' : 'Pending')}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="font-semibold text-slate-900 text-sm">{e.name}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -2879,18 +2790,15 @@ return (
                           setFixed(n);
                           setHasChanges(true);
                         }}
-                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border shadow-sm transition-all ${isPaid ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'} ${monthLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        aria-pressed={isPaid}
+                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        title={isPaid ? 'Mark unpaid' : 'Mark paid'}
+                        aria-label={isPaid ? 'Mark unpaid' : 'Mark paid'}
                       >
-                        {isPaid ? <Check className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
-                        {isPaid ? 'Mark unpaid' : 'Mark paid'}
+                        {isPaid ? <Check className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                       </button>
-                      <span className="text-xs text-gray-500">
-                        {monthLocked ? 'Available once this month starts.' : 'Track payment to reflect in totals.'}
-                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                     <input 
                       type="number" 
                       min="0"
@@ -2932,24 +2840,97 @@ return (
                         setFixed(n);
                       }} 
                       disabled={isPaid} 
-                      className="w-28 p-2 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                      className="w-24 h-8 px-2 text-sm border border-slate-200 rounded-lg disabled:bg-slate-100 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
                     />
-                    <span className="text-sm text-gray-600">SEK</span>
+                    <span className="text-xs text-slate-600">SEK</span>
                     <button 
                       onClick={() => {
                         setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'delete')));
                         setDeleteModal(prev => prev ? { ...prev, idx: originalIndex, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                       }}
-                      className="text-red-600 p-2 rounded-xl hover:bg-red-50 active:bg-red-100 transition-all"
+                      className="text-red-600 p-1 rounded-lg hover:bg-red-50 active:bg-red-100 transition-all"
                     >
-                      <Trash2 size={20} />
+                      <Trash2 size={18} />
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
+            </div>
+          </div>
         </div>
+
+        <AdditionalFeaturesSection
+          overspendWarning={cur.overspendWarning ?? null}
+          criticalOverspend={cur.criticalOverspend ?? false}
+          hasRollover={cur.hasRollover ?? false}
+          showRollover={showRollover}
+          rolloverAmount={(cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)}
+          rolloverDaysRemaining={cur.rolloverDaysRemaining ?? null}
+          autoRollover={autoRollover}
+          onShowRolloverClick={() => setShowRollover(true)}
+          onConfirmRollover={() => {
+            const n = [...data];
+            n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0);
+            n[sel].rolloverProcessed = true;
+            setData(n);
+            setShowRollover(false);
+            setHasChanges(true);
+          }}
+          onCancelRollover={() => setShowRollover(false)}
+        />
+
+        <CompensationModal
+          isOpen={compModalState.open}
+          overspendAmount={compModalState.overspend}
+          category={compModalState.type}
+          availableOptions={compModalState.options}
+          onSelect={applyCompensationSelection}
+          onCancel={handleCompensationCancel}
+        />
+
+        <TransactionModal
+          isOpen={transModal.open}
+          type={transModal.type as TransactionType}
+          monthName={months[sel].name}
+          transactions={transModal.type === 'extra' ? [] : transactions[transModal.type][sel] || []}
+          extraAllocations={transactions.extra[sel] || []}
+          editingIndex={transEdit.idx}
+          editingValue={transEdit.value}
+          onClose={() => setTransModal({ open: false, type: transModal.type })}
+          onEdit={(index, value) => setTransEdit({ idx: index, value })}
+          onSaveEdit={() => {
+            if (transModal.type !== 'extra') {
+              handleSaveTransactionEdit(transModal.type as 'groc' | 'ent', sel, transEdit.idx!);
+            }
+          }}
+          onCancelEdit={() => setTransEdit({ idx: null, value: '' })}
+          onDelete={(index) => {
+            if (transModal.type !== 'extra') {
+              handleDeleteTransaction(transModal.type as 'groc' | 'ent', sel, index);
+            }
+          }}
+          onDeleteExtra={(index) => {
+            const tcopy = { 
+              groc: transactions.groc.map(a => a.slice()), 
+              ent: transactions.ent.map(a => a.slice()), 
+              extra: transactions.extra.map(a => a.slice()) 
+            } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+            const removed = tcopy.extra[sel].splice(index, 1)[0];
+            setTransactions(tcopy);
+            const n = [...data];
+            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
+            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
+            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
+            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
+            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
+            setData(n);
+            setHasChanges(true);
+          }}
+          onEditValueChange={(value) => setTransEdit({ ...transEdit, value })}
+        />
+
         {(deleteModal||changeModal)&&(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -3087,7 +3068,7 @@ return (
 
                     // If expense increased (changeModal && newAmt > oldAmt), negate the splits
                     const isIncrease = changeModal && (changeModal.newAmt ?? 0) > (changeModal.oldAmt ?? 0);
-                    const finalSplit = isIncrease 
+                    const finalSplit = isIncrease
                       ? { save: -modal.split.save, groc: -modal.split.groc, ent: -modal.split.ent }
                       : modal.split;
 
@@ -3128,530 +3109,70 @@ return (
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-          <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
-          <div className="space-y-4">
-            {(['groc','ent'] as ('groc'|'ent')[]).map(type=>(
-              <div key={type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-                <div className="font-semibold mb-3 text-gray-800 text-lg">{type==='groc'?'🛒 Groceries':'🎭 Entertainment'}</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">
-                      Total Budget
-                      {type==='groc' && (data[sel].grocBonus > 0 || (data[sel].grocExtra ?? 0) > 0) && (
-                        <span className="text-green-600 ml-1 block text-xs">
-                          (Base: {varExp.grocBudg[sel].toFixed(0)}
-                          {data[sel].grocBonus > 0 && ` +${data[sel].grocBonus.toFixed(0)} freed`}
-                          {(data[sel].grocExtra ?? 0) > 0 && ` +${(data[sel].grocExtra ?? 0).toFixed(0)} extra`})
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="1000000"
-                      placeholder="0"
-                      value={type==='groc' ? (editingGroc ? grocInput : (varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)).toFixed(0)) : (editingEnt ? entInput : cur.entBudg.toFixed(0))}
-                      onFocus={() => {
-                        if (type === 'groc') {
-                          setEditingGroc(true);
-                          setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
-                        } else if (!editingEnt) {
-                          setEditingEnt(true);
-                          setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
-                        }
-                      }}
-                      onChange={(e) => {
-                        if (type === 'groc') {
-                          // Just buffer the input while typing
-                          setGrocInput(e.target.value);
-                        } else if (type === 'ent') {
-                          // buffer raw input while editing to avoid calc overwrites
-                          setEntInput(e.target.value);
-                        }
-                      }}
-                      onBlur={(e) => {
-                        if (type === 'groc') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
-                          const difference = val - currentTotal;
+        <SetupSection
+          isOpen={showSetup}
+          setupStep={setupStep}
+          setupPrev={setupPrev}
+          setupSalary={setupSalary}
+          setupSalaryApplyAll={setupSalaryApplyAll}
+          setupExtraInc={setupExtraInc}
+          setupSave={setupSave}
+          setupGroc={setupGroc}
+          setupEnt={setupEnt}
+          setupBudgetsApplyAll={setupBudgetsApplyAll}
+          setupFixedExpenses={setupFixedExpenses}
+          setupFixedName={setupFixedName}
+          setupFixedAmt={setupFixedAmt}
+          setupError={setupError}
+          onSetupPrevChange={(value) => setSetupPrev(value)}
+          onSetupSalaryChange={(value) => setSetupSalary(value)}
+          onSetupSalaryApplyAllChange={(checked) => setSetupSalaryApplyAll(checked)}
+          onSetupExtraIncChange={(value) => setSetupExtraInc(value)}
+          onSetupSaveChange={(value) => setSetupSave(value)}
+          onSetupGrocChange={(value) => setSetupGroc(value)}
+          onSetupEntChange={(value) => setSetupEnt(value)}
+          onSetupBudgetsApplyAllChange={(checked) => setSetupBudgetsApplyAll(checked)}
+          onSetupFixedNameChange={(value) => setSetupFixedName(value)}
+          onSetupFixedAmtChange={(value) => setSetupFixedAmt(value)}
+          onNext={handleSetupNext}
+          onAddFixedExpense={handleAddFixedExpense}
+          onRemoveFixedExpense={handleRemoveFixedExpense}
+          onLogout={handleSetupLogout}
+        />
 
-                            if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                              if (!hasChanges) {
-                                setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                              } else {
-                                const revertedData = [...data].map(d => ({ ...d }));
-                                const revertedVar = {
-                                  ...varExp,
-                                  grocBudg: [...varExp.grocBudg],
-                                  entBudg: [...varExp.entBudg]
-                                };
-                                lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                  revertedData[snap.idx] = { ...snap.data };
-                                });
-                                lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                  revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                  revertedVar.entBudg[snap.idx] = snap.entBudg;
-                                });
-                                setData(revertedData);
-                                setVarExp(revertedVar);
-                                setBudgetRebalanceModal(null);
-                                setBudgetRebalanceError('');
-                                setBudgetRebalanceApplyFuture(false);
-                                setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                                setHasChanges(true);
-                              }
-                              setEditingGroc(false);
-                              setGrocInput('');
-                              return;
-                            }
-
-                          setEditingGroc(false);
-                          setGrocInput('');
-
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'groc', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        } else if (type === 'ent') {
-                          const val = sanitizeNumberInput(e.target.value);
-                          const currentTotal = cur.entBudg;
-                          const difference = val - currentTotal;
-
-                          if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
-                            if (!hasChanges) {
-                              setUndoPrompt({ kind: 'budget', payload: lastAdjustments.budget });
-                            } else {
-                              const revertedData = [...data].map(d => ({ ...d }));
-                              const revertedVar = {
-                                ...varExp,
-                                grocBudg: [...varExp.grocBudg],
-                                entBudg: [...varExp.entBudg]
-                              };
-                              lastAdjustments.budget.dataSnapshots.forEach(snap => {
-                                revertedData[snap.idx] = { ...snap.data };
-                              });
-                              lastAdjustments.budget.varSnapshots.forEach(snap => {
-                                revertedVar.grocBudg[snap.idx] = snap.grocBudg;
-                                revertedVar.entBudg[snap.idx] = snap.entBudg;
-                              });
-                              setData(revertedData);
-                              setVarExp(revertedVar);
-                              setBudgetRebalanceModal(null);
-                              setBudgetRebalanceError('');
-                              setBudgetRebalanceApplyFuture(false);
-                              setLastAdjustments(prev => ({ ...prev, budget: undefined }));
-                              setHasChanges(true);
-                            }
-                            setEditingEnt(false);
-                            setEntInput('');
-                            return;
-                          }
-                          
-                          setEditingEnt(false);
-                          setEntInput('');
-                          
-                          // Always show split modal if budget changed
-                          if (Math.abs(difference) > 0.01) {
-                            setBudgetRebalanceModal({ 
-                              type: 'ent', 
-                              oldVal: currentTotal, 
-                              newVal: val, 
-                              split: { a: 0, b: 0 } 
-                            });
-                            setBudgetRebalanceError('');
-                          }
-                        }
-                      }}
-                      disabled={false}
-                      className={`w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all`}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs flex gap-2 items-center font-medium text-gray-700 mb-1">
-                      Spent 
-                      <button 
-                        onClick={()=>setEditSpent({...editSpent,[type]:!editSpent[type]})} 
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <Edit2 size={12}/>
-                      </button>
-                    </label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="1000000"
-                      placeholder="0" 
-                      value={type==='groc'?varExp.grocSpent[sel]:varExp.entSpent[sel]} 
-                      onChange={(e)=>{
-                        if(editSpent[type]){
-                          const val = sanitizeNumberInput(e.target.value);
-                          const n={...varExp};
-                          n[type==='groc'?'grocSpent':'entSpent'][sel]=val;
-                          setVarExp(n);
-                          setHasChanges(true);
-                        }
-                      }} 
-                      disabled={!editSpent[type]} 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 block mb-1">Remaining</label>
-                    <input 
-                      type="number" 
-                      value={type==='groc'?cur.grocRem.toFixed(0):cur.entRem.toFixed(0)} 
-                      disabled 
-                      className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl bg-gray-100"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input 
-                    type="number" 
-                    min="0"
-                    max="1000000"
-                    placeholder="Add transaction amount" 
-                    value={newTrans[type]} 
-                    onChange={(e)=>setNewTrans({...newTrans,[type]:e.target.value})} 
-                    className="flex-1 p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                  />
-                  <button 
-                    onClick={()=>{
-                      const amt=sanitizeNumberInput(newTrans[type]);
-                      if(!amt || amt<=0) {
-                        alert('Please enter a valid amount between 0 and 1,000,000');
-                        return;
-                      }
-                      const n={...varExp};
-                      n[type==='groc'?'grocSpent':'entSpent'][sel]+=amt;
-                      setVarExp(n);
-                      // record transaction in transactions state as Tx with timestamp
-                      const now = new Date().toISOString();
-                      const nt = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                      if(type==='groc') nt.groc[sel].push({ amt, ts: now }); else nt.ent[sel].push({ amt, ts: now });
-                      setTransactions(nt);
-                      setNewTrans({...newTrans,[type]:''});
-                      setHasChanges(true);
-                    }} 
-                    className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all text-lg font-bold"
-                  >
-                    +
-                  </button>
-                </div>
-                <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
-                  <div>
-                    <span className="font-medium">Recent:</span>
-                    {transactions[type==='groc'?'groc':'ent'][sel].slice(-5).map((t,i)=>(
-                      <span key={i} className="inline-block mr-2">{(t?.amt ?? 0).toFixed(0)} SEK <span className="text-xs text-gray-400">({t?.ts ? new Date(t.ts).toLocaleTimeString() : ''})</span></span>
-                    ))}
-                  </div>
-                  <button onClick={()=>setTransModal({ open:true, type })} className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200">Transactions History</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {transModal.open && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-lg">
-                  Transactions — {transModal.type === 'groc' ? 'Groceries' : transModal.type === 'ent' ? 'Entertainment' : 'Extra Allocations'} — {months[sel].name}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setTransModal({ open: false, type: transModal.type })} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md">Close</button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {transModal.type !== 'extra' ? (
-                  (transactions[transModal.type][sel].length === 0 ? (
-                    <div className="text-sm text-gray-500">No transactions for this month.</div>
-                  ) : (
-                    transactions[transModal.type][sel].map((t, i) => {
-                      const txType = transModal.type as 'groc' | 'ent';
-                      return (
-                        <div key={i} className="flex items-center justify-between border-b py-2">
-                          <div className="flex items-center gap-4">
-                            {transEdit.idx === i ? (
-                              <div className="flex items-center gap-2">
-                                <input value={transEdit.value} onChange={(e)=>setTransEdit({...transEdit, value: e.target.value})} className="p-2 border rounded" />
-                                <button onClick={()=>handleSaveTransactionEdit(txType, sel, i)} className="bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                                <button onClick={()=>setTransEdit({ idx: null, value: '' })} className="bg-gray-200 text-gray-800 px-3 py-1 rounded">Cancel</button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="font-medium">{(t?.amt ?? 0).toFixed(0)} SEK</div>
-                                <div className="text-xs text-gray-500">{t?.ts ? new Date(t.ts).toLocaleString() : ''}</div>
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button onClick={()=>setTransEdit({ idx: i, value: String(t.amt) })} className="bg-blue-100 text-blue-700 px-3 py-1 rounded">Edit</button>
-                            <button onClick={()=>{ if (confirm('Delete this transaction?')) handleDeleteTransaction(txType, sel, i); }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ))
-                ) : (
-                  // extra allocations view (with edit/delete)
-                  (transactions.extra[sel] && transactions.extra[sel].length > 0) ? (
-                    transactions.extra[sel].map((ex, i) => (
-                      <div key={i} className="flex items-center justify-between border-b py-2">
-                        <div className="flex items-center gap-4">
-                          <div className="text-sm">G: <span className="font-medium">{ex.groc.toFixed(0)}</span> • E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • S: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                          <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => {
-                            if (!confirm('Delete this extra allocation? This will subtract its amounts from the month.')) return;
-                            const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                            const removed = tcopy.extra[sel].splice(i, 1)[0];
-                            setTransactions(tcopy);
-                            const n = [...data];
-                            n[sel].grocExtra = Math.max(0, (n[sel].grocExtra || 0) - (removed?.groc || 0));
-                            n[sel].entExtra = Math.max(0, (n[sel].entExtra || 0) - (removed?.ent || 0));
-                            n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
-                            // Also reduce permanent inc by the total allocation amount
-                            const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
-                            n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
-                            setData(n);
-                            setHasChanges(true);
-                          }} className="bg-red-100 text-red-700 px-3 py-1 rounded">Delete</button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )
-                )}
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
-                  {transactions.extra[sel] && transactions.extra[sel].length > 0 ? (
-                    transactions.extra[sel].map((ex, j) => (
-                      <div key={j} className="flex items-center justify-between border-b py-2">
-                        <div className="text-sm">Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — Savings: <span className="font-medium">{ex.save.toFixed(0)}</span></div>
-                        <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Setup Wizard Modal */}
-        {showSetup && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-auto">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h2 className="text-2xl font-bold text-gray-900">Financial Setup</h2>
-                <button
-                  onClick={handleSetupLogout}
-                  className="text-sm text-gray-600 hover:text-gray-900 underline"
-                >
-                  Log out
-                </button>
-              </div>
-              
-              {setupError && (
-                <div className="mb-4 p-3 bg-red-100 border border-red-400 rounded text-red-800 text-sm">
-                  {setupError}
-                </div>
-              )}
-              
-              {setupStep === 'prev' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Current Previous Savings (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupPrev}
-                    onChange={(e) => setSetupPrev(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
-                  <p className="text-sm text-gray-600 mb-6">Enter the amount of savings you had at the end of the previous month.</p>
-                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                    Next
-                  </button>
-                </div>
-              )}
-
-              {setupStep === 'salary' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Monthly Salary (SEK)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupSalary}
-                    onChange={(e) => setSetupSalary(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
-                  <label className="flex items-center gap-2 mb-6 cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      checked={setupSalaryApplyAll}
-                      onChange={(e) => setSetupSalaryApplyAll(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-sm text-gray-700">Apply to all months</span>
-                  </label>
-                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                    Next
-                  </button>
-                </div>
-              )}
-
-              {setupStep === 'extraInc' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Extra Income (SEK) - Optional</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    placeholder="0"
-                    value={setupExtraInc}
-                    onChange={(e) => setSetupExtraInc(e.target.value || '0')}
-                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
-                  />
-                  <p className="text-sm text-gray-600 mb-6">Any additional income beyond your regular salary (bonus, side income, etc.)</p>
-                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                    Next
-                  </button>
-                </div>
-              )}
-
-              {setupStep === 'fixedExpenses' && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Fixed Monthly Expenses</h3>
-                  <p className="text-sm text-gray-600 mb-4">Add your recurring monthly expenses (rent, insurance, subscriptions, etc.)</p>
-                  
-                  <div className="mb-4">
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">Expense Name</label>
-                    <input 
-                      type="text"
-                      placeholder="e.g., Rent"
-                      value={setupFixedName}
-                      onChange={(e) => setSetupFixedName(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-2"
-                    />
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">Amount (SEK)</label>
-                    <input 
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={setupFixedAmt}
-                      onChange={(e) => setSetupFixedAmt(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-2"
-                    />
-                    <button onClick={handleAddFixedExpense} className="w-full bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 font-semibold">
-                      Add Expense
-                    </button>
-                  </div>
-                  
-                  {setupFixedExpenses.length > 0 && (
-                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                      <h4 className="text-sm font-semibold mb-2">Added Expenses:</h4>
-                      {setupFixedExpenses.map((exp, idx) => (
-                        <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
-                          <span className="text-sm">{exp.name}: {parseFloat(exp.amt).toFixed(0)} SEK</span>
-                          <button onClick={() => handleRemoveFixedExpense(idx)} className="text-red-600 text-xs hover:text-red-800">Remove</button>
-                        </div>
-                      ))}
-                      <div className="mt-2 pt-2 border-t font-semibold text-sm">
-                        Total: {setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0).toFixed(0)} SEK
-                      </div>
-                    </div>
-                  )}
-                  
-                  <button onClick={handleSetupNext} className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 font-semibold">
-                    {setupFixedExpenses.length > 0 ? 'Next' : 'Skip (No Fixed Expenses)'}
-                  </button>
-                </div>
-              )}
-
-              {setupStep === 'budgets' && (
-                <div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">Savings Budget (SEK)</label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      placeholder="0"
-                      value={setupSave}
-                      onChange={(e) => setSetupSave(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-
-                  <div className="mb-4">
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">Groceries Budget (SEK)</label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      placeholder="0"
-                      value={setupGroc}
-                      onChange={(e) => setSetupGroc(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-
-                  <div className="mb-4">
-                    <label className="block text-sm font-semibold mb-2 text-gray-700">Entertainment Budget (SEK)</label>
-                    <input 
-                      type="number" 
-                      min="0"
-                      placeholder="0"
-                      value={setupEnt}
-                      onChange={(e) => setSetupEnt(e.target.value)}
-                      className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                  </div>
-                  
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg text-xs">
-                    <div className="mb-1">
-                      <strong>Available:</strong> {(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0)).toFixed(0)} SEK
-                    </div>
-                    <div className="mb-1">
-                      <strong>Allocated:</strong> {(parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0')).toFixed(0)} SEK
-                    </div>
-                    <div className={`mb-1 ${(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0) - (parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0'))) < 0 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}`}>
-                      <strong>Remaining:</strong> {(parseFloat(setupSalary || '0') + parseFloat(setupExtraInc || '0') - setupFixedExpenses.reduce((sum, e) => sum + parseFloat(e.amt || '0'), 0) - (parseFloat(setupSave || '0') + parseFloat(setupGroc || '0') + parseFloat(setupEnt || '0'))).toFixed(0)} SEK
-                    </div>
-                    <div className="text-gray-600">
-                      (Salary + Extra Income - Fixed Expenses)
-                    </div>
-                  </div>
-
-                  <label className="flex items-center gap-2 mb-6 cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      checked={setupBudgetsApplyAll}
-                      onChange={(e) => setSetupBudgetsApplyAll(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-sm text-gray-700">Apply to all months</span>
-                  </label>
-                  <button onClick={handleSetupNext} className="w-full bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 font-semibold">
-                    Complete Setup
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Utility Cards Row with Withdraw, Emergency Buffer, Entertainment Budget, What-if */}
+        <UtilityCardsRow
+          totalSavings={cur.totSave}
+          previousSavings={cur.prev}
+          currentSavings={cur.save}
+          withdrawAmount={withdrawAmount}
+          onWithdrawAmountChange={setWithdrawAmount}
+          onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
+            const n = [...data];
+            if (amount <= prevSavings) {
+              n[sel].prev = prevSavings - amount;
+              n[sel].prevManual = true;
+            } else {
+              const fromPrev = prevSavings;
+              const fromCurrent = amount - fromPrev;
+              n[sel].prev = 0;
+              n[sel].prevManual = true;
+              n[sel].save = Math.max(0, curSavings - fromCurrent);
+            }
+            setData(n);
+            setHasChanges(true);
+            onSuccess(n[sel].prev, n[sel].save);
+          }}
+          emergencyBufferMonths={emergencyBufferMonths}
+          monthlyExpenseBaseline={monthlyExpenseBaseline}
+          entSavingsPercent={entSavingsPercent}
+          onEntSavingsPercentChange={setEntSavingsPercent}
+          whatIfSalaryDelta={whatIfSalaryDelta}
+          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
+          whatIfGrocCut={whatIfGrocCut}
+          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
+          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
+        />
 
         <div className="fixed bottom-4 right-4 z-40">
           <button

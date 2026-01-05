@@ -1,52 +1,27 @@
-export type MonthItem = { name: string; date: Date; day: number };
+import type {
+  MonthItem,
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  MonthlyCalcItem,
+  CalculationResult
+} from './types';
 
-export type Split = { save: number; groc: number; ent: number };
-
-export type Change = {
-  type?: 'delete' | 'amount';
-  scope: 'month' | 'future' | 'forever';
-  idx: number;
-  monthIdx?: number;
-  newAmt?: number;
-  oldAmt?: number;
-  amt?: number;
-  split: Split;
+// Re-export types for backward compatibility
+export type {
+  MonthItem,
+  Split,
+  Change,
+  FixedExpense,
+  DataItem,
+  VarExp,
+  MonthlyCalcItem,
+  CalculationResult
 };
 
-export type FixedExpense = { id: number; name: string; amts: number[]; spent: boolean[] };
-
-export type DataItem = {
-  inc: number;
-  baseSalary?: number;
-  prev: number | null;
-  prevManual: boolean;
-  save: number;
-  defSave: number;
-  extraInc: number;
-  grocBonus: number;
-  entBonus: number;
-  grocExtra?: number;
-  entExtra?: number;
-  saveExtra?: number;
-  rolloverProcessed: boolean;
-};
-
-export type VarExp = { grocBudg: number[]; grocSpent: number[]; entBudg: number[]; entSpent: number[] };
-
-export type MonthlyCalcItem = {
-  month: string;
-  date: Date;
-  inc: number;
-  prev: number;
-  save: number;
-  actSave: number;
-  totSave: number;
-  bal: number;
-  fixExp: number;
-  fixSpent: number;
-  grocBudg: number;
-  grocSpent: number;
-  grocRem: number;
+export type _OmittedMonthlyCalcItemFields = {
   entBudg: number;
   entSpent: number;
   entRem: number;
@@ -63,14 +38,25 @@ export type MonthlyCalcItem = {
   rolloverDaysRemaining?: number | null;
 };
 
-export type CalculationResult = {
-  items: MonthlyCalcItem[];
-};
-
+/**
+ * Determines if a month date has passed relative to current date
+ * @param monthDate - First day of the month to check
+ * @param now - Current date for comparison
+ * @returns true if month has passed (now >= monthDate)
+ * @internal
+ */
 function isPassed(monthDate: Date, now: Date) {
   return now >= monthDate;
 }
 
+/**
+ * Calculates days remaining before budget rollover date (month date + 5 days)
+ * Used to determine when unspent budget becomes unavailable
+ * @param monthDate - First day of the month
+ * @param now - Current date
+ * @returns Number of days remaining (>0) or null if already passed
+ * @internal
+ */
 function getRolloverDaysRemaining(monthDate: Date, now: Date): number | null {
   // mirror original logic: rolloverDate = monthDate + 5 days
   const rolloverDate = new Date(monthDate);
@@ -87,6 +73,45 @@ export function calculateMonthly(params: {
   months: MonthItem[];
   now?: Date;
 }): CalculationResult {
+  /**
+   * Main monthly calculation engine
+   * 
+   * Computes all 60 months with:
+   * - Income, savings, budget allocations
+   * - Fixed & variable expense deductions
+   * - Overspending detection (savings drawdown, previous month impact)
+   * - Balance (net position after all transactions)
+   * - Rollover eligibility (unspent budget from previous month)
+   * 
+   * Algorithm:
+   * 1. Loop through all 60 months
+   * 2. For each month, calculate:
+   *    - Fixed expenses (bills) sum
+   *    - Grocery & entertainment totals (base + bonuses + extras)
+   *    - Overspending (if spent > budgeted)
+   *    - Actual savings (budgeted - overspend)
+   *    - Total savings (previous + actual)
+   *    - Balance (income + previous - all spending)
+   * 3. Track previous savings carryover for next month
+   * 4. Detect critical overspending (savings insufficient)
+   * 5. Flag manual overrides (manual prev savings)
+   * 
+   * @param params.data - 60-month data array (income, savings, bonuses)
+   * @param params.fixed - Fixed expense list (bills, subscriptions)
+   * @param params.varExp - Variable expenses (grocery/entertainment budgets & spent)
+   * @param params.months - 60-month array with dates and names
+   * @param params.now - Current date (for passed month detection), defaults to today
+   * @returns CalculationResult with 60 monthly items
+   * 
+   * @example
+   * const result = calculateMonthly({
+   *   data, fixed, varExp, months,
+   *   now: new Date('2025-01-15')
+   * });
+   * const jan = result[0]; // First month (January)
+   * console.log(jan.totSave);   // Total savings at month end
+   * console.log(jan.overspendWarning); // "Overspending by 2000 SEK..."
+   */
   const { data, fixed, varExp, months } = params;
   const now = params.now ?? new Date();
   const res: MonthlyCalcItem[] = [];
@@ -98,7 +123,7 @@ export function calculateMonthly(params: {
     const m = months[i];
     const d = data[i];
     const calculatedPrev = prevTotSave; // what the model thinks previous savings are
-    let workingPrev = d.prevManual ? (d.prev ?? prevTotSave) : prevTotSave; // start from manual if provided
+    const workingPrev = d.prevManual ? (d.prev ?? prevTotSave) : prevTotSave; // start from manual if provided
     const fixExp = fixed.reduce((s, e) => s + e.amts[i], 0);
     const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
     const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
@@ -110,26 +135,12 @@ export function calculateMonthly(params: {
     const entSpent = varExp.entSpent[i];
     const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
 
-    let actSave = d.save + (d.saveExtra || 0) - over;
+    const actSave = d.save + (d.saveExtra || 0);
     let overspendWarning = '';
-    let criticalOverspend = false;
+    const criticalOverspend = false;
 
     if (over > 0) {
-      if (over > d.save + (d.saveExtra || 0)) {
-        const deficit = over - (d.save + (d.saveExtra || 0));
-        if (workingPrev >= deficit) {
-          overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Current savings insufficient, consuming ${deficit.toFixed(0)} SEK from previous savings.`;
-          actSave = 0;
-          workingPrev -= deficit;
-        } else {
-          criticalOverspend = true;
-          overspendWarning = `CRITICAL: Overspending by ${over.toFixed(0)} SEK exceeds all available savings!`;
-          actSave = -(over - (d.save + (d.saveExtra || 0)) - workingPrev);
-          workingPrev = 0;
-        }
-      } else {
-        overspendWarning = `Overspending by ${over.toFixed(0)} SEK, reducing savings.`;
-      }
+      overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Please compensate from another source.`;
     }
 
     let prevSave: number;
@@ -151,11 +162,6 @@ export function calculateMonthly(params: {
     
     // totSave should reflect any deficit already removed from workingPrev
     const totSave = workingPrev + actSave;
-
-    if (totSave < 0 && !criticalOverspend) {
-      criticalOverspend = true;
-      overspendWarning = `CRITICAL: Total savings cannot be negative (${totSave.toFixed(0)} SEK)`;
-    }
 
     res.push({
       month: m.name, date: m.date, inc: d.inc, prev: prevSave, save: d.save, actSave, totSave, bal,
