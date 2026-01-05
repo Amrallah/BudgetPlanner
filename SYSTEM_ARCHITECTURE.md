@@ -1,9 +1,49 @@
 # Finance Dashboard - System Architecture Document (COMPREHENSIVE UPDATE)
 
-**Version:** 2.0 - Complete Implementation Verification  
+**Version:** 2.1 - Responsive Layout & UI Modernization  
 **Date:** January 4, 2026  
 **Status:** Fully Validated Against 3,029 Lines of Implementation  
 **Architecture:** Hook-Based Distributed State (13 Custom Hooks, No Redux/Zustand)
+
+**Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
+- ✅ Added responsive 2-column grid layout (Monthly+Variable left, Fixed 480px right)
+- ✅ Updated Component Architecture section with visual layout diagram
+- ✅ Documented responsive grid container structure and breakpoints
+- ✅ Updated Fixed Expenses styling documentation (slate palette, compact spacing)
+- ✅ Modernized layout for all screen sizes (mobile stack, desktop 2-column)
+
+**Changelog (Post-9ad087f commits):**
+- **c25c40b** (Jan 4, 2026): Optimize dashboard layout and modernize Fixed Expenses styling
+  - Responsive grid: left column (flex-1) for Monthly+Variable, right column (480px) for Fixed
+  - Updated color palette: slate-50 bg, slate-200 borders, amber-500 accent bars
+  - Compact spacing: space-y-2.5 sm:space-y-3 throughout
+  - Simplified Fixed Expenses UI: icon-only payment toggles, centralized help text
+  - Input heights: h-9 standard, h-8 compact, matching buttons for cohesion
+  
+- **be9cf03**: Implement explicit overspend compensation flow
+  - Added overspending detection and savings cascade logic
+  - User feedback for critical overspend situations
+  
+- **2317cf7**: Add compensation flow for overspend
+  - Compensation workflow for handling negative savings
+  
+- **be74b65**: Reposition utility cards row to after fixed expenses board
+  - Layout optimization for utility cards section
+  
+- **9881f45**: Add new utility cards row with Withdraw from Savings and Entertainment from Savings
+  - New calculator cards for savings analysis
+  
+- **9f24f8d**: Restore card background colors in analytics section
+  - Fixed analytics section styling
+  
+- **0f149d8**: Stabilize force rebalance run
+  - Improved force rebalance modal stability
+  
+- **22cf6b6**: Ensure Fix All uses latest selected option
+  - Force rebalance "Fix All" button refinement
+  
+- **9755f50**: Implement option tracking for Force Rebalance Modal 'Fix All' button
+  - Track user's selected fix option across multiple issues
 
 ---
 
@@ -126,6 +166,8 @@
 ```
 
 ### Component Architecture (Physical Structure)
+
+**File Organization:**
 ```
 app/
 ├── page.tsx (3,029 lines - MAIN)
@@ -151,6 +193,73 @@ lib/
 ├── utils.ts (UI helpers)
 └── firebase.ts (Firebase init)
 ```
+
+**Visual Layout (Responsive Grid):**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Header: Month Nav | Pending Changes | Save Timestamp | Save │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Mobile (< lg):    Tablet/Desktop (≥ lg):                   │
+│  ┌─────────────┐   ┌──────────────────┬──────────────────┐ │
+│  │  Monthly    │   │  Monthly Section │                  │ │
+│  ├─────────────┤   │  (flex-1)        │  Fixed Expenses  │ │
+│  │  Variable   │   ├──────────────────┤  (w-[480px])     │ │
+│  │  Expenses   │   │  Variable Exp.   │                  │ │
+│  ├─────────────┤   │  (BudgetSection) │                  │ │
+│  │  Fixed      │   │                  │                  │ │
+│  │  Expenses   │   │                  │                  │ │
+│  └─────────────┘   └──────────────────┴──────────────────┘ │
+│                                                               │
+│  Left Column (lg: flex-1):      Right Column (lg: 480px):   │
+│  ├─ MonthlySection              ├─ FixedExpenses Card      │
+│  │  ├─ Income (editable)        │  ├─ Expense List         │
+│  │  ├─ Previous Savings         │  │  ├─ Name/Amount       │
+│  │  └─ Budget Display           │  │  ├─ Payment Toggle    │
+│  │                              │  │  └─ Edit/Delete       │
+│  ├─ BudgetSection               │  │                        │
+│  │  ├─ Groceries Card           │  └─ Add Expense Form     │
+│  │  │  ├─ Budget Display        │                          │
+│  │  │  ├─ Spent Tracking        │                          │
+│  │  │  └─ Transaction Input     │                          │
+│  │  └─ Entertainment Card       │                          │
+│  │     ├─ Budget Display        │                          │
+│  │     ├─ Spent Tracking        │                          │
+│  │     └─ Transaction Input     │                          │
+│                                                               │
+│  Responsive Behavior:                                       │
+│  • Mobile: Full-width stack (flex-col)                     │
+│  • lg (1024px+): 2-column grid (flex-row)                  │
+│  • Left grows to available space (flex-1)                  │
+│  • Right fixed at 480px (w-[480px])                        │
+│  • Gap between sections: 16-20px (gap-4 lg:gap-5)          │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Container Structure (app/page.tsx lines 1638+):**
+```typescript
+// Main responsive grid container
+<div className="flex flex-col lg:flex-row gap-4 lg:gap-5">
+  
+  // Left column: Monthly + Variable Expenses (stacked)
+  <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
+    <MonthlySection />        {/* Income, Previous, Savings, Balance */}
+    <BudgetSection />         {/* Groceries & Entertainment budgets */}
+  </div>
+  
+  // Right column: Fixed Expenses (fixed width)
+  <div className="w-full lg:w-[480px]">
+    <FixedExpensesCard />      {/* Fixed expenses list & add form */}
+  </div>
+  
+</div>
+```
+
+**Component Responsibilities:**
+- **MonthlySection:** Display editable income, display previous savings, show calculated balance
+- **BudgetSection:** Manage grocery/entertainment budgets and transaction tracking
+- **FixedExpensesCard:** Display and manage monthly recurring expenses with payment status tracking
 
 ---
 
@@ -453,6 +562,46 @@ const calculation = useMemo(() => {
    a. Shows error message
    b. hasChanges remains true
    c. Save button remains enabled
+```
+
+### Flow 9: Transaction Overspend Compensation (NEW)
+```
+1. User adds/edits transaction with amount A
+2. System calculates: remainingBudget = budgetTotal - currentSpent
+3. If A > remainingBudget:
+   a. overspendAmount = A - remainingBudget
+   b. Identify available compensation sources:
+      - Other budget category (groc ↔ ent switch): Check remaining balance
+      - Planned savings: Check data[month].save
+      - Previous month savings: Check data[month].prev
+   c. Filter sources where available >= overspendAmount
+   d. If no sources available: Alert and reject transaction
+   e. Else: Show CompensationModal with available sources
+4. User selects ONE source from modal
+5. Apply compensation based on source:
+   
+   If source === 'other-category':
+     varExp.sourceBudg[month] -= overspendAmount
+     varExp.targetBudg[month] += overspendAmount
+   
+   If source === 'savings':
+     data[month].save -= overspendAmount
+     varExp.targetBudg[month] += overspendAmount
+   
+   If source === 'previous':
+     data[month].prev -= overspendAmount
+     data[month].prevManual = true
+     varExp.targetSpent[month] -= overspendAmount  // No budget inflation
+6. Record transaction with compensation metadata:
+   { amt: A, ts: now, compensation: { source, amount: overspendAmount } }
+7. Update spent: varExp.targetSpent[month] += A
+8. Close modal, set hasChanges = true
+9. On error: Show message, don't add transaction
+
+Reversal (on Edit/Delete):
+- Reverse compensation transforms FIRST
+- Restore budgets or previous savings
+- Then proceed with delete OR revalidate edit with new amount
 ```
 
 ---

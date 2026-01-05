@@ -1,9 +1,22 @@
 # Finance Dashboard - Functional Requirements Document (COMPREHENSIVE UPDATE)
 
-**Version:** 2.0 - Complete Analysis & Implementation Verification  
+**Version:** 2.1 - UI Modernization & Fixed Expenses Redesign  
 **Date:** January 4, 2026  
 **Status:** Fully Analyzed, Verified Against 3,029 Lines of Implementation Code  
 **Last Verification:** Full codebase read - app/page.tsx (3029 lines), lib/ utilities, type definitions, hooks, components
+
+**Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
+- ✅ Updated F10 (Fixed Expense Management) with modern UI documentation
+- ✅ Documented icon-only payment toggle design
+- ✅ Simplified expense item layout (from verbose 3-row to single-row design)
+- ✅ Added slate color palette styling details
+- ✅ Updated input heights and form styling (h-9 standard, h-8 compact)
+- ✅ Centralized help text (now in card header instead of per-item)
+
+**Post-9ad087f Commits Reflected:**
+- Commit c25c40b: Dashboard layout optimization and Fixed Expenses modernization
+- Commit be9cf03: Overspend compensation flow implementation
+- Earlier commits: Utility cards, analytics improvements, force rebalance enhancements
 
 ---
 
@@ -147,22 +160,66 @@ The **Finance Dashboard** is a personal financial planning application that mode
 - **Application:** System updates other budgets by multiplier (-1 if increase, +1 if decrease)
 
 ### F10: Fixed Expense Management
-- **Create:** Inline form with name, amount, type (Once/Monthly/Every N months), start month
-- **Types:** 
-  - "Once" - Single occurrence
-  - "Monthly" - Every month
-  - "Every 2 months", "Every 3 months" - Periodic
-- **Duplicate Detection:** Warns if name already exists for same start month
-- **Budget Allocation:** New expense triggers split modal:
-  - Shows available budget after adding expense
-  - Requires user to split the cost across save/groc/ent
-  - "Apply same split to all affected months" option
-- **Edit:** Click expense amount to enter edit mode (inline edit)
-  - Shows "Change Amount" modal
-  - Triggers split workflow if amount changed
-  - Scopes: "This month only", "This and future months", "Delete completely"
-- **Status Tracking:** Each expense shows "Paid", "Pending", or "Upcoming" badge
-- **Payment Mark:** Button to toggle between paid/unpaid states (unavailable for future months)
+
+**UI Layout (Updated - Modern Card Design):**
+- Fixed Expenses displayed in dedicated right-column card (lg: 480px wide)
+- Card styling: `bg-white rounded-2xl border border-slate-200 shadow-sm`
+- Header with title "Fixed Expenses" and total amount
+- Help text: "Toggle payment status to reflect in your balance."
+- Expense list with compact items, add form at bottom
+
+**List Display:**
+- Each expense item: `bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4`
+- Spacing between items: `space-y-2.5 sm:space-y-3`
+- Inline layout: Name + Amount + Payment toggle (icon-only) + Edit + Delete buttons
+- Payment toggle: Icon button only (no label text), changes colors based on paid/unpaid state
+  - Paid: `text-emerald-700 bg-emerald-50`
+  - Unpaid/Pending: `text-amber-700 bg-amber-50`
+- Status badge: "Upcoming" for future months (no toggle available)
+
+**Payment Mark (Updated - Icon Only):**
+- Payment toggle button positioned inline with expense name
+- Icon-only design (no text label like "Paid" or "Unpaid")
+- Square button: `p-1 rounded-lg` with icon (CheckCircle2 or Circle icons)
+- Disabled for future months (can't mark paid before month occurs)
+- Color-coded visual feedback (emerald for paid, amber for pending)
+
+**Create:**
+- Inline form with fields: Name, Amount, Type, Start Month
+- Form styling: `h-9` inputs with `placeholder:text-xs placeholder:text-slate-400` (smaller, subtle placeholders)
+- Type dropdown: "Once", "Monthly", "Every 2 months", "Every 3 months"
+- Add button: `h-9 px-4` (matching input heights for cohesive look)
+
+**Duplicate Detection:**
+- Warning modal if name exists for same start month
+- User can override and continue
+
+**Budget Allocation:**
+- New expense triggers split allocation modal
+- User must allocate cost across save/groc/ent budgets
+- "Apply same split to all affected months" checkbox
+- Validation: Total allocation must equal expense amount exactly
+
+**Edit:**
+- Click expense amount to open edit modal
+- Shows old amount and new amount inputs
+- Scope options: "This month only", "This and future months", "Delete completely"
+- If amount changed: Triggers split allocation workflow
+- Multi-month scope adds to pendingChanges (requires user "Confirm" in main view)
+
+**Delete:**
+- Delete button (✕) on each expense item
+- Shows confirmation: "This will free up [amount] to reallocate"
+- Removes expense and associated budget allocations
+
+**Styling Changes (Jan 2026 Update):**
+- Slate color palette: `border-slate-200`, `bg-slate-50` (replaces previous grays)
+- Compact spacing: Reduced from `space-y-3 sm:space-y-4` to `space-y-2.5 sm:space-y-3`
+- Reduced padding: `p-3 sm:p-4` (from p-4)
+- Input heights: `h-9` for form fields, `h-8` for amount display inputs
+- Button heights: `h-9` matching input fields (cohesive proportions)
+- Accent bar: Amber-500 (matches overall Fixed Expenses visual emphasis)
+- Modern shadows: `shadow-sm` (lighter, more subtle)
 
 ### F11: Transaction History
 - **Tracking:** Separate ledgers for groceries, entertainment, and extra income allocations
@@ -200,6 +257,85 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - Manual "Confirm Rollover" button shows when eligible
   - "Show Rollover" link in analytics with amount and days remaining
 - **State:** `data[i].rolloverProcessed` flag prevents double-processing
+
+### F15: Overspend Compensation System (NEW - CRITICAL)
+**Purpose:** Handle transactions that exceed available budget in a month by offering compensation sources
+
+**Overspend Detection:**
+- When adding/editing transaction: Check if `amount > remainingBudget`
+- `remainingBudget = budgetTotal - currentSpent`
+- If overspend detected: Show CompensationModal with available sources
+
+**Available Compensation Sources:**
+1. **Other Budget Category** (groc ↔ ent transfer)
+   - If spending on groceries: Can borrow from entertainment budget remaining
+   - If spending on entertainment: Can borrow from groceries budget remaining
+   - Condition: `otherBudget.remaining >= overspendAmount`
+   
+2. **Planned Savings** (reduce this month's savings)
+   - Use current month's budgeted savings to cover overspend
+   - Reduces `data[sel].save` and increases target budget
+   - Condition: `data[sel].save >= overspendAmount`
+   
+3. **Previous Savings** (consume from prior month's carryover)
+   - Use accumulated savings from previous month
+   - Reduces `data[sel].prev` (automatic, no inflation of budgets)
+   - Offsets spent amount instead of increasing budget
+   - Condition: `data[sel].prev >= overspendAmount`
+
+**Compensation Modal UI:**
+- Title: Shows category and overspend amount
+- List of available sources with available amounts
+- User selects ONE source
+- On selection: Applies compensation transform and adds transaction
+
+**Compensation Application Logic:**
+
+```
+if source === 'groc' (borrowing from groceries):
+  varExp.grocBudg[month] -= overspendAmount
+  varExp.entBudg[month] += overspendAmount
+
+if source === 'ent' (borrowing from entertainment):
+  varExp.entBudg[month] -= overspendAmount
+  varExp.grocBudg[month] += overspendAmount
+
+if source === 'save' (using planned savings):
+  data[month].save -= overspendAmount
+  varExp.{groc/ent}Budg[month] += overspendAmount
+
+if source === 'prev' (using previous savings):
+  data[month].prev -= overspendAmount
+  data[month].prevManual = true
+  varExp.{groc/ent}Spent[month] -= overspendAmount (no budget inflation)
+```
+
+**Transaction Recording:**
+- Transaction includes compensation metadata: `{ source, amount }`
+- Stored for history and edit/delete reversal
+
+**Compensation Reversal (on Edit/Delete):**
+- When editing transaction with compensation: Reverse the compensation first
+- Restore budgets or previous savings to original state
+- Then apply new compensation (if needed) based on new amount
+
+**Example Workflow:**
+1. User adds 1000 SEK grocery transaction
+2. Remaining budget: 300 SEK → Overspend = 700 SEK
+3. CompensationModal shows:
+   - Entertainment remaining: 500 SEK (insufficient)
+   - Planned savings: 2000 SEK ✅
+   - Previous savings: 5000 SEK ✅
+4. User selects "Planned Savings"
+5. System reduces `data[month].save` by 700 SEK
+6. Increases grocery budget by 700 SEK
+7. Transaction added with compensation metadata
+8. Total spent now matches budget
+
+**No compensation available case:**
+- If no sources can cover: Alert "Overspend cannot be covered by any source"
+- Transaction not added
+- User must reduce amount or increase budgets first
 
 ---
 

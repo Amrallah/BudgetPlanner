@@ -1,9 +1,31 @@
 # Finance Dashboard - UI/UX Requirements Document (COMPREHENSIVE UPDATE)
 
-**Version:** 2.0 - Complete Implementation Verification  
+**Version:** 2.1 - Responsive Layout & Modern Design System  
 **Date:** January 4, 2026  
 **Status:** Fully Mapped Against All Screen States & Modals  
 **Components Analyzed:** app/page.tsx (3029 lines), 5 main components, 7+ modal dialogs
+
+**Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
+- ✅ Added responsive grid layout section documenting 2-column design
+- ✅ Updated Color Palette with complete slate color system (with hex codes)
+- ✅ Modernized Typography section with placeholder specifications
+- ✅ Enhanced Spacing documentation (compact design, h-9 inputs, responsive gaps)
+- ✅ Documented Borders & Shadows updates (slate-200, shadow-sm, rounded-2xl/rounded-xl)
+- ✅ Completely redesigned S4 (Fixed Expenses) screen specification with compact layout
+- ✅ Updated Main Application Layout with detailed responsive grid structure
+- ✅ Added visual diagrams showing desktop vs. mobile layouts
+
+**Design System Evolution (Slate Modernization):**
+- Previous: Gray color palette with inconsistent spacing
+- Current: Cohesive slate palette (slate-50, slate-200, slate-400, slate-600)
+- Success indicator: Emerald colors (text-emerald-700, bg-emerald-50)
+- Warning/Pending: Amber colors (bg-amber-50, text-amber-700, bg-amber-500 accents)
+- Input consistency: All inputs standardized to h-9, buttons matching for visual harmony
+- Compact spacing: Reduced from space-y-3/4 to space-y-2.5/3 for modern density
+
+**Post-9ad087f Commits Reflected:**
+- Commit c25c40b: Complete layout and styling modernization (primary focus of this update)
+- Commit be9cf03 & earlier: Additional features documented in supporting sections
 
 ---
 
@@ -27,7 +49,7 @@
 1. [Design System & Visual Language](#design-system--visual-language)
 2. [Main Application Layout](#main-application-layout)
 3. [Screen Specifications](#screen-specifications)
-4. [Modal Dialogs (7 Types)](#modal-dialogs-7-types)
+4. [Modal Dialogs (8 Types)](#modal-dialogs-8-types)
 5. [Component Hierarchies](#component-hierarchies)
 6. [Data Input Forms](#data-input-forms)
 7. [Error States & Recovery](#error-states--recovery)
@@ -38,55 +60,114 @@
 
 ## Design System & Visual Language
 
-### Color Palette
-- **Primary:** Tailwind slate (navigation, primary buttons)
-- **Success:** Tailwind green (save confirmation, positive calculations)
-- **Warning:** Tailwind amber (pending changes, upcoming months)
+### Color Palette (Updated - Slate Palette)
+- **Primary Background:** Tailwind slate (cards, section backgrounds)
+  - `bg-white` - Card containers
+  - `bg-slate-50` - Inner sections and list items
+  - `border-slate-200` - Card borders and dividers
+- **Success:** Tailwind emerald (save confirmation, paid status)
+  - `text-emerald-700` / `bg-emerald-50` - Paid expense indicators
+- **Warning:** Tailwind amber (pending changes, upcoming months, overspend risk)
+  - `bg-amber-500` - Accent bar for Fixed Expenses section
+  - `text-amber-700` / `bg-amber-50` - Unpaid/pending expense indicators
 - **Error:** Tailwind red (budget issues, validation failures, critical overspend)
+  - `text-red-600` - Error messages and warnings
 - **Neutral:** Tailwind gray (disabled states, secondary text)
+  - `text-slate-400` - Subtle text and placeholders
+  - `text-slate-600` - Secondary text
+
+**Hex Values (for reference):**
+- Slate-50: `#f8fafc`
+- Slate-200: `#e2e8f0`
+- Slate-400: `#94a3b8`
+- Slate-600: `#475569`
+- Emerald-50: `#f0fdf4` / Emerald-700: `#047857`
+- Amber-50: `#fffbeb` / Amber-500: `#f59e0b` / Amber-700: `#b45309`
 
 ### Typography
 - **Heading 1:** Bold 24px (page title)
 - **Heading 2:** Bold 16px (section headers)
 - **Body:** Regular 14px (form labels, descriptions)
+- **Body Small:** Regular 12px (expense names, secondary info)
 - **Caption:** Regular 12px (timestamps, secondary info)
 - **Mono:** 12px (numbers, amounts, codes)
+- **Placeholders:** 12px regular `text-slate-400` (reduced from 14px, now using `text-xs` in inputs)
 
-### Spacing
-- **Container Padding:** 24px (all main containers)
-- **Section Gap:** 16px (between major sections)
+### Spacing (Updated - Compact Modern Design)
+- **Container Padding:** 
+  - Cards: `p-3 sm:p-4` (compact, responsive)
+  - Sections: `p-4` (standard padding)
+- **Section Gap:** 
+  - Between major boards: `gap-4 lg:gap-5` (responsive)
+  - Between items in list: `space-y-2.5 sm:space-y-3` (compact)
 - **Component Gap:** 8px (between inline elements)
 - **Button Gap:** 8px (button group spacing)
+- **Input Heights:**
+  - Standard form inputs: `h-9` (36px)
+  - Small amount inputs: `h-8` (32px)
+  - Buttons: `h-9` (matching input heights for cohesion)
 
-### Borders & Shadows
-- **Border:** 1px solid `border-gray-200`
-- **Divider:** 1px solid `border-gray-100`
-- **Shadow:** `shadow-sm` for cards, `shadow-md` for modals
-- **Rounded:** `rounded-md` standard, `rounded-lg` for cards
+### Borders & Shadows (Updated - Modern)
+- **Border:** 1px solid `border-slate-200` (lighter, modern gray)
+- **Divider:** 1px solid `border-slate-200` (matching borders)
+- **Shadow:** `shadow-sm` for cards (lighter, more subtle)
+- **Rounded:** `rounded-2xl` for cards, `rounded-xl` for list items, `rounded-lg` for buttons
 
 ---
 
-## Main Application Layout
+## Main Application Layout (Updated - Responsive Grid)
 
 ### Master Layout Structure
+
+**Desktop Layout (lg: 1024px+):**
 ```
-┌─────────────────────────────────────────┐
-│ Header: Setup / Dashboard / Controls    │
-├─────────────────────────────────────────┤
-│                                         │
-│  [Setup Wizard] OR [Dashboard]          │
-│                                         │
-│  Dashboard contains:                    │
-│  ├─ Month Navigation                    │
-│  ├─ Monthly Earnings Section            │
-│  ├─ Budget Section (Groc/Ent)          │
-│  ├─ Fixed Expenses Section              │
-│  └─ Analytics Section                   │
-│                                         │
-│  (All 60 months in scrollable view)    │
-│                                         │
-└─────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ Header: Logo | Month Nav | Pending | Saved | Save Btn    │
+├────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────┬──────────────────────┐   │
+│  │ LEFT COLUMN (flex-1)        │ RIGHT COLUMN (480px) │   │
+│  │                             │                      │   │
+│  │ ┌─────────────────────────┐ │  ┌────────────────┐ │   │
+│  │ │ Monthly Section         │ │  │ Fixed Expenses │ │   │
+│  │ │ • Income                │ │  │ • Expense List │ │   │
+│  │ │ • Previous Savings      │ │  │ • Payment      │ │   │
+│  │ │ • Budget Summary        │ │  │   Toggles      │ │   │
+│  │ │ • Balance               │ │  │ • Add Form     │ │   │
+│  │ └─────────────────────────┘ │  └────────────────┘ │   │
+│  │                             │                      │   │
+│  │ ┌─────────────────────────┐ │                      │   │
+│  │ │ Variable Expenses       │ │                      │   │
+│  │ │ (Budget Section)        │ │                      │   │
+│  │ │ • Groceries             │ │                      │   │
+│  │ │ • Entertainment         │ │                      │   │
+│  │ │ • Transaction Tracking  │ │                      │   │
+│  │ └─────────────────────────┘ │                      │   │
+│  │                             │                      │   │
+│  └─────────────────────────────┴──────────────────────┘   │
+│                                                              │
+└────────────────────────────────────────────────────────────┘
 ```
+
+**Mobile Layout (< lg: 1024px):**
+- Full-width stack (flex-col)
+- Monthly Section (full width)
+- Variable Expenses / Budget Section (full width)
+- Fixed Expenses (full width)
+- All sections maintain same styling but adjust to viewport
+
+### Grid Container (CSS Classes)
+```
+Container: flex flex-col lg:flex-row gap-4 lg:gap-5
+Left Column: w-full lg:flex-1 flex flex-col gap-4 lg:gap-5
+Right Column: w-full lg:w-[480px]
+```
+
+**Responsive Behavior:**
+- Mobile (< lg): Full-width vertical stack
+- Tablet/Desktop (≥ lg): 2-column grid with left column growing to available space
+- Right column fixed at 480px for stable Fixed Expenses presentation
+- Gap between sections: 16px (gap-4) on mobile, 20px (gap-5) on desktop
 
 ### Header Components (Always Visible)
 
@@ -102,21 +183,53 @@
 - Last saved timestamp: "Saved 14:32:15" (green text, updates on successful save)
 - Save Button: Primary button, **DISABLED if budget issues exist**, shows tooltip "Fix budget balance issues before saving"
 
-### Main Content Area
+### Left Column Content (flex-1, grows to available space)
 
-**Scrollable 60-Month Table:**
-- Vertical scroll (months rows)
-- Horizontal scroll on mobile
-- Month row height: 32px
-- Column widths: Income (80px), Previous (80px), Save (80px), Groc (80px), Ent (80px)
+#### Monthly Section
+- Card container: `bg-white rounded-2xl border border-slate-200 shadow-sm`
+- Inner styling: `bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4`
+- Grid layout: 4 columns (lg) - Income, Previous, Savings, Balance
+  - (Reduced from 5 columns: removed Balance as standalone field)
+- Spacing: `space-y-2.5 sm:space-y-3` between rows
 
-**Column Organization:**
-1. Month label (December 2025, January 2026, etc.)
-2. Income field (editable input)
-3. Previous savings field (editable, with manual override button)
-4. Budget categories (Groc, Ent, Save budgets)
-5. Actual spent (Groc, Ent spent amounts)
-6. Action buttons (Edit, Delete, Rollover, Undo)
+#### Variable Expenses Section (Budget Section)
+- Two cards stacked: Groceries and Entertainment
+- Card styling: `bg-white rounded-2xl border border-slate-200 shadow-sm`
+- Budget display: `bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4`
+- Progress bar for spent tracking (color-coded: green < 80%, amber 80-100%, red > 100%)
+- Transaction inputs with quick amount buttons
+
+### Right Column Content (480px, fixed)
+
+#### Fixed Expenses Card
+- Card wrapper: `bg-white rounded-2xl border border-slate-200 shadow-sm`
+- Header: Title + Total amount
+- Help text: Single line below header "Toggle payment status to reflect in your balance."
+- Expense items: `bg-slate-50 rounded-xl border border-slate-200`
+- Item padding: `p-3 sm:p-4` (compact, responsive)
+- Spacing between items: `space-y-2.5 sm:space-y-3` (matches other sections)
+- Accent bar: `bg-amber-500` accent indicator
+
+**Expense Item Layout:**
+```
+┌─ Rent 10,000 SEK [✓ Paid] [Edit] [Delete] ─┐
+│ Monthly, from Dec 2025                      │
+└─────────────────────────────────────────────┘
+```
+- Single row per expense (icon-only toggle, no verbose text)
+- Name + Amount (inline)
+- Payment toggle: Icon-only button (CheckCircle2 or Circle icon)
+  - Paid state: `text-emerald-700 bg-emerald-50`
+  - Unpaid state: `text-amber-700 bg-amber-50`
+- Edit button (pencil icon)
+- Delete button (trash icon)
+- Expense type and start date shown as secondary info
+
+**Add Expense Form (at bottom):**
+- Input fields: Name, Amount, Type, Start Month
+- Input styling: `h-9 px-3` with `placeholder:text-xs placeholder:text-slate-400`
+- Button: Add button with `h-9 px-4` (matching input heights)
+- Form spacing: `space-y-2` between fields
 
 ---
 
@@ -283,33 +396,65 @@
 - Inline "Add transaction" input with quick amount buttons (100, 500, 1000, etc.)
 - "View All" link opens transaction modal with full history
 
-### S4: Main Dashboard - Fixed Expenses Section
+### S4: Main Dashboard - Fixed Expenses Section (Updated - Modern Compact Design)
 
-**Visual Layout:**
+**Visual Layout (Right Column, 480px):**
 ```
-┌─ Fixed Expenses                ─┐
-│ Total: 12,700 SEK              │
-│                                │
-│ • Rent: 10,000 SEK [✎] [✕]    │
-│   Monthly, from Dec 2025       │
-│                                │
-│ • Insurance: 500 SEK [✎] [✕]  │
-│   Monthly, from Dec 2025       │
-│                                │
-│ • Phone: 200 SEK [✎] [✕]      │
-│   Monthly, from Dec 2025       │
-│                                │
-│ [Add Expense] button           │
-└─────────────────────────────────┘
+┌─ Fixed Expenses                                    ─┐
+│ Total: 12,700 SEK                                  │
+│ Toggle payment status to reflect in your balance. │
+│                                                    │
+│ ┌────────────────────────────────────────────────┐│
+│ │ Rent 10,000 SEK    [✓ Paid] [✎] [✕]            ││
+│ │ Monthly, from Dec 2025                         ││
+│ └────────────────────────────────────────────────┘│
+│                                                    │
+│ ┌────────────────────────────────────────────────┐│
+│ │ Insurance 500 SEK  [◯ Unpaid] [✎] [✕]         ││
+│ │ Monthly, from Dec 2025                         ││
+│ └────────────────────────────────────────────────┘│
+│                                                    │
+│ ┌────────────────────────────────────────────────┐│
+│ │ Phone 200 SEK      [upcoming]                  ││
+│ │ Monthly, from Dec 2025                         ││
+│ └────────────────────────────────────────────────┘│
+│                                                    │
+│ Add Expense Form:                                  │
+│ Name: [____________]                              │
+│ Amount: [______] SEK                              │
+│ Type: [Monthly ▼]                                │
+│ Start: [Dec 2025 ▼]                              │
+│ [Add]                                            │
+│                                                    │
+└────────────────────────────────────────────────────┘
 ```
+
+**Styling Updates (Jan 2026):**
+- Container: `bg-white rounded-2xl border border-slate-200 shadow-sm`
+- Item styling: `bg-slate-50 rounded-xl border border-slate-200 p-3 sm:p-4`
+- Spacing: `space-y-2.5 sm:space-y-3` between items
+- Item layout: Single-row compact design (Name + Amount + Toggle + Edit + Delete)
+- Payment toggle: Icon-only button (no "Paid"/"Unpaid" text labels)
+  - Position: Inline with expense name
+  - Icon size: Small (size-4 or size-5)
+  - Paid state: `text-emerald-700 bg-emerald-50` (CheckCircle2 icon)
+  - Unpaid state: `text-amber-700 bg-amber-50` (Circle icon)
+  - Disabled for future months (shows "upcoming" instead)
+- Help text: Single line below header (centralized, not per-item)
 
 **Expense Status:**
 - Paid/Unpaid toggle for months that have already occurred
-- "Upcoming" badge for future months
-- Delete confirmation: "This will free up amount to reallocate"
+  - Click icon to toggle between states
+  - Colors provide instant visual feedback
+- "upcoming" text for future months (no toggle available)
+- Delete confirmation: "This will free up [amount] to reallocate"
 
 **Add New Expense:**
-- Modal opens with form: Name, Amount, Type, Start month
+- Form fields: Name, Amount, Type (dropdown), Start Month (dropdown)
+- Input heights: `h-9` for all fields
+- Placeholders: `placeholder:text-xs placeholder:text-slate-400` (smaller, subtle)
+- Button: Add button with `h-9 px-4` (matches input heights)
+- Form appears at bottom of card
 - Triggers split allocation modal when confirmed
 
 ### S5: Main Dashboard - Analytics Section
@@ -348,7 +493,7 @@
 
 ---
 
-## Modal Dialogs (7 Types)
+## Modal Dialogs (8 Types)
 
 ### Modal 1: Salary/Income Split Modal
 
@@ -571,7 +716,100 @@
 - Adds to `pendingChanges` if scope is multi-month
 - Requires "Confirm Changes" in main view to apply
 
-### Modal 7: Transaction History Modal
+### Modal 7: Compensation Modal (Overspend Handling - NEW)
+
+**Trigger:** User attempts to add/edit transaction that exceeds available budget  
+**Title:** "Overspend Coverage - {Category}"  
+**Purpose:** Allow user to choose which budget source to use to cover transaction overspend
+
+**Layout:**
+```
+┌─ Overspend Coverage (Modal)    ─┐
+│                                │
+│ Transaction: 1,000 SEK         │
+│ Available Budget: 300 SEK      │
+│ Overspend: 700 SEK             │
+│                                │
+│ How would you like to cover?   │
+│                                │
+│ ○ Entertainment Budget         │
+│   Available: 500 SEK (✓ enough)│
+│                                │
+│ ○ Planned Savings              │
+│   Available: 2,000 SEK (✓ OK)  │
+│                                │
+│ ○ Previous Savings             │
+│   Available: 5,000 SEK (✓ OK)  │
+│                                │
+│ [Select Source] [Cancel]       │
+│                                │
+└─────────────────────────────────┘
+```
+
+**Overspend Detection:**
+- Triggered when `transactionAmount > remainingBudget`
+- Shows calculation: current budget - current spent = remaining
+- Displays overspend amount in red
+
+**Available Sources (Dynamic List):**
+1. **Other Budget Category** (Groc ↔ Ent)
+   - If enough remaining: "✓ enough" badge (green)
+   - If insufficient: Shows available amount only
+   - Disabled if insufficient
+   - Icon: Transfer arrow (↔)
+   - Color: Teal/cyan
+   
+2. **Planned Savings**
+   - Shows current month's savings budget
+   - Disabled if savings < overspend
+   - Icon: Piggy bank
+   - Color: Green
+   
+3. **Previous Savings**
+   - Shows accumulated savings from prior month
+   - Disabled if previous < overspend
+   - Icon: Clock/history
+   - Color: Blue
+   - **Note:** Uses savings without inflating budget (offset spent instead)
+
+**Source Selection:**
+- Single-choice radio buttons
+- User selects ONE source
+- Only available sources are enabled
+- Disabled sources greyed out with "insufficient" message
+
+**On Selection:**
+- Close modal immediately
+- Apply compensation transform to state
+- Add transaction with compensation metadata
+- Show success feedback in parent context
+
+**No Sources Available Case:**
+- All radio buttons disabled
+- Modal shows "Unable to cover this overspend. Please reduce the amount or increase your budget."
+- "Cancel" closes modal
+- Transaction not added
+- User must modify amount or budgets
+
+**Styling:**
+- Modal: `bg-white rounded-xl border-2 border-red-300`
+- Alert box showing overspend: `bg-red-50 border border-red-200`
+- Available source: `bg-green-50 border border-green-200`
+- Insufficient source: `bg-gray-50 border border-gray-200 text-gray-500`
+- Buttons: "Select Source" (primary red), "Cancel" (secondary gray)
+
+**Compensation Logic:**
+- **Other Budget:** Transfers from other category to target category (budget swap)
+- **Planned Savings:** Reduces savings, increases target budget
+- **Previous Savings:** Reduces previous month's carryover, offsets spent (no budget inflation)
+
+**Transaction Recording:**
+- All compensated transactions include: `{ amt, ts, compensation: { source, amount } }`
+- Enables reversal if transaction is later edited or deleted
+
+---
+
+### Modal 8: Transaction History Modal
 
 **Trigger:** User clicks "View All" or "Transaction Modal →"  
 **Title:** "Transaction History - Groceries"  
