@@ -41,11 +41,16 @@ export default memo(function MonthlySection({
 }: MonthlySectionProps) {
   const content = (
     <>
-      <h2 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Monthly - {monthLabel}</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        {fields.map((field) => (
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-10 rounded-full bg-blue-600" aria-hidden />
+          <h2 className="text-sm sm:text-base font-semibold tracking-tight text-slate-900">Monthly · {monthLabel}</h2>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {fields.filter(f => f.key !== 'bal').map((field) => (
           <div key={field.key}>
-            <label htmlFor={`field-${field.key}`} className="block text-sm font-semibold leading-snug mb-2 flex gap-2 text-gray-700">
+            <label htmlFor={`field-${field.key}`} className="block text-xs font-semibold leading-snug mb-1.5 flex gap-2 text-slate-700">
               {field.label} {field.button}
             </label>
             <input
@@ -70,20 +75,20 @@ export default memo(function MonthlySection({
                 onBlur(field.key, val);
               }}
               disabled={!field.editable}
-              className="w-full p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+              className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg disabled:bg-slate-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
             />
             {field.key === 'extraInc' && (
               <div className="mt-2 flex items-center gap-2">
                 <button
                   onClick={onOpenExtraHistory}
-                  className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200"
+                  className="bg-slate-100 text-slate-700 px-2.5 py-1 text-xs rounded-md hover:bg-slate-200"
                 >
                   Extra Allocations History
                 </button>
               </div>
             )}
             {field.key === 'save' && savingEdited && (
-              <label className="flex items-center gap-2 mt-2 text-sm text-gray-700">
+              <label className="flex items-center gap-2 mt-2 text-xs text-slate-700">
                 <input
                   type="checkbox"
                   checked={applyFuture}
@@ -104,7 +109,7 @@ export default memo(function MonthlySection({
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-4">
       {content}
     </div>
   );

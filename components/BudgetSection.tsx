@@ -48,22 +48,27 @@ export default memo(function BudgetSection({
   onOpenHistory
 }: BudgetSectionProps) {
   return (
-    <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-      <h3 className="text-xl sm:text-2xl font-bold mb-4 text-gray-800">Variable Expenses</h3>
-      <div className="space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-10 rounded-full bg-emerald-600" aria-hidden />
+          <h3 className="text-sm sm:text-base font-semibold tracking-tight text-slate-900">Variable Expenses</h3>
+        </div>
+      </div>
+      <div className="space-y-2.5 sm:space-y-3">
         {fields.map(field => (
-          <div key={field.type} className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
-            <div className="font-semibold mb-3 text-gray-800 text-lg">{field.label}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-3">
+          <div key={field.type} className="p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="font-semibold mb-2 text-slate-900 text-sm sm:text-base">{field.label}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
               {/* Total Budget Input */}
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                   Total Budget
                   {field.type === 'groc' && (field.bonus > 0 || field.extra > 0) && (
-                    <span className="text-green-600 ml-1 block text-xs">
-                      (Base: {field.baseBudget.toFixed(0)}
+                    <span className="text-emerald-700 ml-1 block text-[11px]">
+                      Base {field.baseBudget.toFixed(0)}
                       {field.bonus > 0 && ` +${field.bonus.toFixed(0)} freed`}
-                      {field.extra > 0 && ` +${field.extra.toFixed(0)} extra`})
+                      {field.extra > 0 && ` +${field.extra.toFixed(0)} extra`}
                     </span>
                   )}
                 </label>
@@ -76,17 +81,17 @@ export default memo(function BudgetSection({
                   onFocus={() => onFocus(field.type)}
                   onChange={(e) => onChange(field.type, e.target.value)}
                   onBlur={(e) => onBlur(field.type, e.target.value)}
-                  className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
                 />
               </div>
 
               {/* Spent Input */}
               <div>
-                <label className="text-xs flex gap-2 items-center font-medium text-gray-700 mb-1">
+                <label className="text-[11px] flex gap-2 items-center font-semibold text-slate-700 mb-1">
                   Spent
                   <button
                     onClick={() => onToggleEditSpent(field.type)}
-                    className="text-blue-600 hover:text-blue-800"
+                    className="text-emerald-700 hover:text-emerald-900"
                   >
                     <Edit2 size={12} />
                   </button>
@@ -99,18 +104,18 @@ export default memo(function BudgetSection({
                   value={field.spent}
                   onChange={(e) => onSpentChange(field.type, e.target.value)}
                   disabled={!field.editSpent}
-                  className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg disabled:bg-slate-50 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
                 />
               </div>
 
               {/* Remaining (read-only) */}
               <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Remaining</label>
+                <label className="text-[11px] font-semibold text-slate-700 block mb-1">Remaining</label>
                 <input
                   type="number"
                   value={field.remaining.toFixed(0)}
                   disabled
-                  className="w-full p-2 sm:p-3 border-2 border-gray-300 rounded-xl bg-gray-100"
+                  className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg bg-slate-50"
                 />
               </div>
             </div>
@@ -124,18 +129,18 @@ export default memo(function BudgetSection({
                 placeholder="Add transaction amount"
                 value={field.newTransactionValue || ''}
                 onChange={(e) => onTransactionInputChange?.(field.type, e.target.value)}
-                className="flex-1 p-2 sm:p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                className="flex-1 h-9 sm:h-10 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
               />
               <button
                 onClick={() => onAddTransaction(field.type)}
-                className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all text-lg font-bold"
+                className="bg-emerald-600 text-white px-3 sm:px-4 h-9 sm:h-10 rounded-lg hover:bg-emerald-700 active:bg-emerald-800 shadow-sm transition-all text-sm font-semibold"
               >
                 +
               </button>
             </div>
 
             {/* Recent Transactions */}
-            <div className="text-sm text-gray-600 mt-2 flex items-center gap-3">
+            <div className="text-xs text-slate-600 mt-2 flex items-center gap-3">
               <div>
                 <span className="font-medium">Recent:</span>
                 {field.recentTransactions && field.recentTransactions.length > 0 ? (
@@ -148,12 +153,12 @@ export default memo(function BudgetSection({
                     </span>
                   ))
                 ) : (
-                  <span className="text-gray-400 ml-2">No recent transactions</span>
+                  <span className="text-slate-400 ml-2">No recent transactions</span>
                 )}
               </div>
               <button
                 onClick={() => onOpenHistory(field.type)}
-                className="ml-auto bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200"
+                className="ml-auto bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-md hover:bg-slate-50 text-xs"
               >
                 Transactions History
               </button>

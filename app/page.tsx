@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload } from "lucide-react";
 import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
 import type { CompensationOption } from "@/components/CompensationModal";
-import { checkTransactionOverspend } from "@/lib/compensation";
+import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
@@ -784,7 +784,7 @@ export default function FinancialPlanner() {
       if (!pendingTx) return;
       const { type, amount } = pendingTx;
 
-      const newVar = {
+      let newVar: VarExp = {
         ...varExp,
         grocBudg: [...varExp.grocBudg],
         entBudg: [...varExp.entBudg],
@@ -793,20 +793,13 @@ export default function FinancialPlanner() {
       };
       const newData = [...data].map(d => ({ ...d }));
 
-      if (source === 'ent' && type === 'groc') {
-        newVar.entBudg[sel] = Math.max(0, newVar.entBudg[sel] - overspend);
-        newVar.grocBudg[sel] += overspend;
-      } else if (source === 'groc' && type === 'ent') {
-        newVar.grocBudg[sel] = Math.max(0, newVar.grocBudg[sel] - overspend);
-        newVar.entBudg[sel] += overspend;
-      } else if (source === 'save') {
-        newData[sel].save = Math.max(0, newData[sel].save - overspend);
-      } else if (source === 'prev') {
-        newData[sel].prev = Math.max(0, (newData[sel].prev ?? 0) - overspend);
-        newData[sel].prevManual = true;
-      }
-
+      // Apply the base transaction spend
       if (type === 'groc') newVar.grocSpent[sel] += amount; else newVar.entSpent[sel] += amount;
+
+      // Apply compensation transforms based on source
+      const applied = applyCompensation(source, overspend, sel, newVar, newData[sel], type);
+      newVar = applied.varExp;
+      newData[sel] = applied.dataItem;
 
       setVarExp(newVar);
       setData(newData);
@@ -827,7 +820,7 @@ export default function FinancialPlanner() {
     if (!pendingEdit) return;
     const { type, monthIdx, txIdx, amount, baseVar, baseData } = pendingEdit;
 
-    const newVar = {
+    let newVar: VarExp = {
       ...baseVar,
       grocBudg: [...baseVar.grocBudg],
       entBudg: [...baseVar.entBudg],
@@ -836,20 +829,13 @@ export default function FinancialPlanner() {
     };
     const newData = baseData.map(d => ({ ...d }));
 
-    if (source === 'ent' && type === 'groc') {
-      newVar.entBudg[monthIdx] = Math.max(0, newVar.entBudg[monthIdx] - overspend);
-      newVar.grocBudg[monthIdx] += overspend;
-    } else if (source === 'groc' && type === 'ent') {
-      newVar.grocBudg[monthIdx] = Math.max(0, newVar.grocBudg[monthIdx] - overspend);
-      newVar.entBudg[monthIdx] += overspend;
-    } else if (source === 'save') {
-      newData[monthIdx].save = Math.max(0, newData[monthIdx].save - overspend);
-    } else if (source === 'prev') {
-      newData[monthIdx].prev = Math.max(0, (newData[monthIdx].prev ?? 0) - overspend);
-      newData[monthIdx].prevManual = true;
-    }
-
+    // Apply the base transaction spend
     if (type === 'groc') newVar.grocSpent[monthIdx] += amount; else newVar.entSpent[monthIdx] += amount;
+
+    // Apply compensation transforms based on source
+    const applied = applyCompensation(source, overspend, monthIdx, newVar, newData[monthIdx], type);
+    newVar = applied.varExp;
+    newData[monthIdx] = applied.dataItem;
 
     const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
     const old = txs[type][monthIdx][txIdx];
@@ -1369,36 +1355,26 @@ export default function FinancialPlanner() {
     if (!removed) return;
     txs[type][monthIdx].splice(txIdx, 1);
     setTransactions(txs);
-    const nv = {
+    let nv: VarExp = {
       ...varExp,
       grocBudg: [...varExp.grocBudg],
       entBudg: [...varExp.entBudg],
       grocSpent: [...varExp.grocSpent],
       entSpent: [...varExp.entSpent]
     };
+    const nd = [...data].map(d => ({ ...d }));
 
     if (removed.compensation) {
       const comp = removed.compensation;
-      const nd = [...data].map(d => ({ ...d }));
-      if (comp.source === 'ent' && type === 'groc') {
-        nv.entBudg[monthIdx] += comp.amount;
-        nv.grocBudg[monthIdx] = Math.max(0, nv.grocBudg[monthIdx] - comp.amount);
-      } else if (comp.source === 'groc' && type === 'ent') {
-        nv.grocBudg[monthIdx] += comp.amount;
-        nv.entBudg[monthIdx] = Math.max(0, nv.entBudg[monthIdx] - comp.amount);
-      } else if (comp.source === 'save') {
-        nd[monthIdx].save += comp.amount;
-        setData(nd);
-      } else if (comp.source === 'prev') {
-        nd[monthIdx].prev = (nd[monthIdx].prev ?? 0) + comp.amount;
-        nd[monthIdx].prevManual = true;
-        setData(nd);
-      }
+      const reverted = reverseCompensation(comp, monthIdx, nv, nd[monthIdx], type);
+      nv = reverted.varExp;
+      nd[monthIdx] = reverted.dataItem;
     }
 
     if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] - removed.amt);
     else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] - removed.amt);
     setVarExp(nv);
+    setData(nd);
     setHasChanges(true);
   };
 
@@ -1415,7 +1391,7 @@ export default function FinancialPlanner() {
     if (!old) return;
 
     // Base copies
-    const baseVar: VarExp = {
+    let baseVar: VarExp = {
       ...varExp,
       grocBudg: [...varExp.grocBudg],
       entBudg: [...varExp.entBudg],
@@ -1427,18 +1403,9 @@ export default function FinancialPlanner() {
     // Revert old compensation effects
     if ((old as Record<string, unknown>).compensation) {
       const comp = (old as Record<string, unknown>).compensation as { source: CompensationSource; amount: number };
-      if (comp.source === 'ent' && type === 'groc') {
-        baseVar.entBudg[monthIdx] += comp.amount;
-        baseVar.grocBudg[monthIdx] = Math.max(0, baseVar.grocBudg[monthIdx] - comp.amount);
-      } else if (comp.source === 'groc' && type === 'ent') {
-        baseVar.grocBudg[monthIdx] += comp.amount;
-        baseVar.entBudg[monthIdx] = Math.max(0, baseVar.entBudg[monthIdx] - comp.amount);
-      } else if (comp.source === 'save') {
-        baseData[monthIdx].save += comp.amount;
-      } else if (comp.source === 'prev') {
-        baseData[monthIdx].prev = (baseData[monthIdx].prev ?? 0) + comp.amount;
-        baseData[monthIdx].prevManual = true;
-      }
+      const reverted = reverseCompensation(comp, monthIdx, baseVar, baseData[monthIdx], type);
+      baseVar = reverted.varExp;
+      baseData[monthIdx] = reverted.dataItem;
     }
 
     // Remove old spent
@@ -1668,24 +1635,29 @@ return (
           onCancelRollover={() => setShowRollover(false)}
         />
 
-        <div className="bg-white rounded-xl shadow-xl p-5 sm:p-6 mb-6">
-          <MonthlySection
-            monthLabel={cur.month}
-            fields={monthlyFields}
-            savingEdited={savingEdited}
-            applyFuture={applyFuture}
-            wrapInCard={false}
-            onFocus={handleMonthlyFocus}
-            onChange={handleMonthlyChange}
-            onBlur={handleMonthlyBlur}
-            onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
-            onToggleApplyFuture={(checked) => {
-              setApplyFuture(checked);
-              setApplySavingsForward(checked ? sel : null);
-            }}
-          />
-          {salarySplitActive && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
+        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed) */}
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 mb-6">
+          {/* Left column: Monthly + Variable Expenses stacked */}
+          <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
+            {/* Monthly */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+              <MonthlySection
+              monthLabel={cur.month}
+              fields={monthlyFields}
+              savingEdited={savingEdited}
+              applyFuture={applyFuture}
+              wrapInCard={false}
+              onFocus={handleMonthlyFocus}
+              onChange={handleMonthlyChange}
+              onBlur={handleMonthlyBlur}
+              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
+              onToggleApplyFuture={(checked) => {
+                setApplyFuture(checked);
+                setApplySavingsForward(checked ? sel : null);
+              }}
+            />
+            {salarySplitActive && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-blue-700" />
                 <h3 className="font-bold text-blue-900">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
@@ -2689,19 +2661,205 @@ return (
               </div>
             </div>
           )}
-        </div>
+            </div>
 
-        <BudgetSection
-          fields={budgetFields}
-          onFocus={handleBudgetFocus}
-          onChange={handleBudgetChange}
-          onBlur={handleBudgetBlur}
-          onToggleEditSpent={handleToggleEditSpent}
-          onSpentChange={handleSpentChange}
-          onAddTransaction={handleAddTransaction}
-          onTransactionInputChange={handleTransactionInputChange}
-          onOpenHistory={handleOpenHistory}
-        />
+            {/* Variable Expenses */}
+            <BudgetSection
+              fields={budgetFields}
+              onFocus={handleBudgetFocus}
+              onChange={handleBudgetChange}
+              onBlur={handleBudgetBlur}
+              onToggleEditSpent={handleToggleEditSpent}
+              onSpentChange={handleSpentChange}
+              onAddTransaction={handleAddTransaction}
+              onTransactionInputChange={handleTransactionInputChange}
+              onOpenHistory={handleOpenHistory}
+            />
+          </div>
+
+          {/* Right column: Fixed Expenses only */}
+          <div className="w-full lg:w-[480px]">
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-10 rounded-full bg-amber-500" aria-hidden />
+                  <h3 className="text-sm sm:text-base font-semibold tracking-tight text-slate-900">Fixed Expenses</h3>
+                </div>
+                <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 active:bg-amber-800 flex items-center justify-center gap-2 shadow-sm transition-all text-sm font-semibold">
+                  <Plus size={16}/>Add Expense
+                </button>
+              </div>
+              <p className="text-xs text-slate-600 mb-3">Toggle payment status to reflect in your balance.</p>
+
+          {showAdd&&(
+            <div className="mb-4 p-3 sm:p-4 bg-slate-50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border border-slate-200">
+              <input 
+                type="text" 
+                placeholder="Expense Name" 
+                value={newExp.name} 
+                onChange={(e)=>setNewExp({...newExp,name:e.target.value})} 
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+              />
+              <input 
+                type="number" 
+                min="0"
+                max="1000000"
+                placeholder="Amount" 
+                value={newExp.amt || ''} 
+                onChange={(e)=>{
+                  const val = sanitizeNumberInput(e.target.value);
+                  setNewExp({...newExp,amt:val});
+                }} 
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+              />
+              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
+                <option value="once">Once</option>
+                <option value="monthly">Monthly</option>
+                <option value="2">Every 2 months</option>
+                <option value="3">Every 3 months</option>
+              </select>
+              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
+                {months.slice(0,12).map((m,i)=><option key={i} value={i}>{m.name}</option>)}
+              </select>
+              <button 
+                onClick={()=>{
+                  const trimmedName = newExp.name.trim();
+                  if(!trimmedName) {
+                    alert('Please enter an expense name');
+                    return;
+                  }
+                  if(newExp.amt <= 0) {
+                    alert('Please enter an amount greater than 0');
+                    return;
+                  }
+                  // Check for duplicate names only for the same month start
+                  const startIdx = newExp.start ?? sel;
+                  const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && ((f.amts[startIdx] || 0) > 0));
+                  if (existsActive) {
+                    if(!confirm(`An expense named \"${trimmedName}\" already exists. Add anyway?`)) {
+                      return;
+                    }
+                  }
+                  const amts=Array(60).fill(0).map((_,i)=>{
+                    if(i<newExp.start)return 0;
+                    if(newExp.type==='once')return i===newExp.start?newExp.amt:0;
+                    if(newExp.type==='monthly')return newExp.amt;
+                    const int=parseInt(newExp.type);
+                    return(i-newExp.start)%int===0?newExp.amt:0;
+                  });
+                  // Trigger split modal for affected months
+                  setNewExpenseSplit({
+                    expense: {id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)},
+                    split: { save: 0, groc: 0, ent: 0 },
+                    applyToAll: false
+                  });
+                  setNewExpenseSplitError('');
+                  setNewExp({name:'',amt:0,type:'monthly',start:0});
+                  setShowAdd(false);
+                }} 
+                className="h-9 px-4 bg-amber-600 text-white rounded-lg hover:bg-amber-700 active:bg-amber-800 shadow-sm transition-all text-sm font-semibold"
+              >
+                Add
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-2.5 sm:space-y-3">
+            {previewFixed.map((e) => {
+              if (e.amts[sel] <= 0) return null;
+              const originalIndex = fixed.findIndex(f => f.id === e.id);
+              const draftKey = `${e.id}-${sel}`;
+              const draftValue = editingExpenseDraft[draftKey];
+              const isPaid = e.spent[sel];
+              const monthLocked = !cur.passed;
+              return (
+                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                  <div className="flex-1 w-full">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="font-semibold text-slate-900 text-sm">{e.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (monthLocked) {
+                            alert('Cannot mark future expenses as paid.');
+                            return;
+                          }
+                          const n = [...fixed];
+                          n[originalIndex].spent[sel] = !n[originalIndex].spent[sel];
+                          setFixed(n);
+                          setHasChanges(true);
+                        }}
+                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        title={isPaid ? 'Mark unpaid' : 'Mark paid'}
+                        aria-label={isPaid ? 'Mark unpaid' : 'Mark paid'}
+                      >
+                        {isPaid ? <Check className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                    <input 
+                      type="number" 
+                      min="0"
+                      max="1000000"
+                      placeholder="0" 
+                      value={draftValue !== undefined ? draftValue : (e.amts[sel] === 0 ? '' : e.amts[sel])} 
+                      onFocus={() => {
+                        // Store original amount when user starts editing
+                        setEditingExpenseOriginal({ idx: originalIndex, monthIdx: sel, originalAmt: e.amts[sel] });
+                        // Clear any stale pending changes for this expense so typing isn't overwritten by pending overlay
+                        setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && (c.type === 'amount' || c.type === 'delete'))));
+                        setEditingExpenseDraft(prev => ({ ...prev, [draftKey]: (e.amts[sel] === 0 ? '' : String(e.amts[sel])) }));
+                      }}
+                      onBlur={(ev) => {
+                        const newAmt = sanitizeNumberInput(ev.target.value);
+                        const oldAmt = editingExpenseOriginal?.originalAmt ?? e.amts[sel];
+                        
+                        if (newAmt !== oldAmt && editingExpenseOriginal) {
+                          // Show split modal for both increases and decreases
+                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
+                          setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
+                        } else if (newAmt === oldAmt && editingExpenseOriginal) {
+                          // Reverted to original amount: remove pending changes for this expense
+                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
+                        }
+                        setEditingExpenseOriginal(null);
+                        setEditingExpenseDraft(prev => {
+                          const next = { ...prev };
+                          delete next[draftKey];
+                          return next;
+                        });
+                      }} 
+                      onChange={(ev) => {
+                        const raw = ev.target.value;
+                        setEditingExpenseDraft(prev => ({ ...prev, [draftKey]: raw }));
+                        const val = sanitizeNumberInput(raw);
+                        const n = [...fixed];
+                        n[originalIndex].amts[sel] = val;
+                        setFixed(n);
+                      }} 
+                      disabled={isPaid} 
+                      className="w-24 h-8 px-2 text-sm border border-slate-200 rounded-lg disabled:bg-slate-100 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+                    />
+                    <span className="text-xs text-slate-600">SEK</span>
+                    <button 
+                      onClick={() => {
+                        setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'delete')));
+                        setDeleteModal(prev => prev ? { ...prev, idx: originalIndex, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
+                      }}
+                      className="text-red-600 p-1 rounded-lg hover:bg-red-50 active:bg-red-100 transition-all"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+            </div>
+          </div>
+        </div>
 
         <AdditionalFeaturesSection
           overspendWarning={cur.overspendWarning ?? null}
@@ -2773,189 +2931,6 @@ return (
           onEditValueChange={(value) => setTransEdit({ ...transEdit, value })}
         />
 
-        <div className="bg-white rounded-xl shadow-xl p-4 sm:p-6 mb-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Fixed Expenses</h3>
-            <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-2 shadow-md transition-all">
-              <Plus size={18}/>Add Expense
-            </button>
-          </div>
-
-          {showAdd&&(
-            <div className="mb-4 p-4 bg-gray-50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border-2 border-gray-200">
-              <input 
-                type="text" 
-                placeholder="Expense Name" 
-                value={newExp.name} 
-                onChange={(e)=>setNewExp({...newExp,name:e.target.value})} 
-                className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              />
-              <input 
-                type="number" 
-                min="0"
-                max="1000000"
-                placeholder="Amount" 
-                value={newExp.amt || ''} 
-                onChange={(e)=>{
-                  const val = sanitizeNumberInput(e.target.value);
-                  setNewExp({...newExp,amt:val});
-                }} 
-                className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-              />
-              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value})} className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
-                <option value="once">Once</option>
-                <option value="monthly">Monthly</option>
-                <option value="2">Every 2 months</option>
-                <option value="3">Every 3 months</option>
-              </select>
-              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all">
-                {months.slice(0,12).map((m,i)=><option key={i} value={i}>{m.name}</option>)}
-              </select>
-              <button 
-                onClick={()=>{
-                  const trimmedName = newExp.name.trim();
-                  if(!trimmedName) {
-                    alert('Please enter an expense name');
-                    return;
-                  }
-                  if(newExp.amt <= 0) {
-                    alert('Please enter an amount greater than 0');
-                    return;
-                  }
-                  // Check for duplicate names only for the same month start
-                  const startIdx = newExp.start ?? sel;
-                  const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && ((f.amts[startIdx] || 0) > 0));
-                  if (existsActive) {
-                    if(!confirm(`An expense named \"${trimmedName}\" already exists. Add anyway?`)) {
-                      return;
-                    }
-                  }
-                  const amts=Array(60).fill(0).map((_,i)=>{
-                    if(i<newExp.start)return 0;
-                    if(newExp.type==='once')return i===newExp.start?newExp.amt:0;
-                    if(newExp.type==='monthly')return newExp.amt;
-                    const int=parseInt(newExp.type);
-                    return(i-newExp.start)%int===0?newExp.amt:0;
-                  });
-                  // Trigger split modal for affected months
-                  setNewExpenseSplit({
-                    expense: {id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)},
-                    split: { save: 0, groc: 0, ent: 0 },
-                    applyToAll: false
-                  });
-                  setNewExpenseSplitError('');
-                  setNewExp({name:'',amt:0,type:'monthly',start:0});
-                  setShowAdd(false);
-                }} 
-                className="bg-green-600 text-white rounded-xl hover:bg-green-700 active:bg-green-800 shadow-md transition-all"
-              >
-                Add
-              </button>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {previewFixed.map((e) => {
-              if (e.amts[sel] <= 0) return null;
-              const originalIndex = fixed.findIndex(f => f.id === e.id);
-              const draftKey = `${e.id}-${sel}`;
-              const draftValue = editingExpenseDraft[draftKey];
-              const isPaid = e.spent[sel];
-              const monthLocked = !cur.passed;
-              return (
-                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-4 p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all">
-                  <div className="flex-1 w-full">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-gray-900">{e.name}</span>
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full border ${isPaid ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
-                        {isPaid ? <Check className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                        {isPaid ? 'Paid' : (monthLocked ? 'Upcoming' : 'Pending')}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (monthLocked) {
-                            alert('Cannot mark future expenses as paid.');
-                            return;
-                          }
-                          const n = [...fixed];
-                          n[originalIndex].spent[sel] = !n[originalIndex].spent[sel];
-                          setFixed(n);
-                          setHasChanges(true);
-                        }}
-                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold border shadow-sm transition-all ${isPaid ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'} ${monthLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        aria-pressed={isPaid}
-                      >
-                        {isPaid ? <Check className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
-                        {isPaid ? 'Mark unpaid' : 'Mark paid'}
-                      </button>
-                      <span className="text-xs text-gray-500">
-                        {monthLocked ? 'Available once this month starts.' : 'Track payment to reflect in totals.'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <input 
-                      type="number" 
-                      min="0"
-                      max="1000000"
-                      placeholder="0" 
-                      value={draftValue !== undefined ? draftValue : (e.amts[sel] === 0 ? '' : e.amts[sel])} 
-                      onFocus={() => {
-                        // Store original amount when user starts editing
-                        setEditingExpenseOriginal({ idx: originalIndex, monthIdx: sel, originalAmt: e.amts[sel] });
-                        // Clear any stale pending changes for this expense so typing isn't overwritten by pending overlay
-                        setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && (c.type === 'amount' || c.type === 'delete'))));
-                        setEditingExpenseDraft(prev => ({ ...prev, [draftKey]: (e.amts[sel] === 0 ? '' : String(e.amts[sel])) }));
-                      }}
-                      onBlur={(ev) => {
-                        const newAmt = sanitizeNumberInput(ev.target.value);
-                        const oldAmt = editingExpenseOriginal?.originalAmt ?? e.amts[sel];
-                        
-                        if (newAmt !== oldAmt && editingExpenseOriginal) {
-                          // Show split modal for both increases and decreases
-                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                          setChangeModal(prev => prev ? { ...prev, idx: originalIndex, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, newAmt, oldAmt, scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
-                        } else if (newAmt === oldAmt && editingExpenseOriginal) {
-                          // Reverted to original amount: remove pending changes for this expense
-                          setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'amount')));
-                        }
-                        setEditingExpenseOriginal(null);
-                        setEditingExpenseDraft(prev => {
-                          const next = { ...prev };
-                          delete next[draftKey];
-                          return next;
-                        });
-                      }} 
-                      onChange={(ev) => {
-                        const raw = ev.target.value;
-                        setEditingExpenseDraft(prev => ({ ...prev, [draftKey]: raw }));
-                        const val = sanitizeNumberInput(raw);
-                        const n = [...fixed];
-                        n[originalIndex].amts[sel] = val;
-                        setFixed(n);
-                      }} 
-                      disabled={isPaid} 
-                      className="w-28 p-2 border-2 border-gray-300 rounded-xl disabled:bg-gray-100 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
-                    />
-                    <span className="text-sm text-gray-600">SEK</span>
-                    <button 
-                      onClick={() => {
-                        setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'delete')));
-                        setDeleteModal(prev => prev ? { ...prev, idx: originalIndex, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
-                      }}
-                      className="text-red-600 p-2 rounded-xl hover:bg-red-50 active:bg-red-100 transition-all"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
         {(deleteModal||changeModal)&&(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">

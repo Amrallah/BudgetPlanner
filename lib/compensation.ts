@@ -78,30 +78,47 @@ export function applyCompensation(
   amount: number,
   monthIndex: number,
   varExp: VarExp,
-  dataItem: DataItem
+  dataItem: DataItem,
+  target: 'groc' | 'ent'
 ): { varExp: VarExp; dataItem: DataItem } {
-  const newVarExp = { ...varExp };
+  const newVarExp: VarExp = {
+    ...varExp,
+    grocBudg: [...varExp.grocBudg],
+    grocSpent: [...varExp.grocSpent],
+    entBudg: [...varExp.entBudg],
+    entSpent: [...varExp.entSpent]
+  };
   const newDataItem = { ...dataItem };
-  
+
   switch (source) {
     case 'groc':
-      // Add to groceries spent (effectively reducing remaining)
-      newVarExp.grocSpent = [...varExp.grocSpent];
-      newVarExp.grocSpent[monthIndex] += amount;
+      // Transfer budget from groceries to entertainment
+      if (target === 'ent') {
+        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - amount);
+        newVarExp.entBudg[monthIndex] += amount;
+      }
       break;
     case 'ent':
-      // Add to entertainment spent (effectively reducing remaining)
-      newVarExp.entSpent = [...varExp.entSpent];
-      newVarExp.entSpent[monthIndex] += amount;
+      // Transfer budget from entertainment to groceries
+      if (target === 'groc') {
+        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - amount);
+        newVarExp.grocBudg[monthIndex] += amount;
+      }
       break;
     case 'save':
-      // Reduce planned savings
+      // Fund overspend from planned savings by boosting target budget
       newDataItem.save = Math.max(0, dataItem.save - amount);
+      if (target === 'groc') newVarExp.grocBudg[monthIndex] += amount; else newVarExp.entBudg[monthIndex] += amount;
       break;
     case 'prev':
-      // Reduce previous savings
+      // Fund overspend from previous savings without inflating budgets; offset spent
       newDataItem.prev = Math.max(0, (dataItem.prev ?? 0) - amount);
       newDataItem.prevManual = true;
+      if (target === 'groc') {
+        newVarExp.grocSpent[monthIndex] = Math.max(0, newVarExp.grocSpent[monthIndex] - amount);
+      } else {
+        newVarExp.entSpent[monthIndex] = Math.max(0, newVarExp.entSpent[monthIndex] - amount);
+      }
       break;
   }
   
@@ -115,30 +132,47 @@ export function reverseCompensation(
   compensation: Compensation,
   monthIndex: number,
   varExp: VarExp,
-  dataItem: DataItem
+  dataItem: DataItem,
+  target: 'groc' | 'ent'
 ): { varExp: VarExp; dataItem: DataItem } {
-  const newVarExp = { ...varExp };
+  const newVarExp: VarExp = {
+    ...varExp,
+    grocBudg: [...varExp.grocBudg],
+    grocSpent: [...varExp.grocSpent],
+    entBudg: [...varExp.entBudg],
+    entSpent: [...varExp.entSpent]
+  };
   const newDataItem = { ...dataItem };
   
   switch (compensation.source) {
     case 'groc':
-      // Remove from groceries spent (restore remaining)
-      newVarExp.grocSpent = [...varExp.grocSpent];
-      newVarExp.grocSpent[monthIndex] = Math.max(0, varExp.grocSpent[monthIndex] - compensation.amount);
+      if (target === 'ent') {
+        newVarExp.grocBudg[monthIndex] += compensation.amount;
+        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - compensation.amount);
+      }
       break;
     case 'ent':
-      // Remove from entertainment spent (restore remaining)
-      newVarExp.entSpent = [...varExp.entSpent];
-      newVarExp.entSpent[monthIndex] = Math.max(0, varExp.entSpent[monthIndex] - compensation.amount);
+      if (target === 'groc') {
+        newVarExp.entBudg[monthIndex] += compensation.amount;
+        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - compensation.amount);
+      }
       break;
     case 'save':
-      // Restore planned savings
       newDataItem.save = dataItem.save + compensation.amount;
+      if (target === 'groc') {
+        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - compensation.amount);
+      } else {
+        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - compensation.amount);
+      }
       break;
     case 'prev':
-      // Restore previous savings
       newDataItem.prev = (dataItem.prev ?? 0) + compensation.amount;
       newDataItem.prevManual = true;
+      if (target === 'groc') {
+        newVarExp.grocSpent[monthIndex] += compensation.amount;
+      } else {
+        newVarExp.entSpent[monthIndex] += compensation.amount;
+      }
       break;
   }
   

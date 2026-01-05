@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
-import type { Tx } from '@/lib/types';
+import { applyCompensation, reverseCompensation } from '@/lib/compensation';
+import type { Tx, VarExp, DataItem } from '@/lib/types';
 
 // Test helper types
 type CompensationSource = 'groc' | 'ent' | 'save' | 'prev';
@@ -151,6 +152,87 @@ describe('Compensation Logic', () => {
       
       expect(prevSavingsAfter).toBe(4900);
       expect(compensationSource).toBe('prev');
+    });
+  });
+
+  describe('Compensation transformations (helper)', () => {
+    it('planned savings compensation boosts target budget and debits savings', () => {
+      const varExp: VarExp = {
+        grocBudg: [2000],
+        grocSpent: [0],
+        entBudg: [2000],
+        entSpent: [0]
+      };
+      const data: DataItem = {
+        inc: 0,
+        baseSalary: 0,
+        prev: 0,
+        prevManual: false,
+        save: 2000,
+        defSave: 2000,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        rolloverProcessed: false
+      };
+
+      const { varExp: nv, dataItem: nd } = applyCompensation('save', 100, 0, varExp, data, 'groc');
+
+      expect(nv.grocBudg[0]).toBe(2100);
+      expect(nd.save).toBe(1900);
+    });
+
+    it('previous savings compensation keeps budget fixed, offsets spent, and debits prev', () => {
+      const varExp: VarExp = {
+        grocBudg: [2000],
+        grocSpent: [2001],
+        entBudg: [2000],
+        entSpent: [0]
+      };
+      const data: DataItem = {
+        inc: 0,
+        baseSalary: 0,
+        prev: 5000,
+        prevManual: false,
+        save: 2000,
+        defSave: 2000,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        rolloverProcessed: false
+      };
+
+      const { varExp: nv, dataItem: nd } = applyCompensation('prev', 1, 0, varExp, data, 'groc');
+
+      expect(nv.grocBudg[0]).toBe(2000);
+      expect(nv.grocSpent[0]).toBe(2000); // offset overspend
+      expect(nd.prev).toBe(4999);
+    });
+
+    it('reverse previous savings compensation restores spent and previous savings', () => {
+      const varExp: VarExp = {
+        grocBudg: [2000],
+        grocSpent: [2000],
+        entBudg: [2000],
+        entSpent: [0]
+      };
+      const data: DataItem = {
+        inc: 0,
+        baseSalary: 0,
+        prev: 4999,
+        prevManual: false,
+        save: 2000,
+        defSave: 2000,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        rolloverProcessed: false
+      };
+
+      const { varExp: nv, dataItem: nd } = reverseCompensation({ source: 'prev', amount: 1 }, 0, varExp, data, 'groc');
+
+      expect(nv.grocSpent[0]).toBe(2001);
+      expect(nd.prev).toBe(5000);
     });
   });
 
