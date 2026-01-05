@@ -9,13 +9,6 @@ interface Card {
   sub?: string;
 }
 
-interface WhatIfProjection {
-  adjSalary: number;
-  grocAdj: number;
-  projectedNet: number;
-  delta: number;
-}
-
 export interface AnalyticsSectionProps {
   // Summary cards
   totalSavings: number;
@@ -31,13 +24,6 @@ export interface AnalyticsSectionProps {
   monthlyExpenseBaseline: number;
   savingsRunwayMonths: number | null;
   monthlyNet: number;
-  
-  // What-if calculator
-  whatIfSalaryDelta: number;
-  onWhatIfSalaryDeltaChange: (value: number) => void;
-  whatIfGrocCut: boolean;
-  onWhatIfGrocCutChange: (checked: boolean) => void;
-  whatIfProjection: WhatIfProjection;
   
   // Overspend warning
   overspendWarning: string | null;
@@ -95,11 +81,6 @@ export default memo(function AnalyticsSection({
   monthlyExpenseBaseline,
   savingsRunwayMonths,
   monthlyNet,
-  whatIfSalaryDelta,
-  onWhatIfSalaryDeltaChange,
-  whatIfGrocCut,
-  onWhatIfGrocCutChange,
-  whatIfProjection,
   overspendWarning,
   criticalOverspend,
   hasRollover,
@@ -131,80 +112,6 @@ export default memo(function AnalyticsSection({
           color="orange" 
           sub={`of ${entertainmentBudget.toFixed(0)} SEK`} 
         />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-        <div className="bg-green-100/50 rounded-2xl border border-green-300 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <PiggyBank className="w-4 h-4 text-green-600" />
-            Emergency buffer
-          </div>
-          <div className="text-2xl font-bold text-green-700">
-            {emergencyBufferMonths !== null ? `${emergencyBufferMonths.toFixed(1)} months` : 'Add savings'}
-          </div>
-          <p className="text-sm text-gray-600 leading-snug">
-            Current savings cover baseline monthly spend of {monthlyExpenseBaseline.toFixed(0)} SEK.
-          </p>
-        </div>
-
-        <div className="bg-green-100/50 rounded-2xl border border-green-300 shadow-xl p-4 sm:p-5 flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
-            <Clock className="w-4 h-4 text-green-600" />
-            Savings runway
-          </div>
-          <div className={`text-2xl font-bold ${savingsRunwayMonths === null ? 'text-green-700' : 'text-green-700'}`}>
-            {savingsRunwayMonths === null ? 'Stable / Growing' : `${savingsRunwayMonths.toFixed(1)} months`}
-          </div>
-          <p className="text-sm text-gray-600 leading-snug">
-            {monthlyNet < 0
-              ? `At current burn (${Math.abs(monthlyNet).toFixed(0)} SEK/month), savings reach zero in ~${(savingsRunwayMonths ?? 0).toFixed(1)} months.`
-              : 'Income covers planned spending; savings are not shrinking this month.'}
-          </p>
-        </div>
-
-        <div className="bg-blue-100/50 rounded-2xl border border-blue-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-blue-600" />
-              What-if preview
-            </div>
-            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full border border-gray-200">Live estimate</span>
-          </div>
-          <label className="text-sm text-gray-700">Salary change ({whatIfSalaryDelta}%)</label>
-          <input
-            type="range"
-            min={-10}
-            max={10}
-            step={1}
-            value={whatIfSalaryDelta}
-            onChange={(e) => onWhatIfSalaryDeltaChange(parseInt(e.target.value))}
-            className="w-full accent-blue-600"
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={whatIfGrocCut}
-              onChange={(e) => onWhatIfGrocCutChange(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            Reduce groceries by 5%
-          </label>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <div className={`text-2xl font-bold ${((whatIfProjection?.projectedNet ?? 0) >= 0) ? 'text-green-700' : 'text-red-700'}`}>
-              {(whatIfProjection?.projectedNet ?? 0).toFixed(0)} SEK
-            </div>
-            <p className="text-sm text-gray-600">
-              Monthly net after tweaks (
-              <span className={`${((whatIfProjection?.delta ?? 0) >= 0) ? 'text-green-700' : 'text-red-700'} font-semibold`}>
-                {((whatIfProjection?.delta ?? 0) >= 0 ? '+' : '') + (whatIfProjection?.delta ?? 0).toFixed(0)}
-              </span>
-              {' '}vs current)
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Adjusted salary {(whatIfProjection?.adjSalary ?? 0).toFixed(0)} SEK · Groceries {(whatIfProjection?.grocAdj ?? 0).toFixed(0)} SEK
-            </p>
-          </div>
-        </div>
       </div>
 
       {overspendWarning && (
@@ -280,10 +187,6 @@ export default memo(function AnalyticsSection({
     prevProps.monthlyExpenseBaseline === nextProps.monthlyExpenseBaseline &&
     prevProps.savingsRunwayMonths === nextProps.savingsRunwayMonths &&
     prevProps.monthlyNet === nextProps.monthlyNet &&
-    prevProps.whatIfSalaryDelta === nextProps.whatIfSalaryDelta &&
-    prevProps.whatIfGrocCut === nextProps.whatIfGrocCut &&
-    prevProps.whatIfProjection?.projectedNet === nextProps.whatIfProjection?.projectedNet &&
-    prevProps.whatIfProjection?.delta === nextProps.whatIfProjection?.delta &&
     prevProps.overspendWarning === nextProps.overspendWarning &&
     prevProps.criticalOverspend === nextProps.criticalOverspend &&
     prevProps.hasRollover === nextProps.hasRollover &&
@@ -291,8 +194,6 @@ export default memo(function AnalyticsSection({
     prevProps.rolloverAmount === nextProps.rolloverAmount &&
     prevProps.rolloverDaysRemaining === nextProps.rolloverDaysRemaining &&
     prevProps.autoRollover === nextProps.autoRollover &&
-    prevProps.onWhatIfSalaryDeltaChange === nextProps.onWhatIfSalaryDeltaChange &&
-    prevProps.onWhatIfGrocCutChange === nextProps.onWhatIfGrocCutChange &&
     prevProps.onShowRolloverClick === nextProps.onShowRolloverClick &&
     prevProps.onConfirmRollover === nextProps.onConfirmRollover &&
     prevProps.onCancelRollover === nextProps.onCancelRollover

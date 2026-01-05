@@ -62,9 +62,17 @@ export type VarExp = {
 
 // -- Transaction Types --
 
+export type CompensationSource = 'groc' | 'ent' | 'save' | 'prev';
+
+export type Compensation = {
+  source: CompensationSource;
+  amount: number;
+};
+
 export type Tx = { 
   amt: number; 
-  ts: string 
+  ts: string;
+  compensation?: Compensation;
 };
 
 export type ExtraAlloc = { 

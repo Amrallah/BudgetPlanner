@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet } from 'lucide-react';
+import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp } from 'lucide-react';
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
@@ -20,6 +20,8 @@ import BudgetSection, { type BudgetField, type BudgetType } from "@/components/B
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import SetupSection from "@/components/SetupSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
+import AdditionalFeaturesSection from "@/components/AdditionalFeaturesSection";
+import UtilityCardsRow from "@/components/UtilityCardsRow";
 import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
@@ -1427,11 +1429,6 @@ return (
           monthlyExpenseBaseline={monthlyExpenseBaseline}
           savingsRunwayMonths={savingsRunwayMonths}
           monthlyNet={monthlyNet}
-          whatIfSalaryDelta={whatIfSalaryDelta}
-          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
-          whatIfGrocCut={whatIfGrocCut}
-          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
-          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
           overspendWarning={cur.overspendWarning ?? null}
           criticalOverspend={cur.criticalOverspend ?? false}
           hasRollover={cur.hasRollover ?? false}
@@ -2486,6 +2483,26 @@ return (
           onOpenHistory={handleOpenHistory}
         />
 
+        <AdditionalFeaturesSection
+          overspendWarning={cur.overspendWarning ?? null}
+          criticalOverspend={cur.criticalOverspend ?? false}
+          hasRollover={cur.hasRollover ?? false}
+          showRollover={showRollover}
+          rolloverAmount={(cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0)}
+          rolloverDaysRemaining={cur.rolloverDaysRemaining ?? null}
+          autoRollover={autoRollover}
+          onShowRolloverClick={() => setShowRollover(true)}
+          onConfirmRollover={() => {
+            const n = [...data];
+            n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0);
+            n[sel].rolloverProcessed = true;
+            setData(n);
+            setShowRollover(false);
+            setHasChanges(true);
+          }}
+          onCancelRollover={() => setShowRollover(false)}
+        />
+
         <TransactionModal
           isOpen={transModal.open}
           type={transModal.type as TransactionType}
@@ -2919,107 +2936,39 @@ return (
           onLogout={handleSetupLogout}
         />
 
-        {/* Utility Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          {/* Withdraw from Savings Card */}
-          <div className="bg-purple-100/80 rounded-2xl border border-purple-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 text-white flex items-center justify-center shadow-md">
-                <Wallet className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-purple-900">Withdraw from Savings</h3>
-            </div>
-            <p className="text-sm text-gray-700">Take money out of your total savings (e.g., for emergencies)</p>
-            <div className="flex gap-2">
-              <input 
-                type="number" 
-                min="0"
-                max={cur.totSave}
-                placeholder="Amount to withdraw" 
-                value={withdrawAmount || ''} 
-                onChange={(e) => {
-                  const val = sanitizeNumberInput(e.target.value);
-                  setWithdrawAmount(Math.min(val, cur.totSave));
-                }}
-                className="flex-1 p-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all text-sm"
-              />
-              <button 
-                onClick={() => {
-                  if (!withdrawAmount || withdrawAmount <= 0) {
-                    alert('Please enter a valid withdrawal amount');
-                    return;
-                  }
-                  if (withdrawAmount > cur.totSave) {
-                    alert(`Cannot withdraw more than total savings (${cur.totSave.toFixed(0)} SEK)`);
-                    return;
-                  }
-                  const n = [...data];
-                  
-                  // Cascade: Previous savings first, then current month
-                  if (withdrawAmount <= cur.prev) {
-                    // Sufficient in previous savings
-                    n[sel].prev = cur.prev - withdrawAmount;
-                    n[sel].prevManual = true;
-                    alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK from previous savings`);
-                  } else {
-                    // Need both previous and current
-                    const fromPrev = cur.prev;
-                    const fromCurrent = withdrawAmount - fromPrev;
-                    n[sel].prev = 0;
-                    n[sel].prevManual = true;
-                    n[sel].save = Math.max(0, n[sel].save - fromCurrent);
-                    alert(`Withdrawn ${withdrawAmount.toFixed(0)} SEK (${fromPrev.toFixed(0)} from previous + ${fromCurrent.toFixed(0)} from current)`);
-                  }
-                  
-                  setData(n);
-                  setWithdrawAmount(0);
-                  setHasChanges(true);
-                }}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all whitespace-nowrap text-sm font-medium"
-              >
-                Withdraw
-              </button>
-            </div>
-          </div>
-
-          {/* Entertainment from Savings % Card */}
-          <div className="bg-orange-100/80 rounded-2xl border border-orange-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-md">
-                <DollarSign className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-orange-900">Entertainment Budget</h3>
-            </div>
-            <p className="text-sm text-gray-700">Calculate how much you can spend from savings on entertainment</p>
-            <div className="flex items-center gap-2 mb-2">
-              <input 
-                type="number" 
-                min="0"
-                max="100"
-                value={entSavingsPercent} 
-                onChange={(e) => {
-                  const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-                  setEntSavingsPercent(val);
-                }}
-                className="w-16 p-2 border-2 border-gray-300 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all text-sm"
-              />
-              <span className="text-xs text-gray-600">% of {cur.totSave.toFixed(0)} SEK</span>
-            </div>
-            <div className="bg-white p-2 rounded-lg border-2 border-orange-200">
-              <div className="text-lg font-bold text-orange-900">{((cur.totSave * entSavingsPercent) / 100).toFixed(0)} SEK</div>
-              <div className="text-xs text-orange-700 mt-1">Available for entertainment</div>
-            </div>
-          </div>
-
-          {/* Placeholder Card */}
-          <div className="bg-gray-100/50 rounded-2xl border-2 border-dashed border-gray-300 shadow-xl p-4 sm:p-5 flex flex-col items-center justify-center gap-3 text-center min-h-[200px]">
-            <div className="h-12 w-12 rounded-xl bg-gray-300 text-gray-600 flex items-center justify-center shadow-md">
-              <span className="text-xl">+</span>
-            </div>
-            <h3 className="font-semibold text-gray-600">Additional Card Slot</h3>
-            <p className="text-xs text-gray-500">Future utility card placeholder</p>
-          </div>
-        </div>
+        {/* Utility Cards Row with Withdraw, Emergency Buffer, Entertainment Budget, What-if */}
+        <UtilityCardsRow
+          totalSavings={cur.totSave}
+          previousSavings={cur.prev}
+          currentSavings={cur.save}
+          withdrawAmount={withdrawAmount}
+          onWithdrawAmountChange={setWithdrawAmount}
+          onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
+            const n = [...data];
+            if (amount <= prevSavings) {
+              n[sel].prev = prevSavings - amount;
+              n[sel].prevManual = true;
+            } else {
+              const fromPrev = prevSavings;
+              const fromCurrent = amount - fromPrev;
+              n[sel].prev = 0;
+              n[sel].prevManual = true;
+              n[sel].save = Math.max(0, curSavings - fromCurrent);
+            }
+            setData(n);
+            setHasChanges(true);
+            onSuccess(n[sel].prev, n[sel].save);
+          }}
+          emergencyBufferMonths={emergencyBufferMonths}
+          monthlyExpenseBaseline={monthlyExpenseBaseline}
+          entSavingsPercent={entSavingsPercent}
+          onEntSavingsPercentChange={setEntSavingsPercent}
+          whatIfSalaryDelta={whatIfSalaryDelta}
+          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
+          whatIfGrocCut={whatIfGrocCut}
+          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
+          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
+        />
 
         <div className="fixed bottom-4 right-4 z-40">
           <button
