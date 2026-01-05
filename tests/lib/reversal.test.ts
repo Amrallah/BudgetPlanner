@@ -66,7 +66,7 @@ describe('Reversal Logic', () => {
       };
 
       // Now revert using snapshots
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       const revertedVar = {
         ...modifiedVarExp,
         grocBudg: [...modifiedVarExp.grocBudg],
@@ -123,7 +123,7 @@ describe('Reversal Logic', () => {
       }));
 
       // Revert
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       dataSnapshots.forEach(snap => {
         revertedData[snap.idx] = { ...snap.data };
       });
@@ -169,7 +169,7 @@ describe('Reversal Logic', () => {
       };
 
       // Revert
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       const revertedVar = { ...modifiedVarExp, grocBudg: [...modifiedVarExp.grocBudg], entBudg: [...modifiedVarExp.entBudg] };
       dataSnapshots.forEach(snap => {
         revertedData[snap.idx] = { ...snap.data };
@@ -273,7 +273,7 @@ describe('Reversal Logic', () => {
       };
 
       // Revert
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       revertedData[0].grocExtra = prevState.grocExtra;
       revertedData[0].entExtra = prevState.entExtra;
       revertedData[0].saveExtra = prevState.saveExtra;
@@ -331,7 +331,7 @@ describe('Reversal Logic', () => {
       };
 
       // Revert
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       const revertedVar = { ...modifiedVarExp, grocBudg: [...modifiedVarExp.grocBudg], entBudg: [...modifiedVarExp.entBudg] };
       dataSnapshots.forEach(snap => {
         revertedData[snap.idx] = { ...snap.data };
@@ -434,7 +434,7 @@ describe('Reversal Logic', () => {
 
       // Revert via snapshots
       const dataSnapshots = [1, 2, 3].map(idx => ({ idx, data: { ...initialData[idx] } }));
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       dataSnapshots.forEach(snap => {
         revertedData[snap.idx] = { ...snap.data };
       });
@@ -491,7 +491,7 @@ describe('Reversal Logic', () => {
       // Revert
       const dataSnapshots = [0, 1].map(idx => ({ idx, data: { ...initialData[idx] } }));
       const varSnapshots = [0, 1].map(idx => ({ idx, grocBudg: initialVarExp.grocBudg[idx], entBudg: initialVarExp.entBudg[idx] }));
-      const revertedData = modifiedData.map(d => ({ ...d }));
+      const revertedData: DataItem[] = modifiedData.map(d => ({ ...d }));
       const revertedVar = { ...modifiedVarExp, grocBudg: [...modifiedVarExp.grocBudg], entBudg: [...modifiedVarExp.entBudg] };
       dataSnapshots.forEach(snap => {
         revertedData[snap.idx] = { ...snap.data };

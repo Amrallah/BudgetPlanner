@@ -346,19 +346,20 @@ describe('Real-Life Financial Scenarios', () => {
 
       const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
 
-      // REAL LIFE LOGIC:
+      // NEW BEHAVIOR (after compensation refactor):
       // Month 0: Started with 8000 in savings, planned to save 2000 more
       // Overspent by 5000 total (3000 groc + 2000 ent)
-      // The 2000 planned savings covers part of overspend
-      // Still need 3000 more, which must come from the 8000 previous savings
-      // CORRECT EXPECTATIONS:
+      // NO auto-deduction from savings
+      // actSave stays as planned (2000)
+      // totSave = prev + actSave = 8000 + 2000 = 10000
+      // User must explicitly compensate via modal
       expect(items[0].over).toBe(5000);
-      expect(items[0].actSave).toBe(0); // Planned 2000 wiped out
-      expect(items[0].overspendWarning).toContain('3000');
-      expect(items[0].totSave).toBe(5000); // 8000 - 3000 deficit
-      // Month 1 should start with only 5000, not 8000
-      expect(items[1].prev).toBe(5000);
-      expect(items[1].totSave).toBe(7000); // 5000 + 2000 new savings
+      expect(items[0].actSave).toBe(2000); // Planned amount, not reduced
+      expect(items[0].overspendWarning).toContain('5000');
+      expect(items[0].totSave).toBe(10000); // 8000 + 2000, no deficit subtraction
+      // Month 1 should start with full 10000
+      expect(items[1].prev).toBe(10000);
+      expect(items[1].totSave).toBe(12000); // 10000 + 2000 new savings
     });
 
     it('flags critical when overspend exceeds all available savings', () => {
@@ -387,8 +388,8 @@ describe('Real-Life Financial Scenarios', () => {
 
       const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
 
-      expect(items[0].criticalOverspend).toBe(true);
-      expect(items[0].overspendWarning).toContain('CRITICAL');
+      expect(items[0].criticalOverspend).toBe(false); // Not auto-flagged in new behavior
+      expect(items[0].overspendWarning).toContain('Overspending');
     });
   });
 
@@ -805,11 +806,11 @@ describe('Real-Life Financial Scenarios', () => {
 
       const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
 
-      // Month 0: 8000 prev - 2000 deficit (after wiping 1000 save) => totSave 6000
-      expect(items[0].totSave).toBe(6000);
-      // Month 1 uses manual prev 5000 (lower than calculated 6000) but still reports warning and computes totSave from that manual base + savings
+      // Month 0: 8000 prev + 1000 save (no deficit subtraction in new behavior) => totSave 9000
+      expect(items[0].totSave).toBe(9000);
+      // Month 1 uses manual prev 5000 (lower than calculated 9000) and still shows warning
       expect(items[1].prev).toBe(5000);
-      expect(items[1].totSave).toBe(6000);
+      expect(items[1].totSave).toBe(6000); // 5000 manual + 1000 new savings
       expect(items[1].overspendWarning).toContain('Manual Previous');
     });
 
@@ -833,13 +834,13 @@ describe('Real-Life Financial Scenarios', () => {
       const { items: unpaid } = calculateMonthly({ data, fixed: fixedUnpaid, varExp, months, now: months[0].date });
       const { items: paid } = calculateMonthly({ data, fixed: fixedPaid, varExp, months, now: months[0].date });
 
-      // When unpaid: balance excludes fixed spent; overspend still reduces savings
+      // When unpaid: balance excludes fixed spent; overspend doesn't auto-reduce savings
       expect(unpaid[0].fixSpent).toBe(0);
-      expect(unpaid[0].totSave).toBeLessThan(5500); // 4000 prev + 1500 save minus overspend deficit
+      expect(unpaid[0].totSave).toBe(5500); // 4000 prev + 1500 save (no deficit subtraction)
 
-      // When paid: balance reflects rent and savings drop further
+      // When paid: balance reflects rent but savings stays the same (no auto-deduction)
       expect(paid[0].fixSpent).toBe(8000);
-      expect(paid[0].bal).toBeLessThan(unpaid[0].bal);
+      expect(paid[0].bal).toBeLessThan(unpaid[0].bal); // balance lower due to rent, but totSave same
     });
 
     it('handles a loan payoff ending mid-year increasing later balances', () => {
@@ -945,9 +946,9 @@ describe('Real-Life Financial Scenarios', () => {
 
       const { items } = calculateMonthly({ data, fixed: [], varExp, months, now: months[0].date });
 
+      expect(items[0].actSave).toBe(100.05); // Planned amount, not reduced in new behavior
+      expect(items[0].totSave).toBeCloseTo(1100.05, 2); // 1000 prev + 100.05 save
       expect(items[0].over).toBeCloseTo(120.07, 2);
-      expect(items[0].actSave).toBeCloseTo(0, 2); // planned savings wiped out by overspend
-      expect(items[0].totSave).toBeCloseTo(979.98, 2); // 1000 prev - 20.02 deficit
     });
 
     it('propagates mixed savings forwarding when some months are below default and others above', () => {

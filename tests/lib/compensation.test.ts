@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
-import type { Tx, Compensation } from '@/lib/types';
+import type { Tx } from '@/lib/types';
 
 // Test helper types
 type CompensationSource = 'groc' | 'ent' | 'save' | 'prev';

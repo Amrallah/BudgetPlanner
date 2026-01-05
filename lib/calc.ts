@@ -123,7 +123,7 @@ export function calculateMonthly(params: {
     const m = months[i];
     const d = data[i];
     const calculatedPrev = prevTotSave; // what the model thinks previous savings are
-    let workingPrev = d.prevManual ? (d.prev ?? prevTotSave) : prevTotSave; // start from manual if provided
+    const workingPrev = d.prevManual ? (d.prev ?? prevTotSave) : prevTotSave; // start from manual if provided
     const fixExp = fixed.reduce((s, e) => s + e.amts[i], 0);
     const fixSpent = fixed.reduce((s, e) => s + (e.spent[i] ? e.amts[i] : 0), 0);
     const grocBudg = varExp.grocBudg[i] + d.grocBonus + (d.grocExtra || 0);
@@ -135,26 +135,12 @@ export function calculateMonthly(params: {
     const entSpent = varExp.entSpent[i];
     const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
 
-    let actSave = d.save + (d.saveExtra || 0) - over;
+    const actSave = d.save + (d.saveExtra || 0);
     let overspendWarning = '';
-    let criticalOverspend = false;
+    const criticalOverspend = false;
 
     if (over > 0) {
-      if (over > d.save + (d.saveExtra || 0)) {
-        const deficit = over - (d.save + (d.saveExtra || 0));
-        if (workingPrev >= deficit) {
-          overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Current savings insufficient, consuming ${deficit.toFixed(0)} SEK from previous savings.`;
-          actSave = 0;
-          workingPrev -= deficit;
-        } else {
-          criticalOverspend = true;
-          overspendWarning = `CRITICAL: Overspending by ${over.toFixed(0)} SEK exceeds all available savings!`;
-          actSave = -(over - (d.save + (d.saveExtra || 0)) - workingPrev);
-          workingPrev = 0;
-        }
-      } else {
-        overspendWarning = `Overspending by ${over.toFixed(0)} SEK, reducing savings.`;
-      }
+      overspendWarning = `Overspending by ${over.toFixed(0)} SEK. Please compensate from another source.`;
     }
 
     let prevSave: number;
@@ -176,11 +162,6 @@ export function calculateMonthly(params: {
     
     // totSave should reflect any deficit already removed from workingPrev
     const totSave = workingPrev + actSave;
-
-    if (totSave < 0 && !criticalOverspend) {
-      criticalOverspend = true;
-      overspendWarning = `CRITICAL: Total savings cannot be negative (${totSave.toFixed(0)} SEK)`;
-    }
 
     res.push({
       month: m.name, date: m.date, inc: d.inc, prev: prevSave, save: d.save, actSave, totSave, bal,

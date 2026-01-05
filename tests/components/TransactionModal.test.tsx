@@ -1,15 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import TransactionModal, { Transaction, ExtraAllocation } from '@/components/TransactionModal';
+import TransactionModal, { ExtraAllocation } from '@/components/TransactionModal';
+import type { Tx } from '@/lib/types';
 
 describe('TransactionModal', () => {
-  const mockGrocTransactions: Transaction[] = [
+  const mockGrocTransactions: Tx[] = [
     { amt: 250, ts: '2025-01-04T10:00:00Z' },
     { amt: 500, ts: '2025-01-04T12:00:00Z' }
   ];
 
-  const mockEntTransactions: Transaction[] = [
+  const mockEntTransactions: Tx[] = [
     { amt: 150, ts: '2025-01-04T14:00:00Z' }
   ];
 

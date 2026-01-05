@@ -10,7 +10,7 @@ function makeMonths(count = 3, start = new Date('2025-12-25')) {
 }
 
 describe('calculateMonthly behavior', () => {
-  it('overspend consumes previous savings when available (CORRECT EXPECTATION)', () => {
+  it('overspend produces warning but does not auto-deduct from savings (NEW BEHAVIOR)', () => {
     const months = makeMonths(3);
     const data = [
       { inc: 1000, prev: 5000, prevManual: true, save: 100, defSave: 100, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false },
@@ -23,30 +23,37 @@ describe('calculateMonthly behavior', () => {
     const now = new Date(months[0].date.getTime());
     const { items } = calculateMonthly({ data, fixed, varExp, months, now });
 
-    // REAL LIFE LOGIC:
-    // Started with 5000 savings, planned to save 100 more
-    // Overspent by 1600 total (400 groc + 1200 ent)
-    // The 100 planned savings is wiped out
-    // Still need 1500 more from the 5000 previous savings
-    // Month 0 should end with: 5000 - 1500 = 3500
+    // NEW BEHAVIOR (after compensation refactor):
+    // Overspend (1600 total) is detected and warns user
+    // But NO auto-deduction from savings happens
+    // actSave stays as planned (100)
+    // totSave = prev + actSave = 5000 + 100 = 5100
+    // User must explicitly compensate from other sources via modal
     expect(items[0].over).toBe(1600);
-    expect(items[0].actSave).toBe(0);
-    expect(items[0].totSave).toBe(3500); // 5000 - 1500 deficit
-    // Month 1 should inherit 3500, not 5000
-    expect(items[1].prev).toBe(3500);
+    expect(items[0].overspendWarning).toContain('Overspending by 1600 SEK');
+    expect(items[0].actSave).toBe(100); // Planned amount, not reduced
+    expect(items[0].totSave).toBe(5100); // 5000 + 100, no deficit subtraction
+    // Month 1 inherits full 5100, not reduced
+    expect(items[1].prev).toBe(5100);
   });
 
-  it('flags critical overspend when deficit exceeds previous savings', () => {
+  it('detects large overspend and warns but does not flag critical (NEW BEHAVIOR)', () => {
     const months = makeMonths(1);
     const data = [
       { inc: 0, prev: 100, prevManual: true, save: 50, defSave: 50, extraInc: 0, grocBonus: 0, entBonus: 0, grocExtra: 0, entExtra: 0, saveExtra: 0, rolloverProcessed: false }
     ];
     const fixed = [];
-    // Force large spending to create critical deficit
+    // Force large spending to create large overspend
     const varExp = { grocBudg: [0], grocSpent: [500], entBudg: [0], entSpent: [0] };
     const now = new Date(months[0].date.getTime());
     const { items } = calculateMonthly({ data, fixed, varExp, months, now });
-    expect(items[0].criticalOverspend).toBe(true);
+    // Over 500 > available savings (150 = 100 prev + 50 save)
+    // But criticalOverspend is NOT automatically set anymore
+    // User must handle via explicit compensation modal
+    expect(items[0].over).toBe(500);
+    expect(items[0].overspendWarning).toContain('Overspending');
+    expect(items[0].criticalOverspend).toBe(false); // Never auto-flagged
+    expect(items[0].actSave).toBe(50); // Stays at planned amount
   });
 
   it('detects rollover when previous month has remaining budget and next month is passed', () => {

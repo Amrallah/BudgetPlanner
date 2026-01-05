@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useNewExpenseSplitModal } from '../../lib/hooks/useNewExpenseSplitModal';
 import type { NewExpenseSplit } from '../../lib/hooks/types';

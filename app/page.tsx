@@ -1,6 +1,9 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp } from 'lucide-react';
+import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload } from "lucide-react";
+import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
+import type { CompensationOption } from "@/components/CompensationModal";
+import { checkTransactionOverspend } from "@/lib/compensation";
 import Auth from "@/components/Auth";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
@@ -34,6 +37,7 @@ import type {
   FixedExpense,
   DataItem,
   VarExp,
+  CompensationSource,
   Tx,
   ExtraAlloc,
   Transactions
@@ -169,6 +173,23 @@ export default function FinancialPlanner() {
 
   const { validateBudgetBalance, checkForIssues, evaluateManualRebalance } = useBudgetValidation({ data, varExp, fixed, months, hydrated: financialHydrated });
   const [transEdit, setTransEdit] = useState<TransactionEdit>({ idx: null, value: '' });
+  const [compModalState, setCompModalState] = useState<{
+    open: boolean;
+    mode: 'add' | 'edit';
+    type: 'groc' | 'ent';
+    amount: number;
+    overspend: number;
+    options: CompensationOption[];
+  }>({ open: false, mode: 'add', type: 'groc', amount: 0, overspend: 0, options: [] });
+  const [pendingTx, setPendingTx] = useState<{ type: 'groc' | 'ent'; amount: number } | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<{
+    type: 'groc' | 'ent';
+    monthIdx: number;
+    txIdx: number;
+    amount: number;
+    baseVar: VarExp;
+    baseData: DataItem[];
+  } | null>(null);
   const [budgetBalanceIssues, setBudgetBalanceIssues] = useState<string[]>([]);
   const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
 
@@ -541,9 +562,8 @@ export default function FinancialPlanner() {
       )
     },
     { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
-    { label: 'Savings', value: data[sel].save, key: 'save', editable: true },
-    { label: 'Actual', value: cur.actSave, key: 'act', editable: false }
-  ]), [cur.actSave, cur.bal, cur.prev, data, editPrev, sel]);
+    { label: 'Savings', value: data[sel].save, key: 'save', editable: true }
+  ]), [cur.bal, cur.prev, data, editPrev, sel]);
 
   const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
     {
@@ -713,6 +733,30 @@ export default function FinancialPlanner() {
       alert('Please enter a valid amount between 0 and 1,000,000');
       return;
     }
+
+    const check = checkTransactionOverspend(type, amt, sel, varExp, data[sel]);
+
+    if (check.wouldOverspend) {
+      if (check.availableSources.length === 0) {
+        alert(`This transaction exceeds your budget by ${check.overspendAmount.toFixed(0)} SEK and no sources can cover it.`);
+        return;
+      }
+
+      const options: CompensationOption[] = check.availableSources.map((s) => ({
+        source: s.source,
+        available: s.available,
+        label: getCompensationSourceLabel(s.source),
+        icon: getCompensationSourceIcon(s.source),
+        color: getCompensationSourceColor(s.source)
+      }));
+
+      setPendingTx({ type, amount: amt });
+      setPendingEdit(null);
+      setCompModalState({ open: true, mode: 'add', type, amount: amt, overspend: check.overspendAmount, options });
+      return;
+    }
+
+    // No overspend: add immediately
     const n = { ...varExp };
     n[type === 'groc' ? 'grocSpent' : 'entSpent'][sel] += amt;
     setVarExp(n);
@@ -726,6 +770,98 @@ export default function FinancialPlanner() {
 
   const handleTransactionInputChange = (type: BudgetType, value: string) => {
     setNewTrans({ ...newTrans, [type]: value });
+  };
+
+  const handleCompensationCancel = () => {
+    setCompModalState(prev => ({ ...prev, open: false }));
+    setPendingTx(null);
+  };
+
+  const applyCompensationSelection = (source: CompensationSource) => {
+    const overspend = compModalState.overspend;
+
+    if (compModalState.mode === 'add') {
+      if (!pendingTx) return;
+      const { type, amount } = pendingTx;
+
+      const newVar = {
+        ...varExp,
+        grocBudg: [...varExp.grocBudg],
+        entBudg: [...varExp.entBudg],
+        grocSpent: [...varExp.grocSpent],
+        entSpent: [...varExp.entSpent]
+      };
+      const newData = [...data].map(d => ({ ...d }));
+
+      if (source === 'ent' && type === 'groc') {
+        newVar.entBudg[sel] = Math.max(0, newVar.entBudg[sel] - overspend);
+        newVar.grocBudg[sel] += overspend;
+      } else if (source === 'groc' && type === 'ent') {
+        newVar.grocBudg[sel] = Math.max(0, newVar.grocBudg[sel] - overspend);
+        newVar.entBudg[sel] += overspend;
+      } else if (source === 'save') {
+        newData[sel].save = Math.max(0, newData[sel].save - overspend);
+      } else if (source === 'prev') {
+        newData[sel].prev = Math.max(0, (newData[sel].prev ?? 0) - overspend);
+        newData[sel].prevManual = true;
+      }
+
+      if (type === 'groc') newVar.grocSpent[sel] += amount; else newVar.entSpent[sel] += amount;
+
+      setVarExp(newVar);
+      setData(newData);
+
+      const now = new Date().toISOString();
+      const nt = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+      const txPayload = { amt: amount, ts: now, compensation: { source, amount: overspend } } as Tx;
+      if (type === 'groc') nt.groc[sel].push(txPayload); else nt.ent[sel].push(txPayload);
+      setTransactions(nt);
+      setNewTrans({ ...newTrans, [type]: '' });
+      setHasChanges(true);
+      setCompModalState(prev => ({ ...prev, open: false }));
+      setPendingTx(null);
+      return;
+    }
+
+    // Edit mode
+    if (!pendingEdit) return;
+    const { type, monthIdx, txIdx, amount, baseVar, baseData } = pendingEdit;
+
+    const newVar = {
+      ...baseVar,
+      grocBudg: [...baseVar.grocBudg],
+      entBudg: [...baseVar.entBudg],
+      grocSpent: [...baseVar.grocSpent],
+      entSpent: [...baseVar.entSpent]
+    };
+    const newData = baseData.map(d => ({ ...d }));
+
+    if (source === 'ent' && type === 'groc') {
+      newVar.entBudg[monthIdx] = Math.max(0, newVar.entBudg[monthIdx] - overspend);
+      newVar.grocBudg[monthIdx] += overspend;
+    } else if (source === 'groc' && type === 'ent') {
+      newVar.grocBudg[monthIdx] = Math.max(0, newVar.grocBudg[monthIdx] - overspend);
+      newVar.entBudg[monthIdx] += overspend;
+    } else if (source === 'save') {
+      newData[monthIdx].save = Math.max(0, newData[monthIdx].save - overspend);
+    } else if (source === 'prev') {
+      newData[monthIdx].prev = Math.max(0, (newData[monthIdx].prev ?? 0) - overspend);
+      newData[monthIdx].prevManual = true;
+    }
+
+    if (type === 'groc') newVar.grocSpent[monthIdx] += amount; else newVar.entSpent[monthIdx] += amount;
+
+    const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
+    const old = txs[type][monthIdx][txIdx];
+    txs[type][monthIdx][txIdx] = { amt: amount, ts: old.ts, compensation: { source, amount: overspend } } as Tx;
+
+    setTransactions(txs);
+    setVarExp(newVar);
+    setData(newData);
+    setTransEdit({ idx: null, value: '' });
+    setHasChanges(true);
+    setCompModalState(prev => ({ ...prev, open: false }));
+    setPendingEdit(null);
   };
 
   const handleOpenHistory = (type: BudgetType) => {
@@ -1233,7 +1369,33 @@ export default function FinancialPlanner() {
     if (!removed) return;
     txs[type][monthIdx].splice(txIdx, 1);
     setTransactions(txs);
-    const nv = { ...varExp };
+    const nv = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg],
+      grocSpent: [...varExp.grocSpent],
+      entSpent: [...varExp.entSpent]
+    };
+
+    if (removed.compensation) {
+      const comp = removed.compensation;
+      const nd = [...data].map(d => ({ ...d }));
+      if (comp.source === 'ent' && type === 'groc') {
+        nv.entBudg[monthIdx] += comp.amount;
+        nv.grocBudg[monthIdx] = Math.max(0, nv.grocBudg[monthIdx] - comp.amount);
+      } else if (comp.source === 'groc' && type === 'ent') {
+        nv.grocBudg[monthIdx] += comp.amount;
+        nv.entBudg[monthIdx] = Math.max(0, nv.entBudg[monthIdx] - comp.amount);
+      } else if (comp.source === 'save') {
+        nd[monthIdx].save += comp.amount;
+        setData(nd);
+      } else if (comp.source === 'prev') {
+        nd[monthIdx].prev = (nd[monthIdx].prev ?? 0) + comp.amount;
+        nd[monthIdx].prevManual = true;
+        setData(nd);
+      }
+    }
+
     if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] - removed.amt);
     else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] - removed.amt);
     setVarExp(nv);
@@ -1247,16 +1409,74 @@ export default function FinancialPlanner() {
       alert('Please enter a valid amount');
       return;
     }
+
     const txs: Transactions = { groc: transactions.groc.map(a => a.slice()), ent: transactions.ent.map(a => a.slice()), extra: transactions.extra.map(a => a.slice()) };
     const old = txs[type][monthIdx][txIdx];
     if (!old) return;
-    const delta = newAmt - old.amt;
-    txs[type][monthIdx][txIdx] = { amt: newAmt, ts: old.ts };
+
+    // Base copies
+    const baseVar: VarExp = {
+      ...varExp,
+      grocBudg: [...varExp.grocBudg],
+      entBudg: [...varExp.entBudg],
+      grocSpent: [...varExp.grocSpent],
+      entSpent: [...varExp.entSpent]
+    };
+    const baseData: DataItem[] = [...data].map(d => ({ ...d }));
+
+    // Revert old compensation effects
+    if ((old as Record<string, unknown>).compensation) {
+      const comp = (old as Record<string, unknown>).compensation as { source: CompensationSource; amount: number };
+      if (comp.source === 'ent' && type === 'groc') {
+        baseVar.entBudg[monthIdx] += comp.amount;
+        baseVar.grocBudg[monthIdx] = Math.max(0, baseVar.grocBudg[monthIdx] - comp.amount);
+      } else if (comp.source === 'groc' && type === 'ent') {
+        baseVar.grocBudg[monthIdx] += comp.amount;
+        baseVar.entBudg[monthIdx] = Math.max(0, baseVar.entBudg[monthIdx] - comp.amount);
+      } else if (comp.source === 'save') {
+        baseData[monthIdx].save += comp.amount;
+      } else if (comp.source === 'prev') {
+        baseData[monthIdx].prev = (baseData[monthIdx].prev ?? 0) + comp.amount;
+        baseData[monthIdx].prevManual = true;
+      }
+    }
+
+    // Remove old spent
+    if (type === 'groc') {
+      baseVar.grocSpent[monthIdx] = Math.max(0, baseVar.grocSpent[monthIdx] - old.amt);
+    } else {
+      baseVar.entSpent[monthIdx] = Math.max(0, baseVar.entSpent[monthIdx] - old.amt);
+    }
+
+    // Check new overspend against base state
+    const check = checkTransactionOverspend(type, newAmt, monthIdx, baseVar, baseData[monthIdx]);
+    if (check.wouldOverspend) {
+      if (check.availableSources.length === 0) {
+        alert(`This edit would exceed your budget by ${check.overspendAmount.toFixed(0)} SEK and no sources can cover it.`);
+        return;
+      }
+      const options: CompensationOption[] = check.availableSources.map((s) => ({
+        source: s.source,
+        available: s.available,
+        label: getCompensationSourceLabel(s.source),
+        icon: getCompensationSourceIcon(s.source),
+        color: getCompensationSourceColor(s.source)
+      }));
+
+      setPendingTx(null);
+      setPendingEdit({ type, monthIdx, txIdx, amount: newAmt, baseVar, baseData });
+      setCompModalState({ open: true, mode: 'edit', type, amount: newAmt, overspend: check.overspendAmount, options });
+      return;
+    }
+
+    // No overspend: apply edit directly
+    txs[type][monthIdx][txIdx] = { amt: newAmt, ts: old.ts } as Tx;
     setTransactions(txs);
-    const nv = { ...varExp };
-    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] + delta);
-    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] + delta);
+    const nv = baseVar;
+    if (type === 'groc') nv.grocSpent[monthIdx] = Math.max(0, nv.grocSpent[monthIdx] + newAmt);
+    else nv.entSpent[monthIdx] = Math.max(0, nv.entSpent[monthIdx] + newAmt);
     setVarExp(nv);
+    setData(baseData);
     setTransEdit({ idx: null, value: '' });
     setHasChanges(true);
   };
@@ -2501,6 +2721,15 @@ return (
             setHasChanges(true);
           }}
           onCancelRollover={() => setShowRollover(false)}
+        />
+
+        <CompensationModal
+          isOpen={compModalState.open}
+          overspendAmount={compModalState.overspend}
+          category={compModalState.type}
+          availableOptions={compModalState.options}
+          onSelect={applyCompensationSelection}
+          onCancel={handleCompensationCancel}
         />
 
         <TransactionModal

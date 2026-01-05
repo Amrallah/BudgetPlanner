@@ -44,7 +44,7 @@ describe('validators', () => {
     const doc: Partial<FinancialDoc> = {
       data: [{} as unknown as FinancialDoc['data'][number]],
       fixed: [{} as unknown as FinancialDoc['fixed'][number]],
-      varExp: {},
+      varExp: {} as unknown as FinancialDoc['varExp'],
       transactions: 5 as unknown as FinancialDoc['transactions'],
       autoRollover: 'no' as unknown as boolean
     };

@@ -1,11 +1,7 @@
 import { memo } from 'react';
+import type { Tx } from '@/lib/types';
 
 export type TransactionType = 'groc' | 'ent' | 'extra';
-
-export interface Transaction {
-  amt: number;
-  ts: string;
-}
 
 export interface ExtraAllocation {
   groc: number;
@@ -18,7 +14,7 @@ export interface TransactionModalProps {
   isOpen: boolean;
   type: TransactionType;
   monthName: string;
-  transactions: Transaction[];
+  transactions: Tx[];
   extraAllocations: ExtraAllocation[];
   editingIndex: number | null;
   editingValue: string;
@@ -105,6 +101,11 @@ export default memo(function TransactionModal({
                         <div className="text-xs text-gray-500">
                           {t.ts ? new Date(t.ts).toLocaleString() : ''}
                         </div>
+                        {'compensation' in t && (t as Record<string, unknown>).compensation ? (
+                          <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                            Compensated from {((t as Record<string, unknown>).compensation as { source: string }).source} ({((t as Record<string, unknown>).compensation as { amount: number }).amount.toFixed(0)} SEK)
+                          </div>
+                        ) : null}
                       </>
                     )}
                   </div>
