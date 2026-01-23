@@ -26,7 +26,8 @@ A comprehensive specification of what the Finance Dashboard does.
 - ✅ Dual-budget system (fixed + variable)
 - ✅ Income allocation across categories
 - ✅ Transaction tracking & overspend detection
-- ✅ Automated rollover logic
+- ✅ Auto-rollover toggle **plus manual salary month rollover** (carry leftovers to savings or next budgets)
+- ✅ Savings bonuses/extras included in validation and persistence
 - ✅ What-if scenario modeling
 - ✅ Cloud persistence via Firebase
 - ✅ 5-step setup wizard
@@ -75,7 +76,7 @@ Complete UI/UX specification with design patterns and component details.
 - ✅ Touch-friendly inputs
 - ✅ ARIA labels & accessibility
 - ✅ React.memo optimizations
-- ✅ Auto-save feedback
+- ✅ Save status + conflict feedback
 
 ---
 
@@ -90,7 +91,7 @@ Technical architecture specification for developers.
 - Module Organization (directory structure, 60K+ lines overview)
 - Type System (comprehensive TypeScript types)
 - Performance Patterns (memoization, debouncing, lazy loading)
-- Testing Strategy (419 passing tests, 4 test categories)
+- Testing Strategy (701 passing tests, 4 test categories)
 - Deployment & DevOps (build process, environment config, monitoring)
 - Technical Decisions & Tradeoffs (8 major architectural decisions)
 - Future Scalability (growth considerations, resilience)
@@ -103,8 +104,8 @@ Technical architecture specification for developers.
 - ✅ 13 custom hooks
 - ✅ 5 UI components
 - ✅ Type safety strategy
-- ✅ 419 test coverage
-- ✅ Debounced auto-save
+- ✅ 701 test coverage
+- ✅ Manual save with validation + conflict resolution
 - ✅ Component memoization
 - ✅ Calculation caching
 
@@ -121,14 +122,14 @@ Technical architecture specification for developers.
 | **Total** | **30,000+** | **30** | **45** | **21** | **67** |
 
 ### Coverage
-- **Features:** 14 core features fully specified
+- **Features:** 14 core features fully specified (includes manual salary rollover choices and savings bonus validation)
 - **Workflows:** 8 complete user workflows documented
 - **Screens:** 12 UI screens with detailed layouts
 - **Components:** 5 main components documented
 - **Hooks:** 13 custom hooks architecture explained
 - **Calculations:** 4 key algorithms documented
 - **APIs:** Firebase integration fully specified
-- **Test Coverage:** 419 tests across 4 categories
+- **Test Coverage:** 701 tests across 4 categories
 
 ---
 
@@ -162,14 +163,14 @@ Technical architecture specification for developers.
 **Phase 5: Final Cleanup & Optimization** ✅
 - Performance optimization (30-50% re-render reduction)
 - 3,500+ word documentation suite
-- 419 passing tests (366% increase)
+- 701 passing tests (suite expanded)
 - Bug fixes (circular reference in memo)
 
 ### Current State
 
 **Code Quality:**
 - ✅ TypeScript fully typed (no `any`)
-- ✅ 419/419 tests passing (100%)
+- ✅ 701/701 tests passing (100%)
 - ✅ 0 ESLint errors
 - ✅ Production build successful
 - ✅ 100% backward compatible
@@ -254,7 +255,7 @@ Technical architecture specification for developers.
 - ✅ Based on actual refactored codebase
 - ✅ References to real file locations
 - ✅ Accurate line counts and code metrics
-- ✅ Real test coverage numbers (419 tests)
+- ✅ Real test coverage numbers (701 tests)
 - ✅ Actual technical decisions documented
 
 ### Actionability
@@ -281,7 +282,7 @@ Technical architecture specification for developers.
 ### Additional Context
 - ✅ Refactored codebase analyzed and documented
 - ✅ 5-phase refactoring process reviewed
-- ✅ 419 test suite documented
+- ✅ 701 test suite documented
 - ✅ Type system comprehensive
 - ✅ Architecture decisions explained
 - ✅ Performance optimizations documented
@@ -311,7 +312,7 @@ Technical architecture specification for developers.
 1. **Separation of Concerns:** Business logic in hooks, UI in components
 2. **Type Safety:** Comprehensive TypeScript throughout
 3. **Performance:** Strategic memoization and debouncing
-4. **Testability:** 419 tests with high coverage
+4. **Testability:** 701 tests with high coverage
 5. **Maintainability:** Clear module organization
 6. **Scalability:** Can grow to 100K+ lines with structure
 
@@ -324,10 +325,10 @@ Technical architecture specification for developers.
 6. Add real-time sync notifications
 
 ### Risk Mitigation
-- ✅ No data loss (debounced auto-save)
+- ✅ Save integrity (validation-gated manual save with conflict handling)
 - ✅ Error handling (validation + try-catch)
 - ✅ Type safety (TypeScript comprehensive)
-- ✅ Test coverage (419 passing tests)
+- ✅ Test coverage (701 passing tests)
 - ✅ Backup (Firestore automatic)
 
 ---
@@ -343,7 +344,7 @@ Technical architecture specification for developers.
 | **Code Lines (Main)** | 3,050 | ✅ Optimized |
 | **Custom Hooks** | 13 | ✅ Extracted |
 | **UI Components** | 5 | ✅ Memoized |
-| **Test Coverage** | 419 tests | ✅ Passing |
+| **Test Coverage** | 701 tests | ✅ Passing |
 | **TypeScript Coverage** | 100% | ✅ Typed |
 | **Production Build** | ✅ Success | ✅ Ready |
 
@@ -361,7 +362,7 @@ This documentation suite represents a **professional-grade analysis** of the Fin
 
 The application is **production-ready** with:
 - ✅ Fully refactored architecture
-- ✅ Comprehensive test coverage (419 tests)
+- ✅ Comprehensive test coverage (701 tests)
 - ✅ Type-safe codebase
 - ✅ Performance-optimized components
 - ✅ Clear documentation

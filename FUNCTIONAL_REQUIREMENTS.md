@@ -79,9 +79,9 @@ The **Finance Dashboard** is a personal financial planning application that mode
 ### F3: Strict Budget Balance Validation
 - **Rule:** `savingsBudget + groceriesBudget + entertainmentBudget === availableBalance` (exactly)
 - **Enforcement:** Blocks save and shows list of problematic months
-- **Available Balance:** `income + extraInc - fixedExpenses`
+- **Available Balance:** `income + extraInc + rolloverIncome - fixedExpenses`
 - **Extras Tracking:** Bonuses and extras are INCLUDED in budget totals
-- **Formula:** `(baseGrocBudget + grocBonus + grocExtra) + (baseEntBudget + entBonus + entExtra) + (baseSavings + saveExtra) === available`
+- **Formula:** `(baseGrocBudget + grocBonus + grocExtra) + (baseEntBudget + entBonus + entExtra) + (baseSavings + saveBonus + saveExtra) === available`
 
 ### F4: Force Rebalance Modal
 - **Trigger:** When budget balance fails validation on ANY month
@@ -251,12 +251,16 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - Month has passed (today >= month date)
   - `rolloverProcessed === false` for month
   - Previous month has unspent grocery or entertainment budget
-- **Calculation:** `unspentGroceries + unspentEntertainment` added to current month's savings
+- **Calculation:** `unspentGroceries + unspentEntertainment` added to current month's savings (and rolled into available via rolloverIncome)
 - **User Control:**
   - "Auto-rollover after 5 days" toggle button
   - Manual "Confirm Rollover" button shows when eligible
   - "Show Rollover" link in analytics with amount and days remaining
 - **State:** `data[i].rolloverProcessed` flag prevents double-processing
+- **Manual Salary Month Rollover:**
+  - Trigger: "Start new salary month" button
+  - Choices: carry leftovers to next groc/ent budgets **or** move all leftovers to next month savings
+  - Effects: sets `rolloverProcessed=true`, locks month, sets `monthLocked`/`entBudgLocked`, adds leftover to next `rolloverIncome`, allocates per choice, resets next month spent to 0, advances selection and saves immediately
 
 ### F15: Overspend Compensation System (NEW - CRITICAL)
 **Purpose:** Handle transactions that exceed available budget in a month by offering compensation sources
@@ -350,13 +354,17 @@ if source === 'prev' (using previous savings):
   prevManual: boolean;            // Was prev set manually? (override calculated)
   save: number;                   // Savings budget for this month
   defSave: number;                // Default savings (for freed amount calculation)
+  saveBonus?: number;             // Freed savings allocated to savings when below defSave
   extraInc: number;               // Extra income (bonus, side gigs)
   grocBonus: number;              // Freed savings allocated to groceries
   entBonus: number;               // Freed savings allocated to entertainment
   grocExtra: number;              // Extra income allocated to groceries
   entExtra: number;               // Extra income allocated to entertainment
   saveExtra: number;              // Extra income allocated to savings
+  rolloverIncome?: number;        // Manual/auto rollover carryover added to available
   rolloverProcessed: boolean;     // Has 5-day rollover already happened?
+  monthLocked?: boolean;          // View-only after manual/auto rollover
+  entBudgLocked?: boolean;        // Legacy partial-lock flag
 }
 ```
 
@@ -518,6 +526,17 @@ if source === 'prev' (using previous savings):
 - `adjustedGroceries = groceries * (0.95 if checked else 1.0)`
 - `projectedNet = adjustedSalary + extraInc - fixExpenses - adjustedGroceries - entertainment`
 - `deltaFromBaseline = projectedNet - baselineNet`
+
+### W9: Manual Salary Month Rollover
+**Trigger:** User clicks "Start new salary month" in the header actions  
+**Flow:**
+1. Validate eligibility (not last month, not already processed); show inline error if blocked
+2. Modal presents two options: keep leftovers in their categories **or** move all leftovers to savings
+3. Compute leftovers = max(grocBudg - grocSpent, 0) + max(entBudg - entSpent, 0)
+4. Set current month `rolloverProcessed = true`, `monthLocked = true`, `entBudgLocked = true`
+5. Add leftovers to next month `rolloverIncome`; allocate to next groc/ent extras or next savings based on selection
+6. Reset next month's spent tracking to 0; advance selection to next month
+7. Persist immediately (best-effort save); on failure, keep hasChanges true and display error
 **Display:**
 - Adjusted salary, adjusted grocery budget
 - New projected net income
@@ -586,11 +605,11 @@ for each month i (0-59):
 ### Algorithm 2: Budget Balance Validation
 ```
 for each month i:
-  available = data[i].inc + data[i].extraInc - fixedExpenses[i]
+  available = data[i].inc + data[i].extraInc + (data[i].rolloverIncome || 0) - fixedExpenses[i]
   
   grocTotal = varExp.grocBudg[i] + data[i].grocBonus + data[i].grocExtra
   entTotal = varExp.entBudg[i] + data[i].entBonus + data[i].entExtra
-  saveTotal = data[i].save + data[i].saveExtra
+  saveTotal = data[i].save + (data[i].saveBonus || 0) + data[i].saveExtra
   
   if (saveTotal + grocTotal + entTotal) !== available:
     Add to issues array
@@ -696,7 +715,7 @@ for each affected month:
 ## Success Metrics
 
 ### Functional Success
-- ✅ All 14 features implemented and tested (419 passing tests)
+- ✅ All 14 features implemented and tested (701 passing tests)
 - ✅ 60-month calculation engine working correctly
 - ✅ Budget balance validation strictly enforced
 - ✅ Undo system captures all major changes
