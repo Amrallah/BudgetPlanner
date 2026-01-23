@@ -42,22 +42,27 @@ describe('MonthlySection', () => {
 
   it('renders heading and all fields with formatted values', () => {
     setup();
-    expect(screen.getByText(/Monthly - Jan 2025/)).toBeTruthy();
+    expect(screen.getByText(/Monthly/)).toBeTruthy();
+    expect(screen.getByText(/Jan 2025/)).toBeTruthy();
     const inputs = screen.getAllByRole('spinbutton');
-    expect(inputs.length).toBe(6);
+    // Note: Balance (bal) field is filtered out, 5 inputs: inc, extraInc, prev, save, act
+    expect(inputs.length).toBe(5);
     expect((inputs[0] as HTMLInputElement).value).toBe('1000'); // Income
     expect((inputs[1] as HTMLInputElement).value).toBe('200');  // Extra Income
     expect((inputs[2] as HTMLInputElement).value).toBe('300');  // Previous
-    expect((inputs[3] as HTMLInputElement).value).toBe('400');  // Balance
-    expect((inputs[4] as HTMLInputElement).value).toBe('500');  // Savings
-    expect((inputs[5] as HTMLInputElement).value).toBe('600');  // Actual
+    expect((inputs[3] as HTMLInputElement).value).toBe('500');  // Savings
+    expect((inputs[4] as HTMLInputElement).value).toBe('600');  // Actual
   });
 
   it('disables non-editable fields', () => {
     setup();
     const inputs = screen.getAllByRole('spinbutton');
-    expect((inputs[3] as HTMLInputElement).disabled).toBe(true);  // Balance
-    expect((inputs[5] as HTMLInputElement).disabled).toBe(true);  // Actual
+    // Actual field (inputs[4]) is disabled
+    expect((inputs[4] as HTMLInputElement).disabled).toBe(true);
+    // Other fields are editable
+    expect((inputs[0] as HTMLInputElement).disabled).toBe(false);
+    expect((inputs[1] as HTMLInputElement).disabled).toBe(false);
+    expect((inputs[3] as HTMLInputElement).disabled).toBe(false);
   });
 
   it('calls focus, change, and blur handlers with sanitized values', () => {

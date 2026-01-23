@@ -20,6 +20,7 @@ const baseData: DataItem[] = Array.from({ length: 60 }, () => ({
   extraInc: 0,
   grocBonus: 0,
   entBonus: 0,
+  saveBonus: 0,
   grocExtra: 0,
   entExtra: 0,
   saveExtra: 0,

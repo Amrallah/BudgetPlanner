@@ -19,7 +19,8 @@ export function validateBudgetBalance(params: {
 }): BudgetBalanceResult {
   const { monthIdx, save, groc, ent, data, fixed, months } = params;
   const monthData = data[monthIdx];
-  const availableBudget = monthData.inc + monthData.extraInc - fixed.reduce((sum, f) => sum + f.amts[monthIdx], 0);
+  const rollover = monthData.rolloverIncome ?? 0;
+  const availableBudget = monthData.inc + monthData.extraInc + rollover - fixed.reduce((sum, f) => sum + f.amts[monthIdx], 0);
   const totalBudgets = save + groc + ent;
   // Allow small floating point wiggle room to avoid reopening the modal when values differ by pennies
   const tolerance = 0.5;
@@ -66,11 +67,13 @@ export function computeBudgetIssues(params: {
   let firstIssue: BudgetIssueSummary | undefined;
 
   for (let i = 0; i < Math.min(60, months.length); i++) {
+
     const grocExtras = (data[i]?.grocBonus || 0) + (data[i]?.grocExtra || 0);
     const entExtras = (data[i]?.entBonus || 0) + (data[i]?.entExtra || 0);
+    const saveExtras = (data[i]?.saveBonus || 0) + (data[i]?.saveExtra || 0);
     const grocTotal = (varExp.grocBudg[i] || 0) + grocExtras;
     const entTotal = (varExp.entBudg[i] || 0) + entExtras;
-    const saveTotal = data[i]?.save || 0;
+    const saveTotal = (data[i]?.save || 0) + saveExtras;
     const check = validateBudgetBalance({ monthIdx: i, save: saveTotal, groc: grocTotal, ent: entTotal, data, fixed, months });
 
     if (!check.valid) {

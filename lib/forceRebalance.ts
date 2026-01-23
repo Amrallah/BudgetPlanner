@@ -42,7 +42,8 @@ function cloneVarExp(varExp: VarExp): VarExp {
 function computeAvailableBudget(idx: number, data: DataItem[], fixed: FixedExpense[]): number {
   const monthData = data[idx];
   const fixedTotal = fixed.reduce((sum, expense) => sum + (expense.amts[idx] || 0), 0);
-  return (monthData?.inc || 0) + (monthData?.extraInc || 0) - fixedTotal;
+  const rollover = monthData?.rolloverIncome ?? 0;
+  return (monthData?.inc || 0) + (monthData?.extraInc || 0) + rollover - fixedTotal;
 }
 
 function computeExtras(idx: number, data: DataItem[]) {

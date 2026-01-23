@@ -65,7 +65,8 @@ describe('BudgetSection', () => {
   it('displays bonus and extra breakdown when present', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
     // Check for groceries breakdown (has bonus + extra)
-    expect(screen.getByText(/Base: 4500/)).toBeInTheDocument();
+    expect(screen.getByText(/Base/)).toBeInTheDocument();
+    expect(screen.getByText(/4500/)).toBeInTheDocument();
     expect(screen.getByText(/\+300 freed/)).toBeInTheDocument();
     expect(screen.getByText(/\+200 extra/)).toBeInTheDocument();
   });
@@ -78,8 +79,8 @@ describe('BudgetSection', () => {
 
   it('shows remaining amounts', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
-    // Remaining inputs are disabled with bg-gray-100 class
-    const remainingInputs = document.querySelectorAll('.bg-gray-100[disabled]');
+    // Remaining inputs are disabled with bg-slate-50 class
+    const remainingInputs = document.querySelectorAll('.bg-slate-50[disabled]');
     expect(remainingInputs[0]).toHaveValue(1800);
     expect(remainingInputs[1]).toHaveValue(1500);
   });

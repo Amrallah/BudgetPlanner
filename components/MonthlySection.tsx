@@ -19,6 +19,7 @@ export type MonthlySectionProps = {
   savingEdited: boolean;
   applyFuture: boolean;
   wrapInCard?: boolean;
+  locked?: boolean;
   onFocus: (key: MonthlyFieldKey) => void;
   onChange: (key: MonthlyFieldKey, value: number) => void;
   onBlur: (key: MonthlyFieldKey, value: number) => void;
@@ -33,6 +34,7 @@ export default memo(function MonthlySection({
   savingEdited,
   applyFuture,
   wrapInCard = true,
+  locked = false,
   onFocus,
   onChange,
   onBlur,
@@ -61,21 +63,21 @@ export default memo(function MonthlySection({
               placeholder="0"
               value={field.value === 0 ? '' : field.value.toFixed(0)}
               onFocus={() => {
-                if (!field.editable) return;
+                if (!field.editable || locked) return;
                 onFocus(field.key);
               }}
               onChange={(e) => {
-                if (!field.editable) return;
+                if (!field.editable || locked) return;
                 const val = sanitizeNumberInput(e.target.value);
                 onChange(field.key, val);
               }}
               onBlur={(e) => {
-                if (!field.editable) return;
+                if (!field.editable || locked) return;
                 const val = sanitizeNumberInput(e.target.value);
                 onBlur(field.key, val);
               }}
-              disabled={!field.editable}
-              className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg disabled:bg-slate-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+              disabled={!field.editable || locked}
+              className={`w-full h-9 px-3 text-sm border border-slate-200 rounded-lg disabled:bg-slate-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all ${locked ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
             {field.key === 'extraInc' && (
               <div className="mt-2 flex items-center gap-2">
@@ -109,7 +111,7 @@ export default memo(function MonthlySection({
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-4">
+    <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-4 ${locked ? 'opacity-80' : ''}`} aria-disabled={locked}>
       {content}
     </div>
   );
@@ -131,6 +133,7 @@ export default memo(function MonthlySection({
     prevProps.savingEdited === nextProps.savingEdited &&
     prevProps.applyFuture === nextProps.applyFuture &&
     prevProps.wrapInCard === nextProps.wrapInCard &&
+    prevProps.locked === nextProps.locked &&
     prevProps.onFocus === nextProps.onFocus &&
     prevProps.onChange === nextProps.onChange &&
     prevProps.onBlur === nextProps.onBlur &&

@@ -90,7 +90,8 @@ export function useBudgetValidation(params: {
       }
 
       const monthData = dataSource[monthIdx];
-      const available = (monthData?.inc || 0) + (monthData?.extraInc || 0) - fixedSource.reduce((sum, f) => sum + f.amts[monthIdx], 0);
+      const rollover = monthData?.rolloverIncome ?? 0;
+      const available = (monthData?.inc || 0) + (monthData?.extraInc || 0) + rollover - fixedSource.reduce((sum, f) => sum + f.amts[monthIdx], 0);
       const total = save + groc + ent;
 
       if (Math.abs(total - available) > tolerance) {
