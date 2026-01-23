@@ -46,7 +46,15 @@ export function applySaveChanges(params: {
 
       const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : monthCount;
       for (let i = c.monthIdx ?? 0; i < end; i++) {
-        nd[i].save += c.split.save;
+        const deltaSave = c.split.save || 0;
+        if (deltaSave !== 0) {
+          // Positive deltas (freed amount to savings) go to saveBonus when below defSave; negatives always adjust base save
+          if (deltaSave > 0 && (nd[i].save ?? 0) < (nd[i].defSave ?? 0)) {
+            nd[i].saveBonus = (nd[i].saveBonus || 0) + deltaSave;
+          } else {
+            nd[i].save += deltaSave;
+          }
+        }
         nd[i].grocBonus += c.split.groc;
         nd[i].entBonus += c.split.ent;
       }
@@ -62,7 +70,15 @@ export function applySaveChanges(params: {
       }
       const end = c.scope === 'month' ? (c.monthIdx ?? 0) + 1 : monthCount;
       for (let i = c.monthIdx ?? 0; i < end; i++) {
-        nd[i].save += c.split.save;
+        const deltaSave = c.split.save || 0;
+        if (deltaSave !== 0) {
+          // Positive deltas (freed amount to savings) go to saveBonus when below defSave; negatives always adjust base save
+          if (deltaSave > 0 && (nd[i].save ?? 0) < (nd[i].defSave ?? 0)) {
+            nd[i].saveBonus = (nd[i].saveBonus || 0) + deltaSave;
+          } else {
+            nd[i].save += deltaSave;
+          }
+        }
         nd[i].grocBonus += c.split.groc;
         nd[i].entBonus += c.split.ent;
       }

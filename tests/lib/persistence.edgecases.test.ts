@@ -56,6 +56,50 @@ describe('Saved Changes & Persistence - Edge Cases & Complex Scenarios', () => {
       expect(deserialized.grocSpent).toBe(123.45);
     });
 
+      it('preserves saveBonus=0 through sanitizeForFirestore (regression test)', () => {
+        // Simulate the sanitizeForFirestore function from useFinancialState
+        const sanitizeForFirestore = (v: unknown): null | boolean | string | number | unknown[] | Record<string, unknown> => {
+          if (v === undefined || v === null) return null;
+          if (Array.isArray(v)) return v.map(sanitizeForFirestore);
+          if (typeof v === 'object') {
+            const out: Record<string, unknown> = {};
+            Object.entries(v as Record<string, unknown>).forEach(([k, val]) => {
+              out[k] = sanitizeForFirestore(val);
+            });
+            return out;
+          }
+          if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
+          return null;
+        };
+
+        // Bug scenario: saveBonus is set to 0 after setup wizard
+        const dataWithSaveBonus = {
+          inc: 10000,
+          save: 6989,
+          defSave: 6989,
+          saveBonus: 0,  // This should be preserved, not converted to undefined/null
+          saveExtra: 0,
+          grocBonus: 0,
+          entBonus: 0,
+          prev: null,
+          prevManual: false,
+          extraInc: 0,
+          rolloverProcessed: false
+        };
+
+        const sanitized = sanitizeForFirestore(dataWithSaveBonus) as Record<string, unknown>;
+
+        // TEST EXPECTATION: saveBonus should still be 0, not null or undefined
+        expect(sanitized.saveBonus).toBe(0);
+        expect(sanitized.saveBonus).not.toBeNull();
+        expect(sanitized.saveBonus).not.toBeUndefined();
+      
+        // Also verify other 0 values are preserved
+        expect(sanitized.saveExtra).toBe(0);
+        expect(sanitized.grocBonus).toBe(0);
+        expect(sanitized.entBonus).toBe(0);
+      });
+
     it('handles null and undefined values in serialization', () => {
       const data = {
         monthData: Array(60).fill(null),

@@ -12,6 +12,11 @@
 - ✅ Updated Fixed Expenses styling documentation (slate palette, compact spacing)
 - ✅ Modernized layout for all screen sizes (mobile stack, desktop 2-column)
 
+**Recent Updates (Jan 23, 2026 - Manual rollover & savings validation):**
+- ✅ Added manual salary month rollover flow with carry-to-budgets vs carry-to-savings options (locks month, adds rolloverIncome to next month)
+- ✅ Validation and balance checks include saveBonus/saveExtra in totals; persistence normalized to keep bonuses at 0
+- ✅ Expanded regression suite (701 tests) covering manual rollover, saveBonus/saveExtra, and modal validation edge cases
+
 **Changelog (Post-9ad087f commits):**
 - **c25c40b** (Jan 4, 2026): Optimize dashboard layout and modernize Fixed Expenses styling
   - Responsive grid: left column (flex-1) for Monthly+Variable, right column (480px) for Fixed
@@ -283,7 +288,7 @@ lib/
 
 ### Testing & Quality
 - **Test Framework:** Vitest 4.0.16
-- **Test Status:** 419 passing tests (100% pass rate)
+- **Test Status:** 701 passing tests (100% pass rate)
 - **Linting:** ESLint + eslint-config-next (0 errors)
 - **Type Safety:** 100% TypeScript coverage
 
@@ -478,7 +483,26 @@ const calculation = useMemo(() => {
 7. User can Save later
 ```
 
-### Flow 5: User Tries to Save with Budget Issues
+### Flow 5: Manual Salary Month Rollover (new manual advance)
+```
+1. User clicks "Start new salary month" button
+2. Preconditions: not on last month, current month not already processed/locked; otherwise show inline error
+3. Modal options:
+  - Carry leftovers to next month budgets (groceries/ent stay in category)
+  - Move all leftovers to savings (next month)
+4. On confirm:
+  a. Compute leftovers: max(grocBudg - grocSpent, 0) + max(entBudg - entSpent, 0)
+  b. Mark current month locked: rolloverProcessed = true, monthLocked = true, entBudgLocked = true
+  c. Add leftovers to next month rolloverIncome to raise available balance
+  d. Allocate leftovers based on choice:
+    - carryToBudgets → next grocExtra/entExtra
+    - carryToSavings → next save
+  e. Reset next month spent tracking to 0 (fresh start)
+5. Advance selection to next month, set hasChanges = true
+6. Persist immediately via saveData (best effort; shows error toast if blocked)
+```
+
+### Flow 6: User Tries to Save with Budget Issues
 ```
 1. User clicks Save button
 2. System runs recomputeBudgetIssues()
@@ -502,7 +526,7 @@ const calculation = useMemo(() => {
 8. If Firestore error: Shows error, hasChanges remains true
 ```
 
-### Flow 6: User Edits Fixed Expense
+### Flow 7: User Edits Fixed Expense
 ```
 1. User clicks expense amount (edit mode)
 2. Opens useFixedExpenseEditModal
@@ -525,7 +549,7 @@ const calculation = useMemo(() => {
 11. User clicks Save to persist
 ```
 
-### Flow 7: User Performs Undo
+### Flow 8: User Performs Undo
 ```
 1. User clicks "Undo Last Change" button
 2. System checks if undo snapshot exists
@@ -538,7 +562,7 @@ const calculation = useMemo(() => {
 4. User can now Save to persist undo
 ```
 
-### Flow 8: Manual Save to Firestore
+### Flow 9: Manual Save to Firestore
 ```
 1. Precondition: hasChanges = true AND no budget issues
 2. User clicks Save button
@@ -564,7 +588,7 @@ const calculation = useMemo(() => {
    c. Save button remains enabled
 ```
 
-### Flow 9: Transaction Overspend Compensation (NEW)
+### Flow 10: Transaction Overspend Compensation (NEW)
 ```
 1. User adds/edits transaction with amount A
 2. System calculates: remainingBudget = budgetTotal - currentSpent
@@ -735,10 +759,10 @@ Reversal (on Edit/Delete):
 **Validation Algorithm:**
 ```typescript
 for each month i:
-  available = data[i].inc + data[i].extraInc - sum(fixed[i])
+  available = data[i].inc + data[i].extraInc + (data[i].rolloverIncome || 0) - sum(fixed[i])
   groceries = varExp.grocBudg[i] + grocBonus[i] + grocExtra[i]
   entertainment = varExp.entBudg[i] + entBonus[i] + entExtra[i]
-  savings = data[i].save + saveExtra[i]
+  savings = data[i].save + (data[i].saveBonus || 0) + saveExtra[i]
   total = savings + groceries + entertainment
   
   if total !== available:
@@ -1202,7 +1226,7 @@ export const MonthlySection = React.memo(({...props}) => {
 ## Testing & Quality Assurance
 
 ### Test Coverage
-- **Status:** 419/419 tests passing (100%)
+- **Status:** 701/701 tests passing (100%)
 - **Framework:** Vitest 4.0.16
 - **Mocking:** Firebase/Firestore mocked for unit tests
 
@@ -1275,4 +1299,4 @@ Generated: January 4, 2026
 Based on: Complete implementation verification (3,029 lines + 13 hooks + calculation engine)  
 Verification Status: 100% accurate against implementation  
 Type Coverage: 100% TypeScript (zero `any` types)  
-Test Coverage: 419/419 passing (100%)
+Test Coverage: 701/701 passing (100%)

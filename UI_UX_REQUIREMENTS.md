@@ -354,7 +354,7 @@ Right Column: w-full lg:w-[480px]
 **Fields & Interactions:**
 - **Income:** Editable input, shows salary value, triggers salary split modal on change
 - **Previous:** Display of calculated savings, edit button (✎) opens override modal
-- **Savings:** Display of budget amount
+- **Savings:** Display shows total savings (base + saveBonus + saveExtra); editing adjusts base savings while keeping bonuses/extra allocations intact; validation uses the total
 - **Balance:** Calculated, color-coded:
   - Green (≥ 0): Normal state
   - Red (< 0): Overspending detected, shows "! Critical overspend" badge
@@ -362,7 +362,7 @@ Right Column: w-full lg:w-[480px]
 **Action Buttons:**
 - "Change Income" button → Opens salary split modal
 - "Edit Previous" button → Opens previous savings override modal
-- "Rollover" button (conditional) → Shows when 5+ days have passed and unspent budget available
+- "Start new salary month" button (conditional) → Opens manual rollover modal when current month is eligible
 - "Undo Last Change" button (conditional) → Shows when last change has undo snapshot
 
 ### S3: Main Dashboard - Budget Section
@@ -489,11 +489,14 @@ Right Column: w-full lg:w-[480px]
 **Unspent Budget Rollover:**
 - Shows available amounts
 - "Show Rollover: X SEK available in 3 days"
-- "Manual Rollover" button
+- "Manual Rollover" button → opens choice modal
+  - Option 1: Keep leftovers in category (carry to next groc/ent budgets)
+  - Option 2: Move all leftovers to savings (next month)
+  - Shows auto-rollover status pill when toggle is on; explains month lock after confirm
 
 ---
 
-## Modal Dialogs (8 Types)
+## Modal Dialogs (9 Types)
 
 ### Modal 1: Salary/Income Split Modal
 
@@ -835,6 +838,27 @@ Right Column: w-full lg:w-[480px]
 │                                │
 └─────────────────────────────────┘
 ```
+
+### Modal 9: Manual Salary Rollover Modal
+
+**Trigger:** User clicks "Start new salary month" button (header actions)  
+**Title:** "Start new salary month"  
+**Key UI Elements:**
+- Info line: "Lock {currentMonth} and move to {nextMonth}. Choose how to handle any unspent budget money."
+- Auto-rollover pill (blue) shown if auto-rollover toggle is ON
+- Error banner (red) if already processed or end-of-range
+- Two radio options:
+  1. **Keep leftovers in their categories** — carry grocery leftover to next groc budget, entertainment leftover to next ent budget
+  2. **Move all leftovers to savings** — send total leftover to next month savings
+- CTA buttons: "Cancel" (secondary) and "Confirm & start" (primary)
+- Footer note: warns the current month will be locked from edits/transactions after confirm
+
+**Behavior:**
+- Validates preconditions (not month 60, not already processed)
+- On confirm: locks current month, computes leftover = max(grocBudg - grocSpent, 0) + max(entBudg - entSpent, 0)
+- Adds leftover to next month's `rolloverIncome` and allocates per selected option
+- Resets next month's spent tracking to 0; advances selection to next month
+- Persists immediately; shows inline error if blocked
 
 **Features:**
 - Tab switch between Groceries and Entertainment

@@ -22,6 +22,7 @@ const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
   prevManual: false,
   save: 0,
   defSave: 0,
+  saveBonus: 0,
   extraInc: 0,
   grocBonus: 0,
   entBonus: 0,
@@ -155,7 +156,31 @@ export function useFinancialState() {
           const des = deserializeTransactions(saved.transactions);
           setTransactions(des);
           
-          const savedData = saved.data;
+          const normalizeData = (items: DataItem[]): DataItem[] => items.map(item => {
+            const base = createEmptyData()[0];
+            return {
+              // Preserve all scalar fields from item, with defaults from base
+              inc: item.inc ?? base.inc,
+              baseSalary: item.baseSalary ?? base.baseSalary,
+              prev: item.prev !== undefined ? item.prev : base.prev,
+              prevManual: item.prevManual ?? base.prevManual,
+              save: item.save ?? base.save,
+              defSave: item.defSave ?? base.defSave,
+              saveBonus: item.saveBonus !== undefined ? item.saveBonus : base.saveBonus,
+              saveExtra: item.saveExtra !== undefined ? item.saveExtra : base.saveExtra,
+              extraInc: item.extraInc ?? base.extraInc,
+              grocBonus: item.grocBonus ?? base.grocBonus,
+              entBonus: item.entBonus ?? base.entBonus,
+              grocExtra: item.grocExtra !== undefined ? item.grocExtra : base.grocExtra,
+              entExtra: item.entExtra !== undefined ? item.entExtra : base.entExtra,
+              rolloverProcessed: item.rolloverProcessed ?? base.rolloverProcessed,
+              monthLocked: item.monthLocked ?? base.monthLocked,
+              rolloverIncome: item.rolloverIncome ?? base.rolloverIncome,
+              entBudgLocked: item.entBudgLocked ?? base.entBudgLocked
+            };
+          });
+
+          const savedData = normalizeData(saved.data);
           const savedFixed = saved.fixed;
           setData(savedData);
           setFixed(savedFixed);
@@ -199,7 +224,14 @@ export function useFinancialState() {
   }, [user, authLoading, hydrated, deserializeTransactions]);
 
   // Manual save function
-  const saveData = useCallback(async () => {
+  const saveData = useCallback(async (overrides?: {
+    data?: DataItem[];
+    fixed?: FixedExpense[];
+    varExp?: VarExp;
+    autoRollover?: boolean;
+    transactions?: Transactions;
+    baseUpdatedAt?: Timestamp | null;
+  }) => {
     if (!user) {
       console.warn('Cannot save: no user authenticated');
       return;
@@ -208,17 +240,17 @@ export function useFinancialState() {
     try {
       setError(null);
       const payload = {
-        data,
-        fixed,
-        varExp,
-        autoRollover,
-        transactions: serializeTransactions(transactions)
+        data: overrides?.data ?? data,
+        fixed: overrides?.fixed ?? fixed,
+        varExp: overrides?.varExp ?? varExp,
+        autoRollover: overrides?.autoRollover ?? autoRollover,
+        transactions: serializeTransactions(overrides?.transactions ?? transactions)
       };
 
       const newUpdatedAt = await saveFinancialDataSafe(
         user.uid,
         sanitizeForFirestore(payload),
-        baseUpdatedAt
+        overrides?.baseUpdatedAt ?? baseUpdatedAt
       );
 
       setLastSaved(newUpdatedAt.toDate());

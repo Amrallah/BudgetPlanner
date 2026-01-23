@@ -590,7 +590,8 @@ export default function FinancialPlanner() {
 
   const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
     const saveExtra = data[sel].saveExtra || 0;
-    const savingsTotal = data[sel].save + saveExtra;
+    const saveBonus = data[sel].saveBonus || 0;
+    const savingsTotal = data[sel].save + saveBonus + saveExtra;
     const savingsLabel = saveExtra > 0
       ? `Savings (Base ${data[sel].save.toFixed(0)} +${saveExtra.toFixed(0)} extra)`
       : 'Savings';
@@ -953,7 +954,7 @@ export default function FinancialPlanner() {
     } else if (key === 'save') {
       // Only capture on first focus of this modal session (part of salary modal)
       if (!salaryModalSessionCaptured) {
-        const savingsTotal = data[sel].save + (data[sel].saveExtra || 0);
+        const savingsTotal = data[sel].save + (data[sel].saveBonus || 0) + (data[sel].saveExtra || 0);
         setSavingsInitial(savingsTotal);
         setSaveBeforeEdit(savingsTotal);
         setSalaryModalSessionCaptured(true);
@@ -981,8 +982,9 @@ export default function FinancialPlanner() {
       setSavingEdited(true);
       const n = [...data];
       const currentExtra = n[sel].saveExtra || 0;
-      // User edits total savings; keep extra component and adjust base portion accordingly
-      n[sel].save = Math.max(0, value - currentExtra);
+      const currentBonus = n[sel].saveBonus || 0;
+      // User edits total savings; keep bonus/extra components and adjust base portion accordingly
+      n[sel].save = Math.max(0, value - currentExtra - currentBonus);
       setData(n);
     }
     setHasChanges(true);
@@ -1161,7 +1163,7 @@ export default function FinancialPlanner() {
 
     const grocTotal = (varExp.grocBudg[idx] || 0) + grocExtras;
     const entTotal = (varExp.entBudg[idx] || 0) + entExtras;
-    const saveTotal = data[idx]?.save || 0;
+    const saveTotal = (data[idx]?.save || 0) + (data[idx]?.saveBonus || 0) + (data[idx]?.saveExtra || 0);
     const rollover = data[idx]?.rolloverIncome ?? 0;
     const available = (data[idx]?.inc || 0) + (data[idx]?.extraInc || 0) + rollover - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
     const check = validateBudgetBalance(idx, saveTotal, grocTotal, entTotal, { dataOverride: data, fixedOverride: fixed });
@@ -1351,7 +1353,7 @@ export default function FinancialPlanner() {
     (async () => {
       try {
         if (user) {
-          const result = await saveData();
+          const result = await saveData({ data: nd, fixed: nf });
           if (result?.success) {
             alert('All changes saved successfully!');
           } else {
@@ -1933,6 +1935,7 @@ return (
                         }
                         const grocExtras = (tempData[idx].grocBonus || 0) + (tempData[idx].grocExtra || 0);
                         const entExtras = (tempData[idx].entBonus || 0) + (tempData[idx].entExtra || 0);
+                        const saveExtras = (tempData[idx].saveBonus || 0) + (tempData[idx].saveExtra || 0);
                         let newSaveVal = tempData[idx].save;
                         let newGrocBase = tempVar.grocBudg[idx];
                         let newEntBase = tempVar.entBudg[idx];
@@ -1949,7 +1952,8 @@ return (
 
                         const newGrocTotal = newGrocBase + grocExtras;
                         const newEntTotal = newEntBase + entExtras;
-                        const balanceCheck = validateBudgetBalance(idx, newSaveVal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
+                        const newSaveTotal = newSaveVal + saveExtras;
+                        const balanceCheck = validateBudgetBalance(idx, newSaveTotal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
                         if (!balanceCheck.valid) {
                           setSalarySplitError(balanceCheck.message);
                           return;
@@ -2397,12 +2401,14 @@ return (
             const availableAfterAdd = (data[firstIdx].inc + data[firstIdx].extraInc) - (baseFixedTotal + firstAmt);
             const grocExtras = (data[firstIdx].grocBonus || 0) + (data[firstIdx].grocExtra || 0);
             const entExtras = (data[firstIdx].entBonus || 0) + (data[firstIdx].entExtra || 0);
+            const saveExtras = (data[firstIdx].saveBonus || 0) + (data[firstIdx].saveExtra || 0);
             const postSave = Math.max(0, data[firstIdx].save - newExpenseSplit.split.save);
             const postGrocBase = Math.max(0, varExp.grocBudg[firstIdx] - newExpenseSplit.split.groc);
             const postEntBase = Math.max(0, varExp.entBudg[firstIdx] - newExpenseSplit.split.ent);
             const postGrocTotal = postGrocBase + grocExtras;
             const postEntTotal = postEntBase + entExtras;
-            const postBudgets = postSave + postGrocTotal + postEntTotal;
+            const postSaveTotal = postSave + saveExtras;
+            const postBudgets = postSaveTotal + postGrocTotal + postEntTotal;
             const balanceGap = postBudgets - availableAfterAdd;
 
             return (
@@ -2423,7 +2429,7 @@ return (
                     <span>{balanceGap.toFixed(0)} SEK</span>
                   </div>
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div className="flex justify-between"><span>Save</span><span>{postSave.toFixed(0)} SEK</span></div>
+                    <div className="flex justify-between"><span>Save</span><span>{postSaveTotal.toFixed(0)} SEK</span></div>
                     <div className="flex justify-between"><span>Groceries</span><span>{postGrocTotal.toFixed(0)} SEK</span></div>
                     <div className="flex justify-between"><span>Entertainment</span><span>{postEntTotal.toFixed(0)} SEK</span></div>
                   </div>
@@ -2700,7 +2706,7 @@ return (
                       const newInc = prevInc + (prevExtraInc || 0);
                       const grocTotal = varExp.grocBudg[sel] + (dataClone[sel].grocBonus || 0) + newGrocExtra;
                       const entTotal = varExp.entBudg[sel] + (dataClone[sel].entBonus || 0) + newEntExtra;
-                      const saveTotal = dataClone[sel].save + newSaveExtra;
+                      const saveTotal = (dataClone[sel].save || 0) + (dataClone[sel].saveBonus || 0) + newSaveExtra;
                       dataClone[sel] = {
                         ...dataClone[sel],
                         grocExtra: newGrocExtra,
@@ -3276,7 +3282,8 @@ return (
                     for (let i = 0; i < 60; i++) {
                       const grocTotal = (varExp.grocBudg[i] || 0) + (simulated.data[i].grocBonus || 0) + (simulated.data[i].grocExtra || 0);
                       const entTotal = (varExp.entBudg[i] || 0) + (simulated.data[i].entBonus || 0) + (simulated.data[i].entExtra || 0);
-                      const balanceCheck = validateBudgetBalance(i, simulated.data[i].save, grocTotal, entTotal, { dataOverride: simulated.data, fixedOverride: simulated.fixed });
+                      const saveTotal = (simulated.data[i].save || 0) + (simulated.data[i].saveBonus || 0) + (simulated.data[i].saveExtra || 0);
+                      const balanceCheck = validateBudgetBalance(i, saveTotal, grocTotal, entTotal, { dataOverride: simulated.data, fixedOverride: simulated.fixed });
                       if (!balanceCheck.valid) {
                         setSplitError(balanceCheck.message);
                         return;
