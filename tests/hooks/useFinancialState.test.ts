@@ -99,8 +99,19 @@ describe('useFinancialState Hook - TDD Test Suite', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
+      const normalizedMockData = mockData.map(item => ({
+        ...item,
+        saveBonus: item.saveBonus !== undefined ? item.saveBonus : 0,
+        grocExtra: item.grocExtra !== undefined ? item.grocExtra : 0,
+        entExtra: item.entExtra !== undefined ? item.entExtra : 0,
+        saveExtra: item.saveExtra !== undefined ? item.saveExtra : 0,
+        rolloverIncome: item.rolloverIncome !== undefined ? item.rolloverIncome : undefined,
+        monthLocked: item.monthLocked !== undefined ? item.monthLocked : undefined,
+        entBudgLocked: item.entBudgLocked !== undefined ? item.entBudgLocked : undefined
+      }));
+
       expect(getFinancialData).toHaveBeenCalledWith('test-user-123');
-      expect(result.current.data).toEqual(mockData);
+      expect(result.current.data).toEqual(normalizedMockData);
       expect(result.current.fixed).toEqual(mockFixed);
       expect(result.current.varExp).toEqual(mockVarExp);
       expect(result.current.error).toBeNull();

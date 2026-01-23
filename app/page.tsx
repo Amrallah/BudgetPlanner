@@ -590,7 +590,8 @@ export default function FinancialPlanner() {
 
   const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
     const saveExtra = data[sel].saveExtra || 0;
-    const savingsTotal = data[sel].save + saveExtra;
+    const saveBonus = data[sel].saveBonus || 0;
+    const savingsTotal = data[sel].save + saveBonus + saveExtra;
     const savingsLabel = saveExtra > 0
       ? `Savings (Base ${data[sel].save.toFixed(0)} +${saveExtra.toFixed(0)} extra)`
       : 'Savings';
@@ -953,7 +954,7 @@ export default function FinancialPlanner() {
     } else if (key === 'save') {
       // Only capture on first focus of this modal session (part of salary modal)
       if (!salaryModalSessionCaptured) {
-        const savingsTotal = data[sel].save + (data[sel].saveExtra || 0);
+        const savingsTotal = data[sel].save + (data[sel].saveBonus || 0) + (data[sel].saveExtra || 0);
         setSavingsInitial(savingsTotal);
         setSaveBeforeEdit(savingsTotal);
         setSalaryModalSessionCaptured(true);
@@ -981,8 +982,9 @@ export default function FinancialPlanner() {
       setSavingEdited(true);
       const n = [...data];
       const currentExtra = n[sel].saveExtra || 0;
-      // User edits total savings; keep extra component and adjust base portion accordingly
-      n[sel].save = Math.max(0, value - currentExtra);
+      const currentBonus = n[sel].saveBonus || 0;
+      // User edits total savings; keep bonus/extra components and adjust base portion accordingly
+      n[sel].save = Math.max(0, value - currentExtra - currentBonus);
       setData(n);
     }
     setHasChanges(true);
@@ -1351,7 +1353,7 @@ export default function FinancialPlanner() {
     (async () => {
       try {
         if (user) {
-          const result = await saveData();
+          const result = await saveData({ data: nd, fixed: nf });
           if (result?.success) {
             alert('All changes saved successfully!');
           } else {

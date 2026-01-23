@@ -71,6 +71,7 @@ export const validateDataItem = (raw: unknown, idx: number): ValidationResult<Da
     extraInc: isNumber(obj.extraInc) ? obj.extraInc : 0,
     grocBonus: isNumber(obj.grocBonus) ? obj.grocBonus : 0,
     entBonus: isNumber(obj.entBonus) ? obj.entBonus : 0,
+    saveBonus: isNumber(obj.saveBonus) ? obj.saveBonus : 0,
     grocExtra: isNumber(obj.grocExtra) ? obj.grocExtra : 0,
     entExtra: isNumber(obj.entExtra) ? obj.entExtra : 0,
     saveExtra: isNumber(obj.saveExtra) ? obj.saveExtra : 0,
