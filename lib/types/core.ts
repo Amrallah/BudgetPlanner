@@ -47,10 +47,16 @@ export type DataItem = {
   extraInc: number;
   grocBonus: number;
   entBonus: number;
+  saveBonus?: number;
   grocExtra?: number;
   entExtra?: number;
   saveExtra?: number;
+  rolloverIncome?: number;
   rolloverProcessed: boolean;
+  /** When true, the month is view-only (used after manual/auto rollover). */
+  monthLocked?: boolean;
+  /** Legacy/partial lock flag used by rollover tests; treat as view-only. */
+  entBudgLocked?: boolean;
 };
 
 export type VarExp = { 

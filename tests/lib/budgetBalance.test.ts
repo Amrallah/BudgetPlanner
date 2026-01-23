@@ -123,4 +123,112 @@ describe('budget balance helpers', () => {
     expect(issues.firstIssue?.entTotal).toBe(3000);
     expect(issues.firstIssue?.available).toBeCloseTo(9000, 0);
   });
+
+  it('includes saveBonus in validation (saveBonus is part of saveTotal)', () => {
+    // Test that saveBonus field is properly counted in budget validation
+    // This documents the fix: saveBonus must be in saveTotal calculation
+    const months = genMonths(1);
+    const data: DataItem[] = [{
+      inc: 10000,
+      prev: 0,
+      prevManual: false,
+      save: 2000,
+      defSave: 2000,
+      extraInc: 0,
+      grocBonus: 0,
+      entBonus: 0,
+      grocExtra: 0,
+      entExtra: 0,
+      saveExtra: 0,
+      saveBonus: 500,  // ← NEW FIELD, must be counted
+      rolloverProcessed: false
+    }];
+
+    const fixed: FixedExpense[] = [
+      { id: 1, name: 'Rent', amts: [2000], spent: [true] }
+    ];
+
+    const varExp: VarExp = {
+      grocBudg: [3000],
+      grocSpent: [0],
+      entBudg: [3000],
+      entSpent: [0]
+    };
+
+    // Available = 10000 - 2000 = 8000
+    // saveTotal (with saveBonus) = 2000 + 500 = 2500
+    // grocTotal = 3000
+    // entTotal = 3000
+    // Sum = 8500, Available = 8000, Over by 500
+    
+    const check = validateBudgetBalance({
+      monthIdx: 0,
+      save: 2000 + 500,  // saveBonus included
+      groc: 3000,
+      ent: 3000,
+      data,
+      fixed,
+      months
+    });
+
+    expect(check.valid).toBe(false);
+    expect(check.deficit).toBe(500);
+  });
+
+  it('counts both saveBonus and saveExtra when validating totals', () => {
+    const months = genMonths(1);
+    const data: DataItem[] = [{
+      inc: 9000,
+      prev: 0,
+      prevManual: false,
+      save: 8300, // base savings
+      defSave: 8300,
+      extraInc: 0,
+      grocBonus: 0,
+      entBonus: 0,
+      grocExtra: 0,
+      entExtra: 0,
+      saveExtra: 100,
+      saveBonus: 100,
+      rolloverProcessed: false
+    }];
+
+    const fixed: FixedExpense[] = [];
+
+    const varExp: VarExp = {
+      grocBudg: [400],
+      grocSpent: [0],
+      entBudg: [100],
+      entSpent: [0]
+    };
+
+    // Available: 9000
+    // Expected totals: save (8300 base + 200 extras) + groc 400 + ent 100 = 9000 (balanced)
+    const saveTotal = data[0].save + (data[0].saveBonus || 0) + (data[0].saveExtra || 0);
+
+    const invalidMissingExtras = validateBudgetBalance({
+      monthIdx: 0,
+      save: data[0].save, // extras ignored (buggy path)
+      groc: varExp.grocBudg[0],
+      ent: varExp.entBudg[0],
+      data,
+      fixed,
+      months
+    });
+
+    const validWithExtras = validateBudgetBalance({
+      monthIdx: 0,
+      save: saveTotal, // includes saveBonus + saveExtra
+      groc: varExp.grocBudg[0],
+      ent: varExp.entBudg[0],
+      data,
+      fixed,
+      months
+    });
+
+    expect(invalidMissingExtras.valid).toBe(false);
+    expect(invalidMissingExtras.deficit).toBe(200);
+    expect(validWithExtras.valid).toBe(true);
+    expect(validWithExtras.deficit).toBe(0);
+  });
 });

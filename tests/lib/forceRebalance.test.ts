@@ -46,8 +46,8 @@ describe('extractIssueMonthIndices', () => {
 describe('applyForceRebalanceAcrossMonths', () => {
   it('balances all issue months in a single pass when using equal split', () => {
     const data: DataItem[] = [
-      buildDataItem({ inc: 1000, save: 100, defSave: 100 }),
-      buildDataItem({ inc: 900, save: 700, defSave: 700 })
+      buildDataItem({ inc: 1000, save: 800, defSave: 800, saveBonus: 0 }),
+      buildDataItem({ inc: 900, save: 700, defSave: 700, saveBonus: 0 })
     ];
 
     const varExp: VarExp = {

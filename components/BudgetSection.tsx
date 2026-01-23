@@ -22,6 +22,7 @@ export interface BudgetField {
   editSpent: boolean;
   recentTransactions?: BudgetTransaction[];
   newTransactionValue?: string;
+  locked?: boolean;
 }
 
 export interface BudgetSectionProps {
@@ -56,15 +57,17 @@ export default memo(function BudgetSection({
         </div>
       </div>
       <div className="space-y-2.5 sm:space-y-3">
-        {fields.map(field => (
-          <div key={field.type} className="p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200">
+        {fields.map(field => {
+          const isLocked = field.locked ?? false;
+          return (
+          <div key={field.type} className={`p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 ${isLocked ? 'opacity-70' : ''}`} aria-disabled={isLocked}>
             <div className="font-semibold mb-2 text-slate-900 text-sm sm:text-base">{field.label}</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
               {/* Total Budget Input */}
               <div>
                 <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                   Total Budget
-                  {field.type === 'groc' && (field.bonus > 0 || field.extra > 0) && (
+                  {(field.bonus > 0 || field.extra > 0) && (
                     <span className="text-emerald-700 ml-1 block text-[11px]">
                       Base {field.baseBudget.toFixed(0)}
                       {field.bonus > 0 && ` +${field.bonus.toFixed(0)} freed`}
@@ -78,10 +81,11 @@ export default memo(function BudgetSection({
                   max="1000000"
                   placeholder="0"
                   value={field.isEditing ? field.inputValue : field.totalBudget.toFixed(0)}
-                  onFocus={() => onFocus(field.type)}
-                  onChange={(e) => onChange(field.type, e.target.value)}
-                  onBlur={(e) => onBlur(field.type, e.target.value)}
-                  className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
+                  onFocus={() => !isLocked && onFocus(field.type)}
+                  onChange={(e) => !isLocked && onChange(field.type, e.target.value)}
+                  onBlur={(e) => !isLocked && onBlur(field.type, e.target.value)}
+                  disabled={isLocked}
+                  className={`w-full h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all ${isLocked ? 'cursor-not-allowed bg-slate-100' : ''}`}
                 />
               </div>
 
@@ -90,7 +94,8 @@ export default memo(function BudgetSection({
                 <label className="text-[11px] flex gap-2 items-center font-semibold text-slate-700 mb-1">
                   Spent
                   <button
-                    onClick={() => onToggleEditSpent(field.type)}
+                    onClick={() => !isLocked && onToggleEditSpent(field.type)}
+                    disabled={isLocked}
                     className="text-emerald-700 hover:text-emerald-900"
                   >
                     <Edit2 size={12} />
@@ -102,8 +107,8 @@ export default memo(function BudgetSection({
                   max="1000000"
                   placeholder="0"
                   value={field.spent}
-                  onChange={(e) => onSpentChange(field.type, e.target.value)}
-                  disabled={!field.editSpent}
+                  onChange={(e) => !isLocked && onSpentChange(field.type, e.target.value)}
+                  disabled={!field.editSpent || isLocked}
                   className="w-full h-9 px-3 text-sm border border-slate-200 rounded-lg disabled:bg-slate-50 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
                 />
               </div>
@@ -128,12 +133,14 @@ export default memo(function BudgetSection({
                 max="1000000"
                 placeholder="Add transaction amount"
                 value={field.newTransactionValue || ''}
-                onChange={(e) => onTransactionInputChange?.(field.type, e.target.value)}
-                className="flex-1 h-9 sm:h-10 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all"
+                onChange={(e) => !isLocked && onTransactionInputChange?.(field.type, e.target.value)}
+                disabled={isLocked}
+                className={`flex-1 h-9 sm:h-10 px-3 text-sm border border-slate-200 rounded-lg focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 transition-all ${isLocked ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               />
               <button
-                onClick={() => onAddTransaction(field.type)}
-                className="bg-emerald-600 text-white px-3 sm:px-4 h-9 sm:h-10 rounded-lg hover:bg-emerald-700 active:bg-emerald-800 shadow-sm transition-all text-sm font-semibold"
+                onClick={() => !isLocked && onAddTransaction(field.type)}
+                disabled={isLocked}
+                className="bg-emerald-600 text-white px-3 sm:px-4 h-9 sm:h-10 rounded-lg hover:bg-emerald-700 active:bg-emerald-800 shadow-sm transition-all text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 +
               </button>
@@ -157,14 +164,16 @@ export default memo(function BudgetSection({
                 )}
               </div>
               <button
-                onClick={() => onOpenHistory(field.type)}
-                className="ml-auto bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-md hover:bg-slate-50 text-xs"
+                onClick={() => !isLocked && onOpenHistory(field.type)}
+                disabled={isLocked}
+                className="ml-auto bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-md hover:bg-slate-50 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Transactions History
               </button>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
     </div>
   );

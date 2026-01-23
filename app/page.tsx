@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload } from "lucide-react";
+import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload, Lock } from "lucide-react";
 import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
 import type { CompensationOption } from "@/components/CompensationModal";
 import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
@@ -28,6 +28,7 @@ import UtilityCardsRow from "@/components/UtilityCardsRow";
 import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
+import { advanceSalaryMonth, type RolloverChoice } from "@/lib/salaryRollover";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -54,12 +55,15 @@ export default function FinancialPlanner() {
   const { months, sel, setSel, isPassed } = useMonthSelection();
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
-  const [adj, setAdj] = useState({ groc: 0, ent: 0 });
+  const [adj, setAdj] = useState({ groc: 0, ent: 0, save: 0 });
   const [editPrev, setEditPrev] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Change[]>([]);
   const [newTrans, setNewTrans] = useState<Record<'groc'|'ent', string>>({ groc: '', ent: '' });
   const [showRollover, setShowRollover] = useState(false);
+  const [rolloverChoice, setRolloverChoice] = useState<RolloverChoice>('carryToBudgets');
+  const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
+  const [rolloverError, setRolloverError] = useState<string | null>(null);
   const [editSpent, setEditSpent] = useState({ groc: false, ent: false });
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
@@ -77,6 +81,16 @@ export default function FinancialPlanner() {
   const [extraIncInitial, setExtraIncInitial] = useState<number>(0);
   const [salaryInitial, setSalaryInitial] = useState<number>(0);
   const [savingsInitial, setSavingsInitial] = useState<number>(0);
+  const [grocInitial, setGrocInitial] = useState<number>(0);
+  const [entInitial, setEntInitial] = useState<number>(0);
+  const [incomeBeforeEdit, setIncomeBeforeEdit] = useState<number>(0);
+  const [extraIncBeforeEdit, setExtraIncBeforeEdit] = useState<number>(0);
+  const [saveBeforeEdit, setSaveBeforeEdit] = useState<number>(0);
+  const [grocBeforeEdit, setGrocBeforeEdit] = useState<number>(0);
+  const [entBeforeEdit, setEntBeforeEdit] = useState<number>(0);
+  const [salaryModalSessionCaptured, setSalaryModalSessionCaptured] = useState(false);
+  const [extraModalSessionCaptured, setExtraModalSessionCaptured] = useState(false);
+  const [budgetModalSessionCaptured, setBudgetModalSessionCaptured] = useState<{ groc: boolean; ent: boolean }>({ groc: false, ent: false });
   const [lastAddedExpenseId, setLastAddedExpenseId] = useState<number | null>(null);
   const [lastExtraApply, setLastExtraApply] = useState<LastExtraApply | null>(null);
   const {
@@ -194,7 +208,7 @@ export default function FinancialPlanner() {
   const [lastAdjustments, setLastAdjustments] = useState<AdjustmentHistory>({});
 
   // Setup wizard state
-  const [showSetup, setShowSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState<boolean | undefined>(undefined);
   const [setupStep, setSetupStep] = useState<SetupStep>('prev');
   const [setupPrev, setSetupPrev] = useState('');
   const [setupSalary, setSetupSalary] = useState('');
@@ -292,16 +306,11 @@ export default function FinancialPlanner() {
         // Check if user has existing data in the main app state
         const hasData = data.some(d => d.inc > 0 || d.save > 0) || fixed.length > 0;
 
-        if (hasData) {
-          // User has data, close wizard
-          setShowSetup(false);
-        } else if (!showSetup) {
-          // No data and wizard not open, show it
-          setShowSetup(true);
-        }
+        // Only update showSetup state after we know whether data exists
+        setShowSetup(!hasData);
       }
     }
-  }, [financialHydrated, user, data, fixed, showSetup, setupStep, setupPrev, setupSalary, setupExtraInc, setupFixedExpenses, setupSave, setupGroc, setupEnt]);
+  }, [financialHydrated, user, data, fixed, setupStep, setupPrev, setupSalary, setupExtraInc, setupFixedExpenses, setupSave, setupGroc, setupEnt]);
 
   // Run budget check only on initial load (see loadFromFirestore) and explicit actions
 
@@ -507,13 +516,34 @@ export default function FinancialPlanner() {
   // Reset split-related states on month change
   useEffect(() => {
     setSavingEdited(false);
-    setAdj({ groc: 0, ent: 0 });
+    setAdj({ groc: 0, ent: 0, save: 0 });
     setExtraSplitActive(false);
     setExtraAdj({ groc: 0, ent: 0, save: 0 });
     setSplitError('');
     setExtraSplitError('');
     setWithdrawAmount(0);
   }, [sel, setAdj, setExtraAdj, setExtraSplitActive, setExtraSplitError, setSavingEdited, setSplitError, setWithdrawAmount]);
+
+  // Clear baseline capture flags when salary split modal closes
+  useEffect(() => {
+    if (!salarySplitActive) {
+      setSalaryModalSessionCaptured(false);
+    }
+  }, [salarySplitActive]);
+
+  // Clear baseline capture flags when extra split modal closes
+  useEffect(() => {
+    if (!extraSplitActive) {
+      setExtraModalSessionCaptured(false);
+    }
+  }, [extraSplitActive]);
+
+  // Clear baseline capture flags when budget editing ends (when not editing either budget)
+  useEffect(() => {
+    if (!editingGroc && !editingEnt) {
+      setBudgetModalSessionCaptured({ groc: false, ent: false });
+    }
+  }, [editingGroc, editingEnt]);
 
   const calcResult = useMemo(() => calculateMonthly({ data, fixed, varExp, months, now: new Date() }), [data, fixed, varExp, months]);
   const calc = calcResult.items;
@@ -547,23 +577,42 @@ export default function FinancialPlanner() {
 
   const cur = calc[sel];
 
-  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
-    { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: true },
-    { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: true },
-    {
-      label: 'Previous',
-      value: cur.prev,
-      key: 'prev',
-      editable: editPrev,
-      button: (
-        <button onClick={() => setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800">
-          <Edit2 size={14} />
-        </button>
-      )
-    },
-    { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
-    { label: 'Savings', value: data[sel].save, key: 'save', editable: true }
-  ]), [cur.bal, cur.prev, data, editPrev, sel]);
+  const isMonthLocked = Boolean(data[sel]?.monthLocked);
+  const isEntertainmentLocked = Boolean(data[sel]?.entBudgLocked || isMonthLocked);
+  const isEndOfRange = sel >= 59;
+  const isProcessedMonth = Boolean(data[sel]?.rolloverProcessed);
+  const manualAdvanceDisabled = isEndOfRange || isProcessedMonth;
+  const manualAdvanceReason = isEndOfRange
+    ? 'You are at the final planned month.'
+    : isProcessedMonth
+      ? 'This month has already been processed.'
+      : '';
+
+  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
+    const saveExtra = data[sel].saveExtra || 0;
+    const savingsTotal = data[sel].save + saveExtra;
+    const savingsLabel = saveExtra > 0
+      ? `Savings (Base ${data[sel].save.toFixed(0)} +${saveExtra.toFixed(0)} extra)`
+      : 'Savings';
+
+    return ([
+      { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: !isMonthLocked },
+      { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: !isMonthLocked },
+      {
+        label: 'Previous',
+        value: cur.prev,
+        key: 'prev',
+        editable: editPrev && !isMonthLocked,
+        button: (
+          <button onClick={() => setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800">
+            <Edit2 size={14} />
+          </button>
+        )
+      },
+      { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
+      { label: savingsLabel, value: savingsTotal, key: 'save', editable: !isMonthLocked }
+    ]);
+  }, [cur.bal, cur.prev, data, editPrev, isMonthLocked, sel]);
 
   const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
     {
@@ -575,11 +624,12 @@ export default function FinancialPlanner() {
       extra: data[sel].grocExtra || 0,
       spent: varExp.grocSpent[sel],
       remaining: cur.grocRem,
-      isEditing: editingGroc,
+      isEditing: editingGroc && !isMonthLocked,
       inputValue: grocInput,
-      editSpent: editSpent.groc,
+      editSpent: editSpent.groc && !isMonthLocked,
       recentTransactions: transactions.groc[sel]?.slice(-5) || [],
-      newTransactionValue: newTrans.groc
+      newTransactionValue: newTrans.groc,
+      locked: isMonthLocked
     },
     {
       type: 'ent',
@@ -590,25 +640,42 @@ export default function FinancialPlanner() {
       extra: data[sel].entExtra || 0,
       spent: varExp.entSpent[sel],
       remaining: cur.entRem,
-      isEditing: editingEnt,
+      isEditing: editingEnt && !isEntertainmentLocked,
       inputValue: entInput,
-      editSpent: editSpent.ent,
+      editSpent: editSpent.ent && !isEntertainmentLocked,
       recentTransactions: transactions.ent[sel]?.slice(-5) || [],
-      newTransactionValue: newTrans.ent
+      newTransactionValue: newTrans.ent,
+      locked: isEntertainmentLocked
     }
-  ]), [cur.entBudg, cur.entRem, cur.grocRem, data, editSpent.ent, editSpent.groc, editingEnt, editingGroc, entInput, grocInput, newTrans.ent, newTrans.groc, sel, transactions.ent, transactions.groc, varExp.entBudg, varExp.entSpent, varExp.grocBudg, varExp.grocSpent]);
+  ]), [cur.entBudg, cur.entRem, cur.grocRem, data, editSpent.ent, editSpent.groc, editingEnt, editingGroc, entInput, grocInput, isEntertainmentLocked, isMonthLocked, newTrans.ent, newTrans.groc, sel, transactions.ent, transactions.groc, varExp.entBudg, varExp.entSpent, varExp.grocBudg, varExp.grocSpent]);
 
   const handleBudgetFocus = (type: BudgetType) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     if (type === 'groc') {
       setEditingGroc(true);
-      setGrocInput(String(varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0)));
+      if (!budgetModalSessionCaptured.groc) {
+        const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+        setGrocInput(String(currentTotal));
+        setGrocInitial(currentTotal);
+        setGrocBeforeEdit(currentTotal); // Capture baseline once per edit session
+        setBudgetModalSessionCaptured(prev => ({ ...prev, groc: true }));
+      }
     } else if (type === 'ent') {
       setEditingEnt(true);
-      setEntInput(String(varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0)));
+      if (!budgetModalSessionCaptured.ent) {
+        const currentTotal = varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0);
+        setEntInput(String(currentTotal));
+        setEntInitial(currentTotal);
+        setEntBeforeEdit(currentTotal); // Capture baseline once per edit session
+        setBudgetModalSessionCaptured(prev => ({ ...prev, ent: true }));
+      }
     }
   };
 
   const handleBudgetChange = (type: BudgetType, value: string) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     if (type === 'groc') {
       setGrocInput(value);
     } else if (type === 'ent') {
@@ -617,9 +684,11 @@ export default function FinancialPlanner() {
   };
 
   const handleBudgetBlur = (type: BudgetType, value: string) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     const val = sanitizeNumberInput(value);
     if (type === 'groc') {
-      const currentTotal = varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0);
+      const currentTotal = grocBeforeEdit; // Use captured value from first focus
       const difference = val - currentTotal;
 
       if (lastAdjustments.budget && lastAdjustments.budget.type === 'groc' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
@@ -665,7 +734,7 @@ export default function FinancialPlanner() {
         setBudgetRebalanceError('');
       }
     } else if (type === 'ent') {
-      const currentTotal = cur.entBudg;
+      const currentTotal = entBeforeEdit; // Use captured value from first focus
       const difference = val - currentTotal;
 
       if (lastAdjustments.budget && lastAdjustments.budget.type === 'ent' && Math.abs(val - lastAdjustments.budget.oldVal) < 0.01 && lastAdjustments.budget.months.includes(sel)) {
@@ -714,10 +783,14 @@ export default function FinancialPlanner() {
   };
 
   const handleToggleEditSpent = (type: BudgetType) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     setEditSpent({ ...editSpent, [type]: !editSpent[type] });
   };
 
   const handleSpentChange = (type: BudgetType, value: string) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     if (editSpent[type]) {
       const val = sanitizeNumberInput(value);
       const n = { ...varExp };
@@ -728,6 +801,11 @@ export default function FinancialPlanner() {
   };
 
   const handleAddTransaction = (type: BudgetType) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) {
+      alert('This month is locked. Transactions are view-only.');
+      return;
+    }
     const amt = sanitizeNumberInput(newTrans[type]);
     if (!amt || amt <= 0) {
       alert('Please enter a valid amount between 0 and 1,000,000');
@@ -769,6 +847,8 @@ export default function FinancialPlanner() {
   };
 
   const handleTransactionInputChange = (type: BudgetType, value: string) => {
+    const lockedForType = type === 'ent' ? isEntertainmentLocked : isMonthLocked;
+    if (lockedForType) return;
     setNewTrans({ ...newTrans, [type]: value });
   };
 
@@ -855,16 +935,34 @@ export default function FinancialPlanner() {
   };
 
   const handleMonthlyFocus = (key: MonthlyFieldKey) => {
+    if (isMonthLocked) return;
     if (key === 'extraInc') {
-      setExtraIncInitial(data[sel].extraInc);
+      // Only capture on first focus of this modal session
+      if (!extraModalSessionCaptured) {
+        setExtraIncInitial(data[sel].extraInc);
+        setExtraIncBeforeEdit(data[sel].extraInc);
+        setExtraModalSessionCaptured(true);
+      }
     } else if (key === 'inc') {
-      setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
+      // Only capture on first focus of this modal session
+      if (!salaryModalSessionCaptured) {
+        setSalaryInitial(data[sel].baseSalary ?? data[sel].inc);
+        setIncomeBeforeEdit(data[sel].baseSalary ?? data[sel].inc);
+        setSalaryModalSessionCaptured(true);
+      }
     } else if (key === 'save') {
-      setSavingsInitial(data[sel].save);
+      // Only capture on first focus of this modal session (part of salary modal)
+      if (!salaryModalSessionCaptured) {
+        const savingsTotal = data[sel].save + (data[sel].saveExtra || 0);
+        setSavingsInitial(savingsTotal);
+        setSaveBeforeEdit(savingsTotal);
+        setSalaryModalSessionCaptured(true);
+      }
     }
   };
 
   const handleMonthlyChange = (key: MonthlyFieldKey, value: number) => {
+    if (isMonthLocked) return;
     if (key === 'inc') {
       const n = [...data];
       n[sel].inc = value;
@@ -882,13 +980,16 @@ export default function FinancialPlanner() {
     } else if (key === 'save') {
       setSavingEdited(true);
       const n = [...data];
-      n[sel].save = value;
+      const currentExtra = n[sel].saveExtra || 0;
+      // User edits total savings; keep extra component and adjust base portion accordingly
+      n[sel].save = Math.max(0, value - currentExtra);
       setData(n);
     }
     setHasChanges(true);
   };
 
   const handleMonthlyBlur = (key: MonthlyFieldKey, value: number) => {
+    if (isMonthLocked) return;
     if (key === 'inc') {
       if (lastAdjustments.salary && Math.abs(value - lastAdjustments.salary.oldVal) < 0.01 && lastAdjustments.salary.months.includes(sel)) {
         if (!hasChanges) {
@@ -918,7 +1019,7 @@ export default function FinancialPlanner() {
         }
         return;
       }
-      const oldVal = salaryInitial;
+      const oldVal = incomeBeforeEdit; // Use captured value from first focus
       const n = [...data];
       n[sel].inc = value;
       n[sel].baseSalary = value;
@@ -954,7 +1055,7 @@ export default function FinancialPlanner() {
         }
         return;
       }
-      const oldVal = extraIncInitial;
+      const oldVal = extraIncBeforeEdit; // Use captured value from first focus
       const n = [...data];
       n[sel].extraInc = value;
       if (value > 0 && value !== oldVal) {
@@ -995,7 +1096,7 @@ export default function FinancialPlanner() {
           setBudgetRebalanceApplyFuture(false);
           setLastAdjustments(prev => ({ ...prev, budget: undefined }));
           setSavingEdited(false);
-          setAdj({ groc: 0, ent: 0 });
+          setAdj({ groc: 0, ent: 0, save: 0 });
           setApplyFuture(false);
           setApplySavingsForward(null);
           setHasChanges(true);
@@ -1004,7 +1105,8 @@ export default function FinancialPlanner() {
       }
       const oldVal = savingsInitial;
       const n = [...data];
-      n[sel].save = value;
+      const currentExtra = n[sel].saveExtra || 0;
+      n[sel].save = Math.max(0, value - currentExtra);
       if (Math.abs(value - oldVal) > 0.01) {
         setBudgetRebalanceModal({
           type: 'save',
@@ -1014,7 +1116,7 @@ export default function FinancialPlanner() {
         });
         setBudgetRebalanceError('');
       }
-      setAdj({ groc: 0, ent: 0 });
+      setAdj({ groc: 0, ent: 0, save: 0 });
       setApplyFuture(false);
       setApplySavingsForward(null);
       setData(n);
@@ -1060,7 +1162,8 @@ export default function FinancialPlanner() {
     const grocTotal = (varExp.grocBudg[idx] || 0) + grocExtras;
     const entTotal = (varExp.entBudg[idx] || 0) + entExtras;
     const saveTotal = data[idx]?.save || 0;
-    const available = (data[idx]?.inc || 0) + (data[idx]?.extraInc || 0) - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
+    const rollover = data[idx]?.rolloverIncome ?? 0;
+    const available = (data[idx]?.inc || 0) + (data[idx]?.extraInc || 0) + rollover - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
     const check = validateBudgetBalance(idx, saveTotal, grocTotal, entTotal, { dataOverride: data, fixedOverride: fixed });
     const deficit = !check.valid && check.deficit ? check.deficit : 0;
     return { idx, grocTotal, entTotal, saveTotal, available, deficit, error };
@@ -1273,6 +1376,7 @@ export default function FinancialPlanner() {
       extraInc: 0,
       grocBonus: 0,
       entBonus: 0,
+      saveBonus: 0,
       grocExtra: 0,
       entExtra: 0,
       saveExtra: 0,
@@ -1304,6 +1408,7 @@ export default function FinancialPlanner() {
       extraInc: 0,
       grocBonus: 0,
       entBonus: 0,
+      saveBonus: 0,
       grocExtra: 0,
       entExtra: 0,
       saveExtra: 0,
@@ -1326,6 +1431,42 @@ export default function FinancialPlanner() {
     // Open setup wizard from the first step
     setShowSetup(true);
     setSetupStep('prev');
+  };
+
+  const openManualRollover = () => {
+    if (isEndOfRange) return;
+    setRolloverError(null);
+    setRolloverChoice('carryToSavings');
+    setRolloverConfirmOpen(true);
+  };
+
+  const handleConfirmManualRollover = async () => {
+    const result = advanceSalaryMonth({ data, varExp, currentIdx: sel, choice: rolloverChoice });
+    if (result.status === 'blocked') {
+      const reason = result.reason === 'end-of-range' ? 'You are already at month 60. Extend the plan to continue.' : 'Next month data is missing.';
+      setRolloverError(reason);
+      return;
+    }
+    if (result.status === 'already-processed') {
+      setRolloverError('This month is already locked and processed.');
+      return;
+    }
+
+    setData(result.data);
+    setVarExp(result.varExp);
+    if (typeof result.nextIdx === 'number') {
+      setSel(result.nextIdx);
+    }
+    setHasChanges(true);
+    setRolloverConfirmOpen(false);
+
+    try {
+      if (user) {
+        await saveData();
+      }
+    } catch (err) {
+      console.error('Failed to save manual rollover', err);
+    }
   };
 
   const handleReloadRemote = async () => {
@@ -1488,7 +1629,7 @@ return (
                 </div>
                 <div>
                   <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Finance Dashboard</h1>
-                  <p className="text-xs sm:text-sm text-gray-600 leading-snug">60-month planner with autosave</p>
+                  <p className="text-xs sm:text-sm text-gray-600 leading-snug">Monthly Budget Planner</p>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-auto">
@@ -1520,6 +1661,14 @@ return (
                   </div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={openManualRollover}
+                    disabled={manualAdvanceDisabled}
+                    title={manualAdvanceReason || 'Lock this month and move to the next salary period.'}
+                    className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${manualAdvanceDisabled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'}`}
+                  >
+                    <Clock size={16} />Start new salary month
+                  </button>
                   {undoPrompt && (
                     <button
                       onClick={handleApplyUndo}
@@ -1569,6 +1718,11 @@ return (
                     <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200 text-yellow-800 shadow-sm">
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-sm font-medium">{pendingChanges.length} pending changes</span>
+                    </div>
+                  )}
+                  {isMonthLocked && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                      <Lock className="w-4 h-4" /> Month locked
                     </div>
                   )}
                 </div>
@@ -1628,6 +1782,8 @@ return (
             const n = [...data];
             n[sel].save += (cur.prevGrocRem ?? 0) + (cur.prevEntRem ?? 0);
             n[sel].rolloverProcessed = true;
+            n[sel].monthLocked = true;
+            n[sel].entBudgLocked = true;
             setData(n);
             setShowRollover(false);
             setHasChanges(true);
@@ -1647,6 +1803,7 @@ return (
               savingEdited={savingEdited}
               applyFuture={applyFuture}
               wrapInCard={false}
+              locked={isMonthLocked}
               onFocus={handleMonthlyFocus}
               onChange={handleMonthlyChange}
               onBlur={handleMonthlyBlur}
@@ -2127,7 +2284,9 @@ return (
                       const affectedMonths = budgetRebalanceApplyFuture ? Array.from({ length: 60 - sel }, (_, i) => sel + i) : [sel];
                       const baselineData = data.map((d, idx) => {
                         if (budgetRebalanceModal.type === 'save' && idx === sel) {
-                          return { ...d, save: budgetRebalanceModal.oldVal, defSave: budgetRebalanceModal.oldVal };
+                          const saveExtras = (d.saveBonus || 0) + (d.saveExtra || 0);
+                          const baseSave = Math.max(0, budgetRebalanceModal.oldVal - saveExtras);
+                          return { ...d, save: baseSave, defSave: baseSave };
                         }
                         return { ...d };
                       });
@@ -2143,12 +2302,14 @@ return (
                       for (const idx of affectedMonths) {
                         const grocExtras = (tempData[idx].grocBonus || 0) + (tempData[idx].grocExtra || 0);
                         const entExtras = (tempData[idx].entBonus || 0) + (tempData[idx].entExtra || 0);
+                        const saveExtras = (tempData[idx].saveBonus || 0) + (tempData[idx].saveExtra || 0);
                         let newSaveVal = tempData[idx].save;
                         let newGrocBase = tempVar.grocBudg[idx];
                         let newEntBase = tempVar.entBudg[idx];
 
                         if (budgetRebalanceModal.type === 'save') {
-                          newSaveVal = idx === sel ? budgetRebalanceModal.newVal : Math.max(0, tempData[idx].save + diffVal);
+                          const baseSaveTarget = Math.max(0, budgetRebalanceModal.newVal - saveExtras);
+                          newSaveVal = idx === sel ? baseSaveTarget : Math.max(0, tempData[idx].save + diffVal);
                           newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.a));
                           newEntBase = Math.max(0, newEntBase + (multiplier * budgetRebalanceModal.split.b));
                         } else if (budgetRebalanceModal.type === 'groc') {
@@ -2165,9 +2326,10 @@ return (
                           newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.b));
                         }
 
+                        const newSaveTotal = newSaveVal + saveExtras;
                         const newGrocTotal = newGrocBase + grocExtras;
                         const newEntTotal = newEntBase + entExtras;
-                        const balanceCheck = validateBudgetBalance(idx, newSaveVal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
+                        const balanceCheck = validateBudgetBalance(idx, newSaveTotal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
                         if (!balanceCheck.valid) {
                           setBudgetRebalanceError(balanceCheck.message);
                           return;
@@ -2556,6 +2718,8 @@ return (
                       if (!dataClone[sel].baseSalary) {
                         dataClone[sel].baseSalary = prevInc;
                       }
+                      // Always update baseSalary when inc changes to keep them in sync
+                      dataClone[sel].baseSalary = newInc;
                       setData(dataClone);
                       // record the allocation in transactions.extra for history
                       const now = new Date().toISOString();
@@ -2605,7 +2769,14 @@ return (
           {cur.extra > 0 && savingEdited && (
             <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl shadow-md">
               <h3 className="font-bold mb-3 text-blue-900">Split Freed Amount: {cur.extra.toFixed(0)} SEK</h3>
-              <p className="text-sm text-blue-800 mb-3">You reduced savings. Allocate the freed amount to budget categories.</p>
+              <p className="text-sm text-blue-800 mb-3">You reduced savings. Allocate the freed amount across categories.</p>
+              
+              {Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 && (
+                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Total allocation must equal {cur.extra.toFixed(0)} SEK. Current: {(adj.groc + adj.ent + adj.save).toFixed(0)} SEK
+                </div>
+              )}
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
@@ -2619,7 +2790,7 @@ return (
                     onChange={(e) => {
                       const v = sanitizeNumberInput(e.target.value);
                       if(v > cur.extra) return;
-                      setAdj({ groc: v, ent: Math.max(0, cur.extra - v) });
+                      setAdj({ groc: v, ent: adj.ent, save: Math.max(0, cur.extra - v - adj.ent) });
                     }} 
                     className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                   />
@@ -2635,30 +2806,56 @@ return (
                     onChange={(e) => {
                       const v = sanitizeNumberInput(e.target.value);
                       if(v > cur.extra) return;
-                      setAdj({ ent: v, groc: Math.max(0, cur.extra - v) });
+                      setAdj({ groc: adj.groc, ent: v, save: Math.max(0, cur.extra - adj.groc - v) });
                     }} 
                     className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                   />
                 </div>
-                <button 
-                  onClick={() => {
-                    const n = [...data];
-                    n[sel].grocBonus = adj.groc;
-                    n[sel].entBonus = adj.ent;
-                    setData(n);
-                    setAdj({ groc: 0, ent: 0 });
-                    setSavingEdited(false);
-                    setApplyFuture(false);
-                    setHasChanges(true);
-                  }} 
-                  className="bg-blue-600 text-white p-3 rounded-xl mt-6 hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all"
-                >
-                  Apply Split
-                </button>
+                <div>
+                  <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    max={cur.extra}
+                    placeholder="0" 
+                    value={adj.save || ''} 
+                    onChange={(e) => {
+                      const v = sanitizeNumberInput(e.target.value);
+                      if(v > cur.extra) return;
+                      setAdj({ groc: adj.groc, ent: Math.max(0, cur.extra - adj.groc - v), save: v });
+                    }} 
+                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  />
+                </div>
               </div>
-              <div className="text-sm text-gray-600 mt-2">
-                Allocated: {(adj.groc + adj.ent).toFixed(0)} / {cur.extra.toFixed(0)} SEK
+              <div className="mt-3 text-sm flex justify-between">
+                <span className="text-gray-600">Allocated: {(adj.groc + adj.ent + adj.save).toFixed(0)} / {cur.extra.toFixed(0)} SEK</span>
+                <span className={Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                  {Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 ? 'Unbalanced' : '✓ Balanced'}
+                </span>
               </div>
+              <button 
+                onClick={() => {
+                  const total = adj.groc + adj.ent + adj.save;
+                  if(Math.abs(total - cur.extra) > 0.01) {
+                    alert(`Total must equal ${cur.extra.toFixed(0)} SEK. Current total: ${total.toFixed(0)} SEK`);
+                    return;
+                  }
+                  const n = [...data];
+                  n[sel].grocBonus = adj.groc;
+                  n[sel].entBonus = adj.ent;
+                  n[sel].saveBonus = adj.save;
+                  setData(n);
+                  setAdj({ groc: 0, ent: 0, save: 0 });
+                  setSavingEdited(false);
+                  setApplyFuture(false);
+                  setHasChanges(true);
+                }} 
+                disabled={Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01}
+                className="w-full mt-3 bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Apply Split
+              </button>
             </div>
           )}
             </div>
@@ -2772,7 +2969,7 @@ return (
               const draftKey = `${e.id}-${sel}`;
               const draftValue = editingExpenseDraft[draftKey];
               const isPaid = e.spent[sel];
-              const monthLocked = !cur.passed;
+              const monthLocked = isMonthLocked;
               return (
                 <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
                   <div className="flex-1 w-full">
@@ -2925,6 +3122,8 @@ return (
             n[sel].saveExtra = Math.max(0, (n[sel].saveExtra || 0) - (removed?.save || 0));
             const totalRemoved = (removed?.groc || 0) + (removed?.ent || 0) + (removed?.save || 0);
             n[sel].inc = Math.max(0, n[sel].inc - totalRemoved);
+            // Also revert baseSalary to keep it in sync with inc
+            n[sel].baseSalary = Math.max(0, (n[sel].baseSalary || n[sel].inc) - totalRemoved);
             setData(n);
             setHasChanges(true);
           }}
@@ -3110,7 +3309,7 @@ return (
         )}
 
         <SetupSection
-          isOpen={showSetup}
+          isOpen={showSetup === true}
           setupStep={setupStep}
           setupPrev={setupPrev}
           setupSalary={setupSalary}
@@ -3139,6 +3338,75 @@ return (
           onRemoveFixedExpense={handleRemoveFixedExpense}
           onLogout={handleSetupLogout}
         />
+
+        {rolloverConfirmOpen && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-2xl w-full max-w-xl my-auto space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-blue-700" />
+                <h3 className="text-lg font-semibold text-slate-900">Start new salary month</h3>
+              </div>
+              <p className="text-sm text-slate-700">
+                Lock {months[sel].name} and move to {months[sel + 1]?.name ?? 'the next month'}. Choose how to handle any unspent budget money (groceries + entertainment).
+              </p>
+              {autoRollover && (
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                  <Clock className="w-4 h-4" /> Auto-rollover is ON — manual advance still available
+                </div>
+              )}
+              {rolloverError && (
+                <div className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-sm">
+                  <AlertTriangle className="w-4 h-4" /> {rolloverError}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-blue-300 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="rollover-choice"
+                    value="carryToBudgets"
+                    checked={rolloverChoice === 'carryToBudgets'}
+                    onChange={() => setRolloverChoice('carryToBudgets')}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Keep leftovers in their categories</div>
+                    <div className="text-xs text-slate-600">Unspent groceries → next month groceries. Unspent entertainment → next month entertainment.</div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-blue-300 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="rollover-choice"
+                    value="carryToSavings"
+                    checked={rolloverChoice === 'carryToSavings'}
+                    onChange={() => setRolloverChoice('carryToSavings')}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Move all leftovers to savings</div>
+                    <div className="text-xs text-slate-600">Send total unspent budget (groceries + entertainment) to savings for the next month.</div>
+                  </div>
+                </label>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <button
+                  onClick={() => setRolloverConfirmOpen(false)}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmManualRollover}
+                  className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm"
+                >
+                  Confirm & start
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">This will lock {months[sel].name}. You can still view it, but edits and new transactions are disabled.</p>
+            </div>
+          </div>
+        )}
 
         {/* Utility Cards Row with Withdraw, Emergency Buffer, Entertainment Budget, What-if */}
         <UtilityCardsRow

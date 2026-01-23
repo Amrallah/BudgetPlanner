@@ -135,7 +135,7 @@ export function calculateMonthly(params: {
     const entSpent = varExp.entSpent[i];
     const over = Math.max(0, (grocSpent - grocBudg) + (entSpent - entBudg));
 
-    const actSave = d.save + (d.saveExtra || 0);
+    const actSave = d.save + (d.saveBonus || 0) + (d.saveExtra || 0);
     let overspendWarning = '';
     const criticalOverspend = false;
 
