@@ -116,4 +116,35 @@ describe('applySaveChanges helper', () => {
     expect(nd[1].grocBonus).toBe(20);
     expect(nd[1].entBonus).toBe(30);
   });
+
+    it('should add split.save to saveBonus when save < defSave (regression test)', () => {
+      // Bug scenario: When splitting freed amount to savings and save < defSave,
+      // it should go to saveBonus (like grocBonus/entBonus), not to base save
+      const fixed = [ { id:1, name:'Rent', amts: [5000, 5000], spent: [false, false] } ];
+      const data = [
+        { inc:10000, prev:null, prevManual:false, save:2000, defSave:2500, saveBonus:0, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false },
+        { inc:10000, prev:null, prevManual:false, save:2000, defSave:2500, saveBonus:0, extraInc:0, grocBonus:0, entBonus:0, grocExtra:0, entExtra:0, saveExtra:0, rolloverProcessed:false }
+      ];
+
+      // Decrease expense by 100 SEK, split all to savings
+      const pending = [ 
+        { type: 'amount', scope: 'month', idx: 0, monthIdx: 0, newAmt: 4900, oldAmt: 5000, split: { save: 100, groc: 0, ent: 0 } }
+      ];
+
+      const { data: nd } = applySaveChanges({ fixed, data, pendingChanges: pending, applySavingsForward: null });
+
+      // TEST EXPECTATIONS:
+      // Since save (2000) < defSave (2500), the freed 100 should go to saveBonus
+      // Current bug: it goes to base save instead
+      expect(nd[0].save).toBe(2000); // Base save should stay same
+      expect(nd[0].saveBonus).toBe(100); // Should add to saveBonus
+    
+      // For comparison: groc and ent bonuses work correctly
+      const pendingGrocEnt = [ 
+        { type: 'amount', scope: 'month', idx: 0, monthIdx: 1, newAmt: 4900, oldAmt: 5000, split: { save: 0, groc: 50, ent: 50 } }
+      ];
+      const { data: nd2 } = applySaveChanges({ fixed, data, pendingChanges: pendingGrocEnt, applySavingsForward: null });
+      expect(nd2[1].grocBonus).toBe(50); // These work correctly
+      expect(nd2[1].entBonus).toBe(50);
+    });
 });

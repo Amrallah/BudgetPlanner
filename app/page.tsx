@@ -1161,7 +1161,7 @@ export default function FinancialPlanner() {
 
     const grocTotal = (varExp.grocBudg[idx] || 0) + grocExtras;
     const entTotal = (varExp.entBudg[idx] || 0) + entExtras;
-    const saveTotal = data[idx]?.save || 0;
+    const saveTotal = (data[idx]?.save || 0) + (data[idx]?.saveBonus || 0) + (data[idx]?.saveExtra || 0);
     const rollover = data[idx]?.rolloverIncome ?? 0;
     const available = (data[idx]?.inc || 0) + (data[idx]?.extraInc || 0) + rollover - fixed.reduce((sum, f) => sum + f.amts[idx], 0);
     const check = validateBudgetBalance(idx, saveTotal, grocTotal, entTotal, { dataOverride: data, fixedOverride: fixed });
@@ -1933,6 +1933,7 @@ return (
                         }
                         const grocExtras = (tempData[idx].grocBonus || 0) + (tempData[idx].grocExtra || 0);
                         const entExtras = (tempData[idx].entBonus || 0) + (tempData[idx].entExtra || 0);
+                        const saveExtras = (tempData[idx].saveBonus || 0) + (tempData[idx].saveExtra || 0);
                         let newSaveVal = tempData[idx].save;
                         let newGrocBase = tempVar.grocBudg[idx];
                         let newEntBase = tempVar.entBudg[idx];
@@ -1949,7 +1950,8 @@ return (
 
                         const newGrocTotal = newGrocBase + grocExtras;
                         const newEntTotal = newEntBase + entExtras;
-                        const balanceCheck = validateBudgetBalance(idx, newSaveVal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
+                        const newSaveTotal = newSaveVal + saveExtras;
+                        const balanceCheck = validateBudgetBalance(idx, newSaveTotal, newGrocTotal, newEntTotal, { dataOverride: tempData, fixedOverride: fixed });
                         if (!balanceCheck.valid) {
                           setSalarySplitError(balanceCheck.message);
                           return;
@@ -3276,7 +3278,8 @@ return (
                     for (let i = 0; i < 60; i++) {
                       const grocTotal = (varExp.grocBudg[i] || 0) + (simulated.data[i].grocBonus || 0) + (simulated.data[i].grocExtra || 0);
                       const entTotal = (varExp.entBudg[i] || 0) + (simulated.data[i].entBonus || 0) + (simulated.data[i].entExtra || 0);
-                      const balanceCheck = validateBudgetBalance(i, simulated.data[i].save, grocTotal, entTotal, { dataOverride: simulated.data, fixedOverride: simulated.fixed });
+                      const saveTotal = (simulated.data[i].save || 0) + (simulated.data[i].saveBonus || 0) + (simulated.data[i].saveExtra || 0);
+                      const balanceCheck = validateBudgetBalance(i, saveTotal, grocTotal, entTotal, { dataOverride: simulated.data, fixedOverride: simulated.fixed });
                       if (!balanceCheck.valid) {
                         setSplitError(balanceCheck.message);
                         return;

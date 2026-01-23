@@ -541,8 +541,9 @@ describe('Real-Life Financial Scenarios', () => {
       expect(newFixed[0].amts[1]).toBe(8500);
       expect(newFixed[1].amts[1]).toBe(1200);
       expect(newFixed[2].amts[1]).toBe(0);
-      // Net split: save -150, groc -50, ent 0
-      expect(newData[1].save).toBe(2850);
+      // Net split: save -150 (base save), groc -50, ent 0; freed amount from delete goes to saveBonus when below defSave
+      expect(newData[1].save).toBe(2650);
+      expect(newData[1].saveBonus || 0).toBe(200);
       expect(newData[1].grocBonus).toBe(-50);
       expect(newData[1].entBonus).toBe(0);
     });

@@ -244,4 +244,67 @@ describe('adding fixed expenses keeps budgets balanced', () => {
     expect(fixedWithNew).toHaveLength(1);
     expect(fixedWithNew[0].amts.every(a => a === 50)).toBe(true);
   });
+
+    it('validation fails when saveBonus is excluded from balance check (regression)', () => {
+      // Bug scenario: data has saveBonus, but validateBudgetBalance is called with only 'save'
+      const months = makeMonths(3);
+      const data: DataItem[] = [{
+        inc: 10000,
+        prev: null,
+        prevManual: false,
+        save: 2000,
+        defSave: 2500,
+        saveBonus: 500,  // User has bonus savings
+        saveExtra: 0,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        grocExtra: 0,
+        entExtra: 0,
+        rolloverProcessed: false
+      }];
+      const fixed: FixedExpense[] = [{
+        id: 1,
+        name: 'Rent',
+        amts: [5000],
+        spent: [false]
+      }];
+      const varExp = makeVar(1, 2000, 1000);
+
+      // Available = 10000 - 5000 = 5000
+      // Actual total = save(2000) + saveBonus(500) + groc(2000) + ent(1000) = 5500
+      // Without saveBonus = save(2000) + groc(2000) + ent(1000) = 5000
+
+      // WRONG: Validation with only 'save' (line 3279 bug pattern)
+      const wrongCheck = validateBudgetBalance({
+        monthIdx: 0,
+        save: data[0].save,  // Missing saveBonus!
+        groc: varExp.grocBudg[0],
+        ent: varExp.entBudg[0],
+        data,
+        fixed,
+        months
+      });
+
+      // RIGHT: Validation with saveBonus included (computeBudgetIssues pattern)
+      const correctSaveTotal = data[0].save + (data[0].saveBonus || 0) + (data[0].saveExtra || 0);
+      const correctCheck = validateBudgetBalance({
+        monthIdx: 0,
+        save: correctSaveTotal,
+        groc: varExp.grocBudg[0],
+        ent: varExp.entBudg[0],
+        data,
+        fixed,
+        months
+      });
+
+      // TEST EXPECTATIONS:
+      // Wrong check should pass (incorrectly thinks budget is balanced)
+      expect(wrongCheck.valid).toBe(true); // BUG: passes when it shouldn't
+    
+      // Correct check should fail (budget actually exceeds available by 500)
+      expect(correctCheck.valid).toBe(false);
+      expect(correctCheck.deficit).toBe(500);
+      expect(correctCheck.message).toContain('exceed available balance');
+    });
 });
