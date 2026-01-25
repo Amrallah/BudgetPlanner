@@ -10,7 +10,7 @@ Detailed, visual examples for replacing the static 60-month window (Dec 2025 sta
 - Generate months at load: start = today (or stored anchor), end = start + horizonMonths
 
 ```
-Anchor: 2026-01-01
+Anchor (today): 2026-01-01
 Horizon: 60 months
 
 2026-01 2026-02 2026-03 ... 2030-12
@@ -18,7 +18,16 @@ Horizon: 60 months
    M0      M1      M2         M59
 ```
 
-Edit UX: change `horizonMonths` to 36 or 72; months regenerate. No data copy if you keep keyed storage (see #5) or rebase arrays with a simple shift.
+**Data shape**
+- Metadata: `{ planStart: '2026-01-01', horizonMonths: 60 }`
+- Months: derived on load; can still map to existing 0..59 arrays or keyed months.
+
+**UX flow**
+- Settings: a simple control to change `horizonMonths` (e.g., 36/48/60/72).
+- Auto-refresh: when the real month rolls over, recalc months using `planStart = today` unless user pinned a start.
+
+**Pros**: Very low migration cost; stays aligned with current date.  
+**Cons**: Historical data outside the window needs archiving if you keep fixed length.
 
 ---
 
@@ -35,7 +44,16 @@ Horizon: 48 months
    Y1 (12 mo)                | Y2..Y4 (36 mo)
 ```
 
-Edit UX: a “Change start month” dialog with preview of shifts; warn if shrinking horizon would drop data.
+**Data shape**
+- Metadata: `{ planStart: '2026-04-01', horizonMonths: 48 }`
+- Months generated from anchor; can be keyed or positional.
+
+**UX flow**
+- “Change start month” dialog: show preview mapping old → new months with a diff list.
+- Confirmation when shrinking horizon (data outside range archived/dropped with warning).
+
+**Pros**: User control, supports fiscal years.  
+**Cons**: Changing start requires a rebase pass.
 
 ---
 
@@ -49,10 +67,19 @@ Today = 2026-01
 Window: [-3, +36]
 
 2025-10 2025-11 2025-12 2026-01 | 2026-02 ... 2028-12
-  H-3     H-2     H-1    Current   Future (auto-shift monthly)
+   H-3     H-2     H-1    Current   Future (auto-shift monthly)
 ```
 
-Edit UX: settings for history length and forecast length.
+**Data shape**
+- Metadata: `{ planStart: '2025-10-01', historyMonths: 3, horizonMonths: 36 }`
+- Months generated each load; if `now` > window end, shift start forward.
+
+**UX flow**
+- Config sliders: history length (0–6), forecast length (12–120).
+- On login, if month advanced, silently shift window and archive older months.
+
+**Pros**: Keeps recent history for charts and trends.  
+**Cons**: Requires automatic shifting logic and archival policy.
 
 ---
 
@@ -69,7 +96,16 @@ Viewport shown: M8..M19
            ^ rendered/interactive ^
 ```
 
-Edit UX: next/prev buttons jump the viewport; “jump to month” search box.
+**Data shape**
+- No change: arrays stay length 60.
+- Add `viewportStart` index and `viewportSize` (e.g., 12) in UI state.
+
+**UX flow**
+- Next/prev buttons shift `viewportStart` by 6 or 12.
+- Jump box: type `2027-03` → compute index and set viewport.
+
+**Pros**: Minimal code changes; performance win.  
+**Cons**: Still tied to fixed-length arrays and static anchor unless combined with #1/#2.
 
 ---
 
@@ -80,14 +116,23 @@ Edit UX: next/prev buttons jump the viewport; “jump to month” search box.
 
 ```
 {
-  "2026-01": { ... },
-  "2026-02": { ... },
-  "2026-03": { ... },
-  ...
+   "2026-01": { ... },
+   "2026-02": { ... },
+   "2026-03": { ... },
+   ...
 }
 ```
 
-Edit UX: changing start date regenerates the key set; missing months fill defaults; extra months prune or archive.
+**Data shape**
+- `{ months: Record<YYYY-MM, MonthData>, planStart, horizonMonths }`
+- Ordering handled by sorting keys; no reliance on index math.
+
+**UX flow**
+- Changing start: regenerate key set; copy existing keys that overlap; default-fill gaps.
+- Viewport: operate on sorted keys (e.g., slice by index after sorting).
+
+**Pros**: Highest flexibility; easy to extend horizon; works with arbitrary anchors.  
+**Cons**: Requires broader refactor of loops and assumptions about 60-length arrays.
 
 ---
 
@@ -116,6 +161,16 @@ Jan 2026 (old)  -> Jan 2026 (new)
 Dec 2030 (old)  -> Dec 2030 (new)
 Jan 2031 (old)  -> out of range (drop/archive)
 ```
+
+**Example mapping table**
+
+| Old idx | Old key | New key | Action |
+|---------|---------|---------|--------|
+| 0       | 2025-12 | (none)  | Archive
+| 1       | 2026-01 | 2026-01 | Copy
+| ...     | ...     | ...     | ...
+| 60      | 2030-12 | 2030-12 | Copy
+| 61      | 2031-01 | (none)  | Drop/Archive
 
 ---
 
@@ -161,6 +216,10 @@ Jan 2031 (old)  -> out of range (drop/archive)
 
 ## 11) Suggested Defaults for Production
 
+---
+
+## 11) Suggested Defaults for Production
+
 - `planStart`: first of current month (UTC-safe), overridable by user
 - `horizonMonths`: 60 (configurable)
 - `historyMonths`: 3 (optional)
@@ -177,3 +236,77 @@ Jan 2031 (old)  -> out of range (drop/archive)
 - `previewRebase(oldAnchor, newAnchor, horizon): Diff[]` (for the UI preview)
 
 These keep the feature easy to edit: small, testable helpers that centralize the month-generation logic.
+
+---
+
+## 13) Calendar-Style Browsing (Pick Any Day in the Next 10 Years)
+
+**What it is**
+- A calendar or date-picker UI that lets the user jump to any date (day-level) within a max range (e.g., 10 years forward/back).
+- The financial model remains month-based; selecting a day maps to its month bucket (`YYYY-MM`).
+
+**Data shape**
+- Keep month-based storage (arrays or keyed months).
+- Add `calendarWindowYears` (e.g., 10) to bound selectable dates.
+- Derive a valid date range: `[planStart, planStart + calendarWindowYears*12 months]`.
+
+**UX flow**
+1) User opens a date-picker with month and day visible.
+2) When a date is chosen, compute its month key (`YYYY-MM`) and load that month’s data.
+3) If the month is outside current horizon:
+   - Option A: Offer to extend horizon (if keyed storage) and seed defaults.
+   - Option B: Show “out of range, extend plan?” dialog.
+
+**Example timeline for 10-year window**
+```
+planStart: 2026-01-01
+calendar window: 10 years (120 months)
+
+2026-01 ... 2035-12  (selectable via calendar)
+ |          |
+ Month buckets remain monthly; day maps to its month.
+```
+
+**Implementation notes**
+- Calendar selection → derive month key → use existing month rendering.
+- If keyed months: extend map up to selected month (with defaults) when within the 10-year bound.
+- If positional arrays: require a rebase/resize workflow before allowing selection outside the fixed span.
+
+**Pros**: Familiar UX; powerful “jump anywhere” navigation.  
+**Cons**: Requires dynamic horizon extension or a large pre-generated horizon.
+
+**Recommended approach**
+- Combine keyed months (#5) with a max selectable range (e.g., 120 months).
+- On selection beyond current horizon, prompt to extend and fill defaults.
+
+---
+
+## 14) Concrete Examples by Approach
+
+**Rolling window example (today anchor, keyed months)**
+- planStart: today’s first-of-month (2026-01-01)
+- horizonMonths: 60
+- generate keys: 2026-01 .. 2030-12
+- viewport: show 12 at a time; next/prev moves by 6.
+
+**User-selected start example (fiscal year)**
+- planStart: 2026-04-01
+- horizonMonths: 48
+- keys: 2026-04 .. 2030-03
+- rebase dialog shows which old months drop/add before confirming.
+
+**Sliding window example (history + future)**
+- planStart: today minus 3 months
+- historyMonths: 3
+- horizonMonths: 36
+- on 1st of each month, shift window forward; archive oldest month.
+
+**Viewport-only rendering example (minimal change)**
+- Keep arrays length 60
+- viewportStart: 6, viewportSize: 12 → renders months 7–18
+- jump-to-month converts `YYYY-MM` to index and updates viewportStart.
+
+**Keyed months + calendar browse (10 years)**
+- planStart: 2026-01-01
+- calendarWindowYears: 10 (max selectable date 2035-12-31)
+- On selecting 2034-07-15, month key = 2034-07; if missing, create default month entry and render.
