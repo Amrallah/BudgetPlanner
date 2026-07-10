@@ -97,7 +97,6 @@ export default function FinancialPlanner() {
   const [splitError, setSplitError] = useState('');
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
   const [editingGroc, setEditingGroc] = useState(false);
   const [editingEnt, setEditingEnt] = useState(false);
   const [whatIfSalaryDelta, setWhatIfSalaryDelta] = useState(0);
@@ -242,7 +241,7 @@ export default function FinancialPlanner() {
     createFromSetup
   } = useFixedExpenses();
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
     const result = checkForIssues(opts);
@@ -301,11 +300,11 @@ export default function FinancialPlanner() {
     }
   }, [fixed, lastAddedExpenseId, pendingChanges, budgetBalanceIssues.length, hasChanges, sel]);
 
-  // Sync loading state and setup wizard with hook's hydration
+  // Sync setup wizard visibility with hook's hydration (loading spinner is derived
+  // directly from authLoading/financialHydrated at render time - see the early
+  // `if (authLoading || !financialHydrated) return <spinner>` below).
   useEffect(() => {
     if (financialHydrated) {
-      setIsLoading(false);
-
       // Auto-manage wizard visibility based on data existence
       // Don't interfere if wizard is actively being used (user has entered data in wizard fields)
       const hasWizardInput = setupPrev || setupSalary || setupExtraInc !== '0' || setupFixedExpenses.length > 0 || setupSave || setupGroc || setupEnt;
@@ -1633,7 +1632,7 @@ export default function FinancialPlanner() {
 
   // use `validateSplit` and `sanitizeNumberInput` from `lib/uiHelpers`
 
-if (isLoading) {
+if (authLoading || !financialHydrated) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
       <div className="text-center">

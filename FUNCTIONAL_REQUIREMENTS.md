@@ -447,6 +447,19 @@ if source === 'prev' (using previous savings):
    - Creates default data with validation
 7. **Completion:** Closes wizard, shows main dashboard
 
+**Auto-open gating (bug fix, Jul 2026):** The wizard only auto-evaluates "does this user already
+have data" once `useFinancialState` reports the loaded data actually belongs to the *current*
+user. Previously `hydrated` was a plain boolean flipped via its own `setHydrated()` call inside the
+Firestore-load effect; when auth transitioned to a newly-known existing user, that boolean update
+was invisible to `app/page.tsx`'s sibling "auto-open Setup" effect for one render (both effects
+fire in the same commit, reading that commit's stale values), so the wizard flashed open before
+the real (non-empty) data arrived. Fixed by deriving `hydrated` from a `dataUid` value (the uid
+whose data is currently loaded) compared against the live `user.uid` at render time - correct
+immediately, with no extra render round-trip. `app/page.tsx`'s loading screen now also gates
+directly on `authLoading || !financialHydrated` instead of a separately-tracked local `isLoading`
+state. See `tests/bugs/setupPopupFlashOnLoad.test.ts` (verifies with no `waitFor` polling, since
+polling can mask a same-commit race).
+
 ### W2: Monthly Income Change
 **Trigger:** User modifies salary for current month  
 **Flow:**

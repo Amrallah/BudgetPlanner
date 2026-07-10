@@ -7,7 +7,7 @@
  * @returns {object} Financial state and operations
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 import { getFinancialData } from '@/lib/finance';
@@ -60,7 +60,6 @@ const createEmptyTransactions = (): Transactions => ({
 
 export function useFinancialState() {
   const { user, loading: authLoading } = useAuth();
-  const lastLoadedUid = useRef<string | null>(null);
 
   // Core financial state
   const [data, setData] = useState<DataItem[]>(createEmptyData());
@@ -100,8 +99,26 @@ export function useFinancialState() {
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<Timestamp | null>(null);
   const [saveConflict, setSaveConflict] = useState(false);
 
-  // Hydration state (track if component has loaded initial data)
-  const [hydrated, setHydrated] = useState(false);
+  // Hydration state: tracks WHICH user's data is currently loaded into `data`/`fixed`/etc,
+  // rather than a plain boolean. `undefined` = not determined yet (initial mount, before the
+  // load effect below has run even once); `null` = confirmed logged-out (empty state loaded);
+  // a string = the uid whose real data is currently loaded.
+  //
+  // `hydrated` is then DERIVED from this + the current `user`, computed fresh on every render
+  // (not stored as its own state). This matters for a subtle React timing issue: when `user`
+  // transitions (e.g. null -> a real, already-registered user), the load effect below and the
+  // page-level "auto-open Setup wizard if no data" effect in app/page.tsx both run in the SAME
+  // commit, using that commit's render values. A plain boolean `hydrated` state set by the load
+  // effect wouldn't be visible to the page-level effect until the NEXT render, so the page-level
+  // effect would see a stale hydrated=true (left over from the previous user/session) together
+  // with the still-empty `data` for the new user, and wrongly decide "no data, show Setup" -
+  // flashing the wizard open before the real data arrived a moment later. Comparing against the
+  // uid instead of a boolean fixes this: `dataUid` still holds the OLD uid/null in that same
+  // render, which correctly does not match the new `user.uid`, so `hydrated` is immediately
+  // (and consistently, in every reader) false for that render - no flash.
+  const [dataUid, setDataUid] = useState<string | null | undefined>(undefined);
+  const hydrated = user ? dataUid === user.uid : dataUid === null;
+
 
   // Transaction deserialization helper
   const deserializeTransactions = useCallback((stored?: SerializedTransactions | LegacyTransactions | null): Transactions => {
@@ -171,13 +188,12 @@ export function useFinancialState() {
         setSaveConflict(false);
         setError(null);
         setIsLoading(false);
-        setHydrated(true);
-        lastLoadedUid.current = null;
+        setDataUid(null);
         return;
       }
 
-      // Skip redundant reloads for the same user once hydrated
-      if (hydrated && lastLoadedUid.current === user.uid) {
+      // Skip redundant reloads: data for this exact user is already loaded.
+      if (dataUid === user.uid) {
         return;
       }
 
@@ -235,7 +251,6 @@ export function useFinancialState() {
           setPlanStartDateBase(saved.startDate ? new Date(`${saved.startDate}T00:00:00`) : DEFAULT_START_DATE);
           setLastSaved((saved.updatedAt as Timestamp | undefined)?.toDate?.() ?? null);
           setBaseUpdatedAt((saved.updatedAt as Timestamp | null | undefined) ?? null);
-          lastLoadedUid.current = user.uid;
         } else {
           // No data found: this is a brand-new user. Leave planStartDateBase unset so
           // planStartDate is computed live from their (possibly still-default) salaryDay
@@ -248,7 +263,6 @@ export function useFinancialState() {
           setAutoRollover(false);
           setSalaryDay(DEFAULT_SALARY_DAY);
           setPlanStartDateBase(null);
-          lastLoadedUid.current = user.uid;
         }
       } catch (err) {
         console.error('Failed to load from Firestore', err);
@@ -260,12 +274,12 @@ export function useFinancialState() {
         setTransactions(createEmptyTransactions());
       } finally {
         setIsLoading(false);
-        setHydrated(true);
+        setDataUid(user.uid);
       }
     };
 
     loadFromFirestore();
-  }, [user, authLoading, hydrated, deserializeTransactions]);
+  }, [user, authLoading, dataUid, deserializeTransactions]);
 
   // Manual save function
   const saveData = useCallback(async (overrides?: {
