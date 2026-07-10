@@ -7,6 +7,18 @@
 
 > This repository intentionally keeps exactly three living specification documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) (this file), [FUNCTIONAL_REQUIREMENTS.md](FUNCTIONAL_REQUIREMENTS.md), and [TEST_SCENARIOS.md](TEST_SCENARIOS.md). Update this file whenever architecture changes instead of creating new analysis/checkpoint files.
 
+**Recent Updates (Jul 11, 2026 - Dark professional theme redesign):**
+- ✅ App now runs in dark mode by default (`<html className="dark">`), with a navy/charcoal
+  background + single indigo/blue `--primary` accent defined in `app/globals.css` (shadcn/ui
+  CSS-variable token system).
+- ✅ Migrated ad-hoc hardcoded Tailwind colors (bg-white, gray-*, slate-*, blue-* utility
+  classes) app-wide to theme tokens (`bg-card`, `bg-muted`, `text-foreground`,
+  `text-muted-foreground`, `border-border`, `bg-primary`/`text-primary`) so all
+  sections/modals share one consistent, theme-aware palette; semantic alert colors
+  (red/green/amber) tuned to translucent dark-safe variants.
+- ✅ Pure visual change - no functional/behavioral logic touched; full test suite (789/789)
+  and `npm run build` verified after the change.
+
 **Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
 - ✅ Added responsive 2-column grid layout (Monthly+Variable left, Fixed 480px right)
 - ✅ Updated Component Architecture section with visual layout diagram
@@ -278,8 +290,9 @@ lib/
 - **Language:** TypeScript 5.x (100% type coverage, zero `any` types)
 
 ### UI & Styling
-- **CSS:** Tailwind CSS 4.x
-- **Components:** Radix UI (accessible primitives)
+- **CSS:** Tailwind CSS 4.x, dark-mode-first theme (shadcn/ui "new-york" style, CSS-variable
+  tokens in `app/globals.css` - navy/charcoal background, indigo/blue `--primary` accent)
+- **Components:** Radix UI (accessible primitives), shadcn/ui `components/ui/*` (Button, Card)
 - **Icons:** Lucide React
 
 ### Backend & Data

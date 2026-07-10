@@ -102,8 +102,10 @@ describe('BudgetSection', () => {
 
   it('shows remaining amounts', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
-    // Remaining inputs are disabled with bg-slate-50 class
-    const remainingInputs = document.querySelectorAll('.bg-slate-50[disabled]');
+    // Remaining inputs are read-only (always disabled, unlike Spent which is conditionally disabled)
+    const remainingInputs = Array.from(
+      document.querySelectorAll('input[disabled]')
+    ).filter((el) => el.closest('div')?.textContent?.includes('Remaining'));
     expect(remainingInputs[0]).toHaveValue(1800);
     expect(remainingInputs[1]).toHaveValue(1500);
   });

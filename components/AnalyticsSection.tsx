@@ -42,15 +42,15 @@ export interface AnalyticsSectionProps {
 
 const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
   const colorClasses = {
-    blue: 'from-blue-500 to-blue-600',
+    blue: 'from-primary to-blue-600',
     green: 'from-green-500 to-green-600',
     purple: 'from-purple-500 to-purple-600',
     orange: 'from-orange-500 to-orange-600'
   };
 
   const bgClasses = {
-    blue: 'bg-blue-100/80 border-blue-300',
-    green: 'bg-green-100/80 border-green-300',
+    blue: 'bg-primary/15/80 border-primary/40',
+    green: 'bg-green-500/15/80 border-green-300',
     purple: 'bg-purple-100/80 border-purple-300',
     orange: 'bg-orange-100/80 border-orange-300'
   };
@@ -61,10 +61,10 @@ const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
         <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} text-white flex items-center justify-center shadow-md`}>
           <Icon className="w-5 h-5" />
         </div>
-        <div className="text-sm font-semibold text-gray-700">{label}</div>
+        <div className="text-sm font-semibold text-foreground/90">{label}</div>
       </div>
-      <div className="text-2xl sm:text-3xl font-bold text-gray-900">{value.toFixed(0)} SEK</div>
-      {sub && <div className="text-xs text-gray-600">{sub}</div>}
+      <div className="text-2xl sm:text-3xl font-bold text-foreground">{value.toFixed(0)} SEK</div>
+      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
 };
@@ -115,14 +115,14 @@ export default memo(function AnalyticsSection({
       </div>
 
       {overspendWarning && (
-        <div className={`${criticalOverspend ? 'bg-red-100 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
+        <div className={`${criticalOverspend ? 'bg-red-500/15 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
           <div className="flex items-start gap-3">
-            <AlertTriangle className={`w-5 h-5 mt-0.5 ${criticalOverspend ? 'text-red-700' : 'text-yellow-700'}`} />
+            <AlertTriangle className={`w-5 h-5 mt-0.5 ${criticalOverspend ? 'text-red-400' : 'text-yellow-700'}`} />
             <div>
               <h3 className={`font-bold ${criticalOverspend ? 'text-red-900' : 'text-yellow-900'} mb-1`}>
                 {criticalOverspend ? '🚨 Critical Budget Alert' : '⚠️ Budget Warning'}
               </h3>
-              <p className={`text-sm ${criticalOverspend ? 'text-red-800' : 'text-yellow-800'}`}>{overspendWarning}</p>
+              <p className={`text-sm ${criticalOverspend ? 'text-red-800' : 'text-yellow-400'}`}>{overspendWarning}</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default memo(function AnalyticsSection({
               <PiggyBank className="w-5 h-5" />
               Unspent from Last Month
             </h3>
-            <p className="text-sm text-green-800">
+            <p className="text-sm text-green-400">
               You have {rolloverAmount.toFixed(0)} SEK unused budget
             </p>
             {(rolloverDaysRemaining ?? 0) > 0 && (
@@ -154,7 +154,7 @@ export default memo(function AnalyticsSection({
       {showRollover && (
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
           <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {rolloverAmount.toFixed(0)} SEK to savings?</h3>
-          <p className="text-sm text-green-800 mb-3">This will move your unused budget from last month into savings.</p>
+          <p className="text-sm text-green-400 mb-3">This will move your unused budget from last month into savings.</p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button 
               onClick={onConfirmRollover}
@@ -164,7 +164,7 @@ export default memo(function AnalyticsSection({
             </button>
             <button 
               onClick={onCancelRollover}
-              className="flex-1 sm:flex-none bg-white text-green-700 px-4 py-2 rounded-xl hover:bg-green-50 border-2 border-green-300 transition-all"
+              className="flex-1 sm:flex-none bg-card text-green-700 px-4 py-2 rounded-xl hover:bg-green-50 border-2 border-green-300 transition-all"
             >
               Cancel
             </button>

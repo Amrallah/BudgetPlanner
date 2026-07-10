@@ -5,6 +5,13 @@
 **Status:** Canonical functional + UI/UX reference. This is the single source of truth for functional behavior and UI/UX design; `UI_UX_REQUIREMENTS.md` has been merged into this document (see [Appendix A](#appendix-a-uiux-design-reference)) and retired.  
 **Last Verification:** Full codebase read - app/page.tsx, lib/ utilities, type definitions, hooks, components
 
+**Recent Updates (Jul 11, 2026 - Dark professional theme redesign):**
+- ✅ App-wide visual redesign: dark navy/charcoal theme by default with a single indigo/blue
+  accent color, replacing the previous light gray/blue ad-hoc palette across all sections,
+  cards, modals, and popups.
+- ✅ Purely presentational (colors/tokens only) - no functional requirement changes; all
+  existing behaviors, flows, and validations described below are unaffected.
+
 **Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
 - ✅ Updated F10 (Fixed Expense Management) with modern UI documentation
 - ✅ Documented icon-only payment toggle design

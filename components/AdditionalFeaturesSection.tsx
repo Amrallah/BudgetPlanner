@@ -44,13 +44,13 @@ export default function AdditionalFeaturesSection({
       {overspendWarning && (
         <div className={`rounded-xl p-4 border-2 flex items-start gap-3 ${
           criticalOverspend
-            ? 'bg-red-50 border-red-300'
-            : 'bg-yellow-50 border-yellow-300'
+            ? 'bg-red-500/10 border-red-300'
+            : 'bg-yellow-500/10 border-yellow-300'
         }`}>
           <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-            criticalOverspend ? 'text-red-700' : 'text-yellow-700'
+            criticalOverspend ? 'text-red-400' : 'text-yellow-700'
           }`} />
-          <div className={criticalOverspend ? 'text-red-800' : 'text-yellow-800'}>
+          <div className={criticalOverspend ? 'text-red-800' : 'text-yellow-400'}>
             <div className="font-bold">{criticalOverspend ? 'Critical Overspend' : 'Overspend Warning'}</div>
             <div className="text-sm mt-1">{overspendWarning}</div>
           </div>
@@ -92,7 +92,7 @@ export default function AdditionalFeaturesSection({
                 </button>
                 <button
                   onClick={onCancelRollover}
-                  className="flex-1 bg-gray-200 text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-300 transition-all text-sm font-medium"
+                  className="flex-1 bg-muted text-foreground px-3 py-2 rounded-lg hover:bg-muted transition-all text-sm font-medium"
                 >
                   Cancel
                 </button>

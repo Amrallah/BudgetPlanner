@@ -662,7 +662,7 @@ export default function FinancialPlanner() {
         key: 'prev',
         editable: editPrev && !isMonthLocked,
         button: (
-          <button onClick={() => setEditPrev(!editPrev)} className="text-blue-600 hover:text-blue-800">
+          <button onClick={() => setEditPrev(!editPrev)} className="text-primary hover:text-primary">
             <Edit2 size={14} />
           </button>
         )
@@ -1715,10 +1715,10 @@ export default function FinancialPlanner() {
 
 if (authLoading || !financialHydrated) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600 text-lg">Loading your financial data...</p>
+        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground text-lg">Loading your financial data...</p>
       </div>
     </div>
   );
@@ -1729,36 +1729,36 @@ if (!user) {
 }
 
 return (
-  <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-2 sm:p-4">
+  <div className="min-h-screen bg-background p-2 sm:p-4">
     <div className="max-w-7xl mx-auto">
         {undoPrompt && (
-          <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-blue-900 text-sm font-medium">
+          <div className="bg-primary/10 border-2 border-primary/40 rounded-xl p-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-primary text-sm font-medium">
               Previous split detected. Click below to undo the last {undoPrompt.kind === 'salary' ? 'salary change' : undoPrompt.kind === 'budget' ? 'budget change' : undoPrompt.kind === 'extra' ? 'extra income split' : 'added expense'}.
             </div>
             <div className="flex gap-2">
-              <button onClick={handleApplyUndo} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all">UNDO PREVIOUS SPLIT</button>
-              <button onClick={()=>setUndoPrompt(null)} className="bg-white text-blue-700 px-4 py-2 rounded-lg border border-blue-300 hover:bg-blue-100 transition-all">Dismiss</button>
+              <button onClick={handleApplyUndo} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-all">UNDO PREVIOUS SPLIT</button>
+              <button onClick={()=>setUndoPrompt(null)} className="bg-card text-primary px-4 py-2 rounded-lg border border-primary/40 hover:bg-primary/15 transition-all">Dismiss</button>
             </div>
           </div>
         )}
         <div className="mb-4 sm:mb-5">
-          <div className="bg-white/90 backdrop-blur-md border border-gray-200 rounded-xl shadow-xl p-3 sm:p-4 flex flex-col gap-3">
+          <div className="bg-card/90 backdrop-blur-md border border-border rounded-xl shadow-xl p-3 sm:p-4 flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-md">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-indigo-600 text-white flex items-center justify-center shadow-md">
                   <DollarSign className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Finance Dashboard</h1>
-                  <p className="text-xs sm:text-sm text-gray-600 leading-snug">Monthly Budget Planner</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">Finance Dashboard</h1>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-snug">Monthly Budget Planner</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-auto">
+              <div className="flex items-center justify-between gap-3 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-auto">
                 <span className="font-semibold truncate max-w-[180px] sm:max-w-[220px] text-left">{user?.email ?? 'Account'}</span>
                 <button
                   onClick={() => signOut(auth)}
-                  className="px-3 py-1 rounded-md bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800"
+                  className="px-3 py-1 rounded-md bg-primary text-white text-xs font-semibold hover:bg-secondary"
                 >
                   Log out
                 </button>
@@ -1768,8 +1768,8 @@ return (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 w-full">
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-56 md:w-64">
-                    <span className="text-[11px] text-gray-600">Month</span>
+                  <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-56 md:w-64">
+                    <span className="text-[11px] text-muted-foreground">Month</span>
                     <select
                       value={sel}
                       onChange={(e) => setSel(parseInt(e.target.value))}
@@ -1797,14 +1797,14 @@ return (
                     onClick={openManualRollover}
                     disabled={manualAdvanceDisabled}
                     title={manualAdvanceReason || 'Lock this month and move to the next salary period.'}
-                    className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${manualAdvanceDisabled ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'}`}
+                    className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${manualAdvanceDisabled ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-primary text-white hover:bg-primary/90 active:bg-primary/80'}`}
                   >
                     <Clock size={16} />Start new salary month
                   </button>
                   {undoPrompt && (
                     <button
                       onClick={handleApplyUndo}
-                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 shadow-sm min-w-[110px]"
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-100 shadow-sm min-w-[110px]"
                     >
                       Undo last change
                     </button>
@@ -1813,7 +1813,7 @@ return (
                     <button
                       onClick={saveChanges}
                       disabled={budgetBalanceIssues.length > 0}
-                      className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${budgetBalanceIssues.length > 0 ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
+                      className={`flex-1 sm:flex-none px-3 py-2 rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap ${budgetBalanceIssues.length > 0 ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800'}`}
                       title={budgetBalanceIssues.length > 0 ? 'Resolve budget balance issues before saving.' : ''}
                     >
                       <Save size={16} />Save
@@ -1834,7 +1834,7 @@ return (
                     type="button"
                     aria-pressed={autoRollover}
                     onClick={() => setAutoRollover(!autoRollover)}
-                    className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-semibold border shadow-sm transition-all ${autoRollover ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                    className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-semibold border shadow-sm transition-all ${autoRollover ? 'bg-primary text-white border-primary' : 'bg-muted/50 text-foreground/90 border-border hover:border-border'}`}
                   >
                     <span>Auto-rollover</span>
                     <span className="text-[11px] opacity-80">after 5 days</span>
@@ -1842,18 +1842,18 @@ return (
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
                   {lastSaved && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-800 border border-green-200">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-400 border border-green-500/30">
                       <Check className="w-4 h-4" /> Saved {lastSaved.toLocaleTimeString()}
                     </div>
                   )}
                   {pendingChanges.length > 0 && (
-                    <div className="flex items-center gap-2 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-200 text-yellow-800 shadow-sm">
+                    <div className="flex items-center gap-2 bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-500/30 text-yellow-400 shadow-sm">
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-sm font-medium">{pendingChanges.length} pending changes</span>
                     </div>
                   )}
                   {isMonthLocked && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted text-foreground/90 border border-border">
                       <Lock className="w-4 h-4" /> Month locked
                     </div>
                   )}
@@ -1861,25 +1861,25 @@ return (
               </div>
 
               {saveConflict && (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-red-50 px-3 py-2 rounded-xl border border-red-200 shadow-sm">
-                  <div className="flex items-center gap-2 text-red-700 text-sm font-medium">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-red-500/10 px-3 py-2 rounded-xl border border-red-500/30 shadow-sm">
+                  <div className="flex items-center gap-2 text-red-400 text-sm font-medium">
                     <AlertTriangle className="w-4 h-4" />
                     <span>Save conflict detected — remote changes exist.</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={handleReloadRemote} className="bg-white text-red-700 px-3 py-1 rounded-md shadow-sm border border-red-200">Reload</button>
+                    <button onClick={handleReloadRemote} className="bg-card text-red-400 px-3 py-1 rounded-md shadow-sm border border-red-500/30">Reload</button>
                     <button onClick={handleForceSave} className="bg-red-700 text-white px-3 py-1 rounded-md shadow-sm">Force</button>
                   </div>
                 </div>
               )}
             </div>
             {budgetBalanceIssues.length > 0 && (
-              <div className="flex flex-col gap-2 bg-red-50 border border-red-300 px-3 py-2 rounded-lg w-full shadow-sm">
+              <div className="flex flex-col gap-2 bg-red-500/10 border border-red-300 px-3 py-2 rounded-lg w-full shadow-sm">
                 <div className="flex items-center gap-2 text-red-800 text-sm font-medium">
                   <AlertTriangle className="w-4 h-4" />
                   Budget allocations exceed available budget balance. Saving is disabled until budgets are rebalanced.
                 </div>
-                <ul className="text-xs text-red-700 list-disc pl-5">
+                <ul className="text-xs text-red-400 list-disc pl-5">
                   {budgetBalanceIssues.slice(0,3).map((msg, idx) => (
                     <li key={idx}>{msg}</li>
                   ))}
@@ -1928,7 +1928,7 @@ return (
           {/* Left column: Monthly + Variable Expenses stacked */}
           <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
             {/* Monthly */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+            <div className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-5">
               <MonthlySection
               monthLabel={cur.month}
               fields={monthlyFields}
@@ -1947,19 +1947,19 @@ return (
             />
             {salarySplitActive && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-              <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="bg-card rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-blue-700" />
-                <h3 className="font-bold text-blue-900">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
+                <AlertTriangle className="w-5 h-5 text-primary" />
+                <h3 className="font-bold text-primary">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
               </div>
-              <p className="text-sm text-blue-800 mb-3">
+              <p className="text-sm text-primary mb-3">
                 {salaryInitial < data[sel].inc 
                   ? 'Your salary increased. Allocate the additional amount across categories.' 
                   : 'Your salary decreased. Choose how to reduce your budgets.'}
               </p>
               
               {salarySplitError && (
-                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {salarySplitError}
                 </div>
@@ -1967,7 +1967,7 @@ return (
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Groceries</label>
                   <input 
                     type="number" 
                     placeholder="0" 
@@ -1981,11 +1981,11 @@ return (
                       });
                       setSalarySplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Entertainment</label>
                   <input 
                     type="number" 
                     placeholder="0" 
@@ -1999,11 +1999,11 @@ return (
                       });
                       setSalarySplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Savings</label>
                   <input 
                     type="number" 
                     placeholder="0" 
@@ -2017,14 +2017,14 @@ return (
                       });
                       setSalarySplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
                 <div className="col-span-full">
-                  <div className="text-sm text-gray-600 mb-2">
+                  <div className="text-sm text-muted-foreground mb-2">
                     Allocated: {(salarySplitAdj.groc + salarySplitAdj.ent + salarySplitAdj.save).toFixed(0)} / {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK
                   </div>
-                  <label className="flex items-center gap-2 mb-3 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 mb-3 text-sm text-foreground/90">
                     <input 
                       type="checkbox"
                       checked={salarySplitApplyFuture}
@@ -2115,7 +2115,7 @@ return (
                       setSalarySplitApplyFuture(false);
                       setHasChanges(true);
                     }}
-                    className="w-full bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all"
+                    className="w-full bg-primary text-white p-3 rounded-xl hover:bg-primary/90 active:bg-primary/80 shadow-md transition-all"
                   >
                     Apply Salary Change Split
                   </button>
@@ -2131,7 +2131,7 @@ return (
                       setSalarySplitError('');
                       setSalarySplitApplyFuture(false);
                     }}
-                    className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                    className="mt-2 w-full bg-muted text-foreground p-2 rounded-xl hover:bg-muted"
                   >
                     Cancel & Revert Salary
                   </button>
@@ -2143,17 +2143,17 @@ return (
 
           {forceRebalanceOpen && budgetBalanceIssues.length > 0 && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-              <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="bg-card rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-6 h-6 text-red-700" />
-                  <h3 className="text-xl font-bold text-gray-900">Budget Rebalance Required</h3>
+                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                  <h3 className="text-xl font-bold text-foreground">Budget Rebalance Required</h3>
                 </div>
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
                   <p className="text-sm text-red-800 font-medium mb-1">Month: {months[forceRebalanceTotals?.idx ?? sel].name}</p>
                   <p className="text-sm text-red-800">
                     Your budget allocations must equal the available balance. Current difference: <span className="font-bold">{(forceRebalanceTotals?.deficit ?? 0).toFixed(0)} SEK</span>
                   </p>
-                  <div className="mt-2 text-xs text-red-700">
+                  <div className="mt-2 text-xs text-red-400">
                     <div>Available balance: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></div>
                     <div>Current total budgets: {((forceRebalanceTotals?.saveTotal ?? 0) + (forceRebalanceTotals?.grocTotal ?? 0) + (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</div>
                     <div className="font-medium mt-1">⚠️ Sum of budgets must exactly equal available balance</div>
@@ -2161,14 +2161,14 @@ return (
                 </div>
 
                 {forceRebalanceError && (
-                  <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
                     {forceRebalanceError}
                   </div>
                 )}
 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-gray-900 mb-3">Quick Fix Options (allocate exactly {(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK)</h4>
+                  <h4 className="font-semibold text-foreground mb-3">Quick Fix Options (allocate exactly {(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK)</h4>
                   <div className="space-y-2">
                     <button
                       onClick={() => {
@@ -2177,10 +2177,10 @@ return (
                         setSelectedOption('adjust-save');
                         setForceRebalanceError('');
                       }}
-                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-save' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
-                      <div className="font-medium text-gray-900">Option 1: Adjust Savings</div>
-                      <div className="text-sm text-blue-700 mt-1">Savings: {(forceRebalanceTotals?.saveTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
-                      <div className="text-xs text-gray-600 mt-1">Keep groceries and entertainment unchanged</div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-save' ? 'bg-primary/15 border-primary ring-2 ring-primary/30' : 'bg-muted/50 hover:bg-primary/10 border-border'}`}>
+                      <div className="font-medium text-foreground">Option 1: Adjust Savings</div>
+                      <div className="text-sm text-primary mt-1">Savings: {(forceRebalanceTotals?.saveTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-muted-foreground mt-1">Keep groceries and entertainment unchanged</div>
                     </button>
                     <button
                       onClick={() => {
@@ -2189,10 +2189,10 @@ return (
                         setSelectedOption('adjust-groc');
                         setForceRebalanceError('');
                       }}
-                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-groc' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
-                      <div className="font-medium text-gray-900">Option 2: Adjust Groceries</div>
-                      <div className="text-sm text-blue-700 mt-1">Groceries: {(forceRebalanceTotals?.grocTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
-                      <div className="text-xs text-gray-600 mt-1">Keep savings and entertainment unchanged</div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-groc' ? 'bg-primary/15 border-primary ring-2 ring-primary/30' : 'bg-muted/50 hover:bg-primary/10 border-border'}`}>
+                      <div className="font-medium text-foreground">Option 2: Adjust Groceries</div>
+                      <div className="text-sm text-primary mt-1">Groceries: {(forceRebalanceTotals?.grocTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-muted-foreground mt-1">Keep savings and entertainment unchanged</div>
                     </button>
                     <button
                       onClick={() => {
@@ -2201,10 +2201,10 @@ return (
                         setSelectedOption('adjust-ent');
                         setForceRebalanceError('');
                       }}
-                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-ent' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
-                      <div className="font-medium text-gray-900">Option 3: Adjust Entertainment</div>
-                      <div className="text-sm text-blue-700 mt-1">Entertainment: {(forceRebalanceTotals?.entTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0)).toFixed(0)} SEK</span></div>
-                      <div className="text-xs text-gray-600 mt-1">Keep savings and groceries unchanged</div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-ent' ? 'bg-primary/15 border-primary ring-2 ring-primary/30' : 'bg-muted/50 hover:bg-primary/10 border-border'}`}>
+                      <div className="font-medium text-foreground">Option 3: Adjust Entertainment</div>
+                      <div className="text-sm text-primary mt-1">Entertainment: {(forceRebalanceTotals?.entTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      <div className="text-xs text-muted-foreground mt-1">Keep savings and groceries unchanged</div>
                     </button>
                     <button
                       onClick={() => {
@@ -2213,21 +2213,21 @@ return (
                         setSelectedOption('equal-split');
                         setForceRebalanceError('');
                       }}
-                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'equal-split' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
-                      <div className="font-medium text-gray-900">Option 4: Equal Split</div>
-                      <div className="text-sm text-blue-700 mt-1">
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'equal-split' ? 'bg-primary/15 border-primary ring-2 ring-primary/30' : 'bg-muted/50 hover:bg-primary/10 border-border'}`}>
+                      <div className="font-medium text-foreground">Option 4: Equal Split</div>
+                      <div className="text-sm text-primary mt-1">
                         Each category: <span className="font-bold">{(((forceRebalanceTotals?.available ?? 0) / 3)).toFixed(0)} SEK</span>
                       </div>
-                      <div className="text-xs text-gray-600 mt-1">Distribute available balance equally across all categories</div>
+                      <div className="text-xs text-muted-foreground mt-1">Distribute available balance equally across all categories</div>
                     </button>
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-gray-900 mb-2">Or Adjust Manually (this month only)</h4>
+                  <h4 className="font-semibold text-foreground mb-2">Or Adjust Manually (this month only)</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs mb-1 font-medium text-gray-700">Savings</label>
+                      <label className="block text-xs mb-1 font-medium text-foreground/90">Savings</label>
                       <input
                         type="number"
                         min="0"
@@ -2237,11 +2237,11 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        className="w-full p-2 border-2 border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs mb-1 font-medium text-gray-700">Groceries</label>
+                      <label className="block text-xs mb-1 font-medium text-foreground/90">Groceries</label>
                       <input
                         type="number"
                         min="0"
@@ -2251,11 +2251,11 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        className="w-full p-2 border-2 border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs mb-1 font-medium text-gray-700">Entertainment</label>
+                      <label className="block text-xs mb-1 font-medium text-foreground/90">Entertainment</label>
                       <input
                         type="number"
                         min="0"
@@ -2265,16 +2265,16 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                        className="w-full p-2 border-2 border-border rounded-lg focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                       />
                     </div>
                   </div>
-                  <div className="mt-2 text-xs text-gray-600 flex justify-between">
+                  <div className="mt-2 text-xs text-muted-foreground flex justify-between">
                     <span>New total: <span className={Math.abs(forceRebalanceTotal - (forceRebalanceTotals?.available ?? 0)) > 0.01 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}>{forceRebalanceTotal.toFixed(0)} SEK</span></span>
                     <span>Must equal: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></span>
                   </div>
                   {selectedOption === 'manual' && budgetBalanceIssues.length > 1 && (
-                    <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    <p className="mt-2 text-xs text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded-lg p-2">
                       Manual values only apply to this month (each problematic month has a different available balance, so the same numbers can&apos;t be copied to all of them). Use a Quick Fix option above to fix all {budgetBalanceIssues.length} months at once.
                     </p>
                   )}
@@ -2283,14 +2283,14 @@ return (
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={applyForceRebalance}
-                    className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all font-semibold"
+                    className="flex-1 bg-primary text-white px-4 py-3 rounded-lg hover:bg-primary/90 active:bg-primary/80 shadow-md transition-all font-semibold"
                   >
                     Apply This Month
                   </button>
                   {budgetBalanceIssues && budgetBalanceIssues.length > 1 && selectedOption !== 'manual' && (
                     <button
                       onClick={applyForceRebalanceToAll}
-                      className="flex-1 bg-blue-800 text-white px-4 py-3 rounded-lg hover:bg-blue-900 active:bg-blue-950 shadow-md transition-all font-semibold"
+                      className="flex-1 bg-primary/80 text-white px-4 py-3 rounded-lg hover:bg-primary/90 active:bg-primary shadow-md transition-all font-semibold"
                       title={`Apply selected option to all ${budgetBalanceIssues.length} problematic months at once`}
                     >
                       Fix All ({budgetBalanceIssues.length})
@@ -2298,7 +2298,7 @@ return (
                   )}
                   <button
                     onClick={cancelForceRebalance}
-                    className="flex-1 bg-gray-400 text-white px-4 py-3 rounded-lg hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all font-semibold"
+                    className="flex-1 bg-muted-foreground/40 text-white px-4 py-3 rounded-lg hover:bg-muted-foreground/50 active:bg-muted-foreground/60 shadow-md transition-all font-semibold"
                     title="Revert to the last valid budget state for this month and close"
                   >
                     Cancel
@@ -2317,12 +2317,12 @@ return (
                   {' '}({budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? '+' : ''}{(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK)
                 </h3>
               </div>
-              <p className="text-sm text-yellow-800 mb-3">
+              <p className="text-sm text-yellow-400 mb-3">
                 To maintain budget balance, redistribute {Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK between the other budgets.
               </p>
               
               {budgetRebalanceError && (
-                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {budgetRebalanceError}
                 </div>
@@ -2331,7 +2331,7 @@ return (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {budgetRebalanceModal.type !== 'save' && (
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Savings</label>
                     <input 
                       type="number" 
                       placeholder="0" 
@@ -2347,13 +2347,13 @@ return (
                         } : null);
                         setBudgetRebalanceError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
                     />
                   </div>
                 )}
                 {budgetRebalanceModal.type !== 'groc' && (
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Groceries</label>
                     <input 
                       type="number" 
                       placeholder="0" 
@@ -2372,13 +2372,13 @@ return (
                         } : null);
                         setBudgetRebalanceError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
                     />
                   </div>
                 )}
                 {budgetRebalanceModal.type !== 'ent' && (
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Entertainment</label>
                     <input 
                       type="number" 
                       placeholder="0" 
@@ -2394,25 +2394,25 @@ return (
                         } : null);
                         setBudgetRebalanceError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all"
                     />
                   </div>
                 )}
                 <div className="col-span-full">
-                  <div className="text-sm text-gray-600 mb-2">
+                  <div className="text-sm text-muted-foreground mb-2">
                     Allocated: {(budgetRebalanceModal.split.a + budgetRebalanceModal.split.b).toFixed(0)} / {Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK
                   </div>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2 mt-3 p-3 bg-white rounded-lg">
+              <div className="flex items-center gap-2 mt-3 p-3 bg-card rounded-lg">
                 <input
                   type="checkbox"
                   checked={budgetRebalanceApplyFuture}
                   onChange={(e) => setBudgetRebalanceApplyFuture(e.target.checked)}
                   className="w-4 h-4 text-yellow-600 rounded"
                 />
-                <label className="text-sm text-gray-700">
+                <label className="text-sm text-foreground/90">
                   Apply to future months (from this month onward)
                 </label>
               </div>
@@ -2536,7 +2536,7 @@ return (
                       setBudgetRebalanceError('');
                       setBudgetRebalanceApplyFuture(false);
                     }}
-                    className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                    className="mt-2 w-full bg-muted text-foreground p-2 rounded-xl hover:bg-muted"
                   >
                     Cancel & Revert
                   </button>
@@ -2563,19 +2563,19 @@ return (
 
             return (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-              <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="bg-card rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-5 h-5 text-red-700" />
+                  <AlertTriangle className="w-5 h-5 text-red-400" />
                   <h3 className="font-bold text-red-900">New Fixed Expense: {newExpenseSplit.expense.name}</h3>
                 </div>
                 <p className="text-sm text-red-800 mb-3">
                   This expense affects {newExpenseSplit.expense.amts.filter(a => a > 0).length} month(s). 
                   For the first affected month ({months[firstIdx].name}), allocate {firstAmt.toFixed(0)} SEK budget reduction across categories.
                 </p>
-                <div className="mb-3 p-3 bg-white border border-red-200 rounded-lg text-xs text-gray-700">
+                <div className="mb-3 p-3 bg-card border border-red-500/30 rounded-lg text-xs text-foreground/90">
                   <div className="flex justify-between"><span>Available after adding</span><span>{availableAfterAdd.toFixed(0)} SEK</span></div>
                   <div className="flex justify-between"><span>Budgets after split</span><span>{postBudgets.toFixed(0)} SEK</span></div>
-                  <div className={`flex justify-between font-semibold ${Math.abs(balanceGap) > 0.5 ? 'text-red-700' : 'text-green-700'}`}>
+                  <div className={`flex justify-between font-semibold ${Math.abs(balanceGap) > 0.5 ? 'text-red-400' : 'text-green-700'}`}>
                     <span>Balance gap</span>
                     <span>{balanceGap.toFixed(0)} SEK</span>
                   </div>
@@ -2587,7 +2587,7 @@ return (
                 </div>
                 
                 {newExpenseSplitError && (
-                  <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
                     {newExpenseSplitError}
                   </div>
@@ -2595,7 +2595,7 @@ return (
                 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Savings</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Reduce Savings</label>
                     <input 
                       type="number" 
                       min="0"
@@ -2612,11 +2612,11 @@ return (
                         } : null);
                         setNewExpenseSplitError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Groceries</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Reduce Groceries</label>
                     <input 
                       type="number" 
                       min="0"
@@ -2633,11 +2633,11 @@ return (
                         } : null);
                         setNewExpenseSplitError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">Reduce Entertainment</label>
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">Reduce Entertainment</label>
                     <input 
                       type="number" 
                       min="0"
@@ -2654,14 +2654,14 @@ return (
                         } : null);
                         setNewExpenseSplitError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
                     />
                   </div>
                   <div className="col-span-full">
-                    <div className="text-sm text-gray-600 mb-2">
+                    <div className="text-sm text-muted-foreground mb-2">
                       Allocated: {(newExpenseSplit.split.save + newExpenseSplit.split.groc + newExpenseSplit.split.ent).toFixed(0)} / {firstAmt.toFixed(0)} SEK
                     </div>
-                    <label className="flex items-center gap-2 mb-3 text-sm text-gray-700">
+                    <label className="flex items-center gap-2 mb-3 text-sm text-foreground/90">
                       <input 
                         type="checkbox"
                         checked={newExpenseSplit.applyToAll}
@@ -2744,7 +2744,7 @@ return (
                         setNewExpenseSplit(null);
                         setNewExpenseSplitError('');
                       }}
-                      className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200"
+                      className="mt-2 w-full bg-muted text-foreground p-2 rounded-xl hover:bg-muted"
                     >
                       Cancel
                     </button>
@@ -2757,7 +2757,7 @@ return (
 
           {extraSplitActive && data[sel].extraInc > 0 && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
-            <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-card rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-purple-700" />
                 <h3 className="font-bold text-purple-900">Split Extra Income: {data[sel].extraInc.toFixed(0)} SEK</h3>
@@ -2765,7 +2765,7 @@ return (
               <p className="text-sm text-purple-800 mb-3">Allocate your extra income across categories. Total must equal {data[sel].extraInc.toFixed(0)} SEK.</p>
               
               {extraSplitError && (
-                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {extraSplitError}
                 </div>
@@ -2773,7 +2773,7 @@ return (
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Groceries</label>
                   <input 
                     type="number" 
                     min="0" 
@@ -2790,11 +2790,11 @@ return (
                       });
                       setExtraSplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Entertainment</label>
                   <input 
                     type="number" 
                     min="0" 
@@ -2811,11 +2811,11 @@ return (
                       });
                       setExtraSplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Savings</label>
                   <input 
                     type="number" 
                     min="0" 
@@ -2832,11 +2832,11 @@ return (
                       });
                       setExtraSplitError('');
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all"
                   />
                 </div>
                 <div className="col-span-full">
-                  <div className="text-sm text-gray-600 mb-2">
+                  <div className="text-sm text-muted-foreground mb-2">
                     Allocated: {(extraAdj.groc + extraAdj.ent + extraAdj.save).toFixed(0)} / {data[sel].extraInc.toFixed(0)} SEK
                   </div>
                   <button
@@ -2919,7 +2919,7 @@ return (
                         setLastExtraApply(null);
                         setHasChanges(true);
                       }, { title: 'Undo extra income split?' });
-                    }} className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200">Undo Last Extra Split</button>
+                    }} className="mt-2 w-full bg-muted text-foreground p-2 rounded-xl hover:bg-muted">Undo Last Extra Split</button>
                   )}
                   <button
                     onClick={() => {
@@ -2930,7 +2930,7 @@ return (
                       setData(n);
                       setExtraSplitActive(false);
                     }}
-                    className="mt-2 w-full bg-gray-400 text-white p-2 rounded-xl hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all"
+                    className="mt-2 w-full bg-muted-foreground/40 text-white p-2 rounded-xl hover:bg-muted-foreground/50 active:bg-muted-foreground/60 shadow-md transition-all"
                   >
                     Cancel
                   </button>
@@ -2941,12 +2941,12 @@ return (
           )}
 
           {cur.extra > 0 && savingEdited && (
-            <div className="mt-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-xl shadow-md">
-              <h3 className="font-bold mb-3 text-blue-900">Split Freed Amount: {cur.extra.toFixed(0)} SEK</h3>
-              <p className="text-sm text-blue-800 mb-3">You reduced savings. Allocate the freed amount across categories.</p>
+            <div className="mt-4 p-4 bg-primary/10 border-2 border-primary/40 rounded-xl shadow-md">
+              <h3 className="font-bold mb-3 text-primary">Split Freed Amount: {cur.extra.toFixed(0)} SEK</h3>
+              <p className="text-sm text-primary mb-3">You reduced savings. Allocate the freed amount across categories.</p>
               
               {Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 && (
-                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   Total allocation must equal {cur.extra.toFixed(0)} SEK. Current: {(adj.groc + adj.ent + adj.save).toFixed(0)} SEK
                 </div>
@@ -2954,7 +2954,7 @@ return (
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Groceries</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Groceries</label>
                   <input 
                     type="number" 
                     min="0"
@@ -2966,11 +2966,11 @@ return (
                       if(v > cur.extra) return;
                       setAdj({ groc: v, ent: adj.ent, save: Math.max(0, cur.extra - v - adj.ent) });
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Entertainment</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Entertainment</label>
                   <input 
                     type="number" 
                     min="0"
@@ -2982,11 +2982,11 @@ return (
                       if(v > cur.extra) return;
                       setAdj({ groc: adj.groc, ent: v, save: Math.max(0, cur.extra - adj.groc - v) });
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-2 font-medium text-gray-700">Savings</label>
+                  <label className="block text-sm mb-2 font-medium text-foreground/90">Savings</label>
                   <input 
                     type="number" 
                     min="0"
@@ -2998,12 +2998,12 @@ return (
                       if(v > cur.extra) return;
                       setAdj({ groc: adj.groc, ent: Math.max(0, cur.extra - adj.groc - v), save: v });
                     }} 
-                    className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                    className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                   />
                 </div>
               </div>
               <div className="mt-3 text-sm flex justify-between">
-                <span className="text-gray-600">Allocated: {(adj.groc + adj.ent + adj.save).toFixed(0)} / {cur.extra.toFixed(0)} SEK</span>
+                <span className="text-muted-foreground">Allocated: {(adj.groc + adj.ent + adj.save).toFixed(0)} / {cur.extra.toFixed(0)} SEK</span>
                 <span className={Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
                   {Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 ? 'Unbalanced' : '✓ Balanced'}
                 </span>
@@ -3026,7 +3026,7 @@ return (
                   setHasChanges(true);
                 }} 
                 disabled={Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01}
-                className="w-full mt-3 bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full mt-3 bg-primary text-white p-3 rounded-xl hover:bg-primary/90 active:bg-primary/80 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Apply Split
               </button>
@@ -3051,26 +3051,26 @@ return (
           {/* Right column: Fixed Expenses only */}
           <div className="w-full lg:w-[480px]">
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
+            <div className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-10 rounded-full bg-amber-500" aria-hidden />
-                  <h3 className="text-sm sm:text-base font-semibold tracking-tight text-slate-900">Fixed Expenses</h3>
+                  <h3 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">Fixed Expenses</h3>
                 </div>
                 <button onClick={()=>setShowAdd(!showAdd)} className="w-full sm:w-auto bg-amber-600 text-white px-3 py-2 rounded-lg hover:bg-amber-700 active:bg-amber-800 flex items-center justify-center gap-2 shadow-sm transition-all text-sm font-semibold">
                   <Plus size={16}/>Add Expense
                 </button>
               </div>
-              <p className="text-xs text-slate-600 mb-3">Toggle payment status to reflect in your balance.</p>
+              <p className="text-xs text-muted-foreground mb-3">Toggle payment status to reflect in your balance.</p>
 
           {showAdd&&(
-            <div className="mb-4 p-3 sm:p-4 bg-slate-50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border border-slate-200">
+            <div className="mb-4 p-3 sm:p-4 bg-muted/50 rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 border border-border">
               <input 
                 type="text" 
                 placeholder="Expense Name" 
                 value={newExp.name} 
                 onChange={(e)=>setNewExp({...newExp,name:e.target.value})} 
-                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-muted-foreground border border-border rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
               />
               <input 
                 type="number" 
@@ -3082,15 +3082,15 @@ return (
                   const val = sanitizeNumberInput(e.target.value);
                   setNewExp({...newExp,amt:val});
                 }} 
-                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+                className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-muted-foreground border border-border rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
               />
-              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value, duration: e.target.value==='once' ? '' : newExp.duration})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
+              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value, duration: e.target.value==='once' ? '' : newExp.duration})} className="h-9 px-3 text-sm border border-border rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-foreground">
                 <option value="once">Once</option>
                 <option value="monthly">Monthly</option>
                 <option value="2">Every 2 months</option>
                 <option value="3">Every 3 months</option>
               </select>
-              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
+              <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="h-9 px-3 text-sm border border-border rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-foreground">
                 {months.slice(0,12).map((m,i)=><option key={i} value={i}>{m.name}</option>)}
               </select>
               {newExp.type!=='once' && (
@@ -3104,7 +3104,7 @@ return (
                     const val = sanitizeNumberInput(e.target.value);
                     setNewExp({...newExp, duration: val ? String(val) : ''});
                   }}
-                  className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900"
+                  className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-muted-foreground border border-border rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-foreground"
                 />
               )}
               <button 
@@ -3161,10 +3161,10 @@ return (
               const isPaid = e.spent[sel];
               const monthLocked = isMonthLocked;
               return (
-                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border shadow-sm hover:shadow-md transition-all">
                   <div className="flex-1 w-full">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold text-slate-900 text-sm">{e.name}</span>
+                      <span className="font-semibold text-foreground text-sm">{e.name}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -3177,7 +3177,7 @@ return (
                           setFixed(n);
                           setHasChanges(true);
                         }}
-                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-500/10'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
                         title={isPaid ? 'Mark unpaid' : 'Mark paid'}
                         aria-label={isPaid ? 'Mark unpaid' : 'Mark paid'}
                       >
@@ -3227,15 +3227,15 @@ return (
                         setFixed(n);
                       }} 
                       disabled={isPaid} 
-                      className="w-24 h-8 px-2 text-sm border border-slate-200 rounded-lg disabled:bg-slate-100 focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
+                      className="w-24 h-8 px-2 text-sm border border-border rounded-lg disabled:bg-muted focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
                     />
-                    <span className="text-xs text-slate-600">SEK</span>
+                    <span className="text-xs text-muted-foreground">SEK</span>
                     <button 
                       onClick={() => {
                         setPendingChanges(prev => prev.filter(c => !(c.idx === originalIndex && c.type === 'delete')));
                         setDeleteModal(prev => prev ? { ...prev, idx: originalIndex, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } } : { idx: originalIndex, monthIdx: sel, amt: e.amts[sel], scope: 'month', split: { save: 0, groc: 0, ent: 0 } });
                       }}
-                      className="text-red-600 p-1 rounded-lg hover:bg-red-50 active:bg-red-100 transition-all"
+                      className="text-red-600 p-1 rounded-lg hover:bg-red-500/10 active:bg-red-500/15 transition-all"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -3322,10 +3322,10 @@ return (
 
         {(deleteModal||changeModal)&&(
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-2xl font-bold mb-4 text-gray-800">{deleteModal?'Delete Expense':'Change Amount'}</h3>
+            <div className="bg-card rounded-xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-2xl font-bold mb-4 text-foreground">{deleteModal?'Delete Expense':'Change Amount'}</h3>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2 text-gray-700">Scope</label>
+                <label className="block text-sm font-medium mb-2 text-foreground/90">Scope</label>
                 <select 
                   value={(deleteModal ?? changeModal)?.scope ?? 'month'} 
                   onChange={(e)=>{
@@ -3333,7 +3333,7 @@ return (
                     if(deleteModal) setDeleteModal(prev => prev ? { ...prev, scope: val } : prev);
                     else setChangeModal(prev => prev ? { ...prev, scope: val } : prev);
                   }} 
-                  className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                 >
                   <option value="month">This month only</option>
                   <option value="future">This and future months</option>
@@ -3341,19 +3341,19 @@ return (
                 </select>
               </div>
               
-              <h4 className="font-semibold mb-2 text-gray-800">
+              <h4 className="font-semibold mb-2 text-foreground">
                 {deleteModal 
                   ? 'Split freed amount' 
                   : (changeModal && (changeModal.newAmt ?? 0) < (changeModal.oldAmt ?? 0)) 
                     ? 'Split freed amount' 
                     : 'Allocate additional cost from'}
               </h4>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-muted-foreground mb-3">
                 Total to {deleteModal || (changeModal && (changeModal.newAmt ?? 0) < (changeModal.oldAmt ?? 0)) ? 'split' : 'allocate'}: {Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
               </p>
               
               {splitError && (
-                <div className="mb-3 p-3 bg-red-100 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {splitError}
                 </div>
@@ -3362,7 +3362,7 @@ return (
               <div className="space-y-3 mb-4">
                 {(['save','groc','ent'] as (keyof Split)[]).map(k=>(
                   <div key={k}>
-                    <label className="block text-sm mb-2 font-medium text-gray-700">
+                    <label className="block text-sm mb-2 font-medium text-foreground/90">
                       {k==='save'?'Savings':k==='groc'?'Groceries':'Entertainment'}
                     </label>
                     <input 
@@ -3400,13 +3400,13 @@ return (
                         }
                         setSplitError('');
                       }} 
-                      className="w-full p-3 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                      className="w-full p-3 border-2 border-border rounded-xl focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
                     />
                   </div>
                 ))}
               </div>
               
-              <div className="text-sm text-gray-600 mb-4">
+              <div className="text-sm text-muted-foreground mb-4">
                 Allocated: {(((deleteModal ?? changeModal)?.split.save ?? 0) + ((deleteModal ?? changeModal)?.split.groc ?? 0) + ((deleteModal ?? changeModal)?.split.ent ?? 0)).toFixed(0)} / {Math.abs(deleteModal ? (deleteModal.amt ?? 0) : (((changeModal?.oldAmt ?? 0) - (changeModal?.newAmt ?? 0)))).toFixed(0)} SEK
               </div>
               
@@ -3480,7 +3480,7 @@ return (
                     setSplitError('');
                     setHasChanges(true);
                   }} 
-                  className="flex-1 bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all"
+                  className="flex-1 bg-primary text-white p-3 rounded-xl hover:bg-primary/90 active:bg-primary/80 shadow-md transition-all"
                 >
                   Confirm
                 </button>
@@ -3490,7 +3490,7 @@ return (
                     setChangeModal(null);
                     setSplitError('');
                   }} 
-                  className="flex-1 bg-gray-400 text-white p-3 rounded-xl hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all"
+                  className="flex-1 bg-muted-foreground/40 text-white p-3 rounded-xl hover:bg-muted-foreground/50 active:bg-muted-foreground/60 shadow-md transition-all"
                 >
                   Cancel
                 </button>
@@ -3543,26 +3543,26 @@ return (
 
         {rolloverConfirmOpen && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-xl p-5 sm:p-6 shadow-2xl w-full max-w-xl my-auto space-y-3">
+            <div className="bg-card rounded-xl p-5 sm:p-6 shadow-2xl w-full max-w-xl my-auto space-y-3">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-blue-700" />
-                <h3 className="text-lg font-semibold text-slate-900">Start new salary month</h3>
+                <AlertTriangle className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Start new salary month</h3>
               </div>
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-foreground/90">
                 Lock {months[sel].name} and move to {months[sel + 1]?.name ?? 'the next month'}. Choose how to handle any unspent budget money (groceries + entertainment).
               </p>
               {autoRollover && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/30 text-xs font-semibold">
                   <Clock className="w-4 h-4" /> Auto-rollover is ON — manual advance still available
                 </div>
               )}
               {rolloverError && (
-                <div className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 px-3 py-2 rounded-lg text-sm">
+                <div className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/30 px-3 py-2 rounded-lg text-sm">
                   <AlertTriangle className="w-4 h-4" /> {rolloverError}
                 </div>
               )}
               <div className="space-y-2">
-                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-blue-300 cursor-pointer">
+                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-primary/40 cursor-pointer">
                   <input
                     type="radio"
                     name="rollover-choice"
@@ -3572,11 +3572,11 @@ return (
                     className="mt-1"
                   />
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">Keep leftovers in their categories</div>
-                    <div className="text-xs text-slate-600">Unspent groceries → next month groceries. Unspent entertainment → next month entertainment.</div>
+                    <div className="text-sm font-semibold text-foreground">Keep leftovers in their categories</div>
+                    <div className="text-xs text-muted-foreground">Unspent groceries → next month groceries. Unspent entertainment → next month entertainment.</div>
                   </div>
                 </label>
-                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-blue-300 cursor-pointer">
+                <label className="flex items-start gap-3 p-3 border rounded-lg hover:border-primary/40 cursor-pointer">
                   <input
                     type="radio"
                     name="rollover-choice"
@@ -3586,26 +3586,26 @@ return (
                     className="mt-1"
                   />
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">Move all leftovers to savings</div>
-                    <div className="text-xs text-slate-600">Send total unspent budget (groceries + entertainment) to savings for the next month.</div>
+                    <div className="text-sm font-semibold text-foreground">Move all leftovers to savings</div>
+                    <div className="text-xs text-muted-foreground">Send total unspent budget (groceries + entertainment) to savings for the next month.</div>
                   </div>
                 </label>
               </div>
               <div className="flex flex-col sm:flex-row gap-2 pt-2">
                 <button
                   onClick={() => setRolloverConfirmOpen(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                  className="flex-1 px-4 py-2 rounded-lg border border-border text-foreground/90 hover:bg-muted/50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmManualRollover}
-                  className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm"
+                  className="flex-1 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary/90 active:bg-primary/80 shadow-sm"
                 >
                   Confirm & start
                 </button>
               </div>
-              <p className="text-xs text-slate-500">This will lock {months[sel].name}. You can still view it, but edits and new transactions are disabled.</p>
+              <p className="text-xs text-muted-foreground">This will lock {months[sel].name}. You can still view it, but edits and new transactions are disabled.</p>
             </div>
           </div>
         )}
@@ -3648,7 +3648,7 @@ return (
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            className="px-4 py-3 rounded-2xl bg-blue-600 text-white shadow-xl hover:bg-blue-700 active:bg-blue-800 transition-all border border-blue-500/50"
+            className="px-4 py-3 rounded-2xl bg-primary text-white shadow-xl hover:bg-primary/90 active:bg-primary/80 transition-all border border-primary/50"
             aria-label="Back to top"
           >
             Back to top

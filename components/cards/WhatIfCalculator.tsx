@@ -33,7 +33,7 @@ export default function WhatIfCalculator({
         <div className="flex items-start gap-3">
           {/* Salary Slider */}
           <div className="flex-1">
-            <label className="text-xs font-medium text-gray-700 block mb-1">Salary ({whatIfSalaryDelta}%)</label>
+            <label className="text-xs font-medium text-foreground/90 block mb-1">Salary ({whatIfSalaryDelta}%)</label>
             <input
               type="range"
               min={-10}
@@ -46,7 +46,7 @@ export default function WhatIfCalculator({
           </div>
 
           {/* Grocery Checkbox */}
-          <label className="flex items-center gap-1 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-colors mt-5">
+          <label className="flex items-center gap-1 text-xs text-foreground/90 cursor-pointer hover:bg-muted/50 p-1 rounded-lg transition-colors mt-5">
             <input
               type="checkbox"
               checked={whatIfGrocCut}
@@ -59,19 +59,19 @@ export default function WhatIfCalculator({
 
         {/* Results: Single line showing adjusted salary and net change */}
         {whatIfProjection && (
-          <div className="mt-auto pt-2 border-t border-gray-200">
+          <div className="mt-auto pt-2 border-t border-border">
             <div className="flex justify-between items-center text-xs">
               <div>
-                <span className="text-gray-600 font-medium">Adj Sal:</span>
-                <span className="font-bold text-gray-900 ml-1">{whatIfProjection.adjSalary.toFixed(0)}</span>
+                <span className="text-muted-foreground font-medium">Adj Sal:</span>
+                <span className="font-bold text-foreground ml-1">{whatIfProjection.adjSalary.toFixed(0)}</span>
               </div>
               <div>
-                <span className="text-gray-600 font-medium">Net:</span>
-                <span className={`font-bold ml-1 ${whatIfProjection.projectedNet >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                <span className="text-muted-foreground font-medium">Net:</span>
+                <span className={`font-bold ml-1 ${whatIfProjection.projectedNet >= 0 ? 'text-green-700' : 'text-red-400'}`}>
                   {whatIfProjection.projectedNet.toFixed(0)}
                 </span>
                 {whatIfProjection.delta !== 0 && (
-                  <span className={`font-bold ml-1 ${whatIfProjection.delta > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  <span className={`font-bold ml-1 ${whatIfProjection.delta > 0 ? 'text-green-700' : 'text-red-400'}`}>
                     {whatIfProjection.delta > 0 ? '↑' : '↓'}{Math.abs(whatIfProjection.delta).toFixed(0)}
                   </span>
                 )}

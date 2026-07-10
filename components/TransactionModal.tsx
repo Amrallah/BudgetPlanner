@@ -56,7 +56,7 @@ export default memo(function TransactionModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
+      <div className="bg-card rounded-lg p-4 w-full max-w-2xl max-h-[80vh] overflow-auto">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-lg">
             Transactions — {getTitle()} — {monthName}
@@ -64,7 +64,7 @@ export default memo(function TransactionModal({
           <div className="flex items-center gap-2">
             <button 
               onClick={onClose} 
-              className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md"
+              className="bg-muted text-foreground/90 px-3 py-1 rounded-md"
             >
               Close
             </button>
@@ -73,7 +73,7 @@ export default memo(function TransactionModal({
         <div className="space-y-2">
           {type !== 'extra' ? (
             transactions.length === 0 ? (
-              <div className="text-sm text-gray-500">No transactions for this month.</div>
+              <div className="text-sm text-muted-foreground">No transactions for this month.</div>
             ) : (
               transactions.map((t, i) => (
                 <div key={i} className="flex items-center justify-between border-b py-2">
@@ -93,7 +93,7 @@ export default memo(function TransactionModal({
                         </button>
                         <button 
                           onClick={onCancelEdit} 
-                          className="bg-gray-200 text-gray-800 px-3 py-1 rounded"
+                          className="bg-muted text-foreground px-3 py-1 rounded"
                         >
                           Cancel
                         </button>
@@ -101,7 +101,7 @@ export default memo(function TransactionModal({
                     ) : (
                       <>
                         <div className="font-medium">{t.amt.toFixed(0)} SEK</div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-muted-foreground">
                           {t.ts ? new Date(t.ts).toLocaleString() : ''}
                         </div>
                         {'compensation' in t && (t as Record<string, unknown>).compensation ? (
@@ -115,13 +115,13 @@ export default memo(function TransactionModal({
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => onEdit(i, String(t.amt))} 
-                      className="bg-blue-100 text-blue-700 px-3 py-1 rounded"
+                      className="bg-primary/15 text-primary px-3 py-1 rounded"
                     >
                       Edit
                     </button>
                     <button 
                       onClick={() => setPendingDelete({ kind: 'tx', index: i })} 
-                      className="bg-red-100 text-red-700 px-3 py-1 rounded"
+                      className="bg-red-500/15 text-red-400 px-3 py-1 rounded"
                     >
                       Delete
                     </button>
@@ -139,12 +139,12 @@ export default memo(function TransactionModal({
                       E: <span className="font-medium">{ex.ent.toFixed(0)}</span> • 
                       S: <span className="font-medium">{ex.save.toFixed(0)}</span>
                     </div>
-                    <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(ex.ts).toLocaleString()}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setPendingDelete({ kind: 'extra', index: i })} 
-                      className="bg-red-100 text-red-700 px-3 py-1 rounded"
+                      className="bg-red-500/15 text-red-400 px-3 py-1 rounded"
                     >
                       Delete
                     </button>
@@ -152,7 +152,7 @@ export default memo(function TransactionModal({
                 </div>
               ))
             ) : (
-              <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+              <div className="text-sm text-muted-foreground">No extra allocations recorded for this month.</div>
             )
           )}
           
@@ -167,11 +167,11 @@ export default memo(function TransactionModal({
                       Entertainment: <span className="font-medium">{ex.ent.toFixed(0)}</span> — 
                       Savings: <span className="font-medium">{ex.save.toFixed(0)}</span>
                     </div>
-                    <div className="text-xs text-gray-500">{new Date(ex.ts).toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(ex.ts).toLocaleString()}</div>
                   </div>
                 ))
               ) : (
-                <div className="text-sm text-gray-500">No extra allocations recorded for this month.</div>
+                <div className="text-sm text-muted-foreground">No extra allocations recorded for this month.</div>
               )}
             </div>
           )}

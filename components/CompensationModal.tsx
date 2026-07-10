@@ -35,15 +35,15 @@ export default function CompensationModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+      <div className="bg-card rounded-2xl shadow-2xl max-w-md w-full p-6">
         {/* Header */}
         <div className="flex items-start gap-3 mb-4">
-          <div className="h-12 w-12 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+          <div className="h-12 w-12 rounded-xl bg-red-500/15 flex items-center justify-center flex-shrink-0">
             <AlertCircle className="w-6 h-6 text-red-600" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Budget Exceeded</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-xl font-bold text-foreground">Budget Exceeded</h2>
+            <p className="text-sm text-muted-foreground mt-1">
               This transaction will exceed your {categoryName} budget by{' '}
               <span className="font-semibold text-red-600">{overspendAmount.toFixed(0)} SEK</span>
             </p>
@@ -51,8 +51,8 @@ export default function CompensationModal({
         </div>
 
         {/* Message */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-blue-900">
+        <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 mb-4">
+          <p className="text-sm text-primary">
             Please select a source to compensate the overspend, or cancel this transaction.
           </p>
         </div>
@@ -60,7 +60,7 @@ export default function CompensationModal({
         {/* Compensation Options */}
         {availableOptions.length > 0 ? (
           <div className="space-y-2 mb-4">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Available Sources
             </p>
             {availableOptions.map((option) => {
@@ -72,7 +72,7 @@ export default function CompensationModal({
                   className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all hover:shadow-md ${option.color}`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-white/50 flex items-center justify-center">
+                    <div className="h-10 w-10 rounded-lg bg-card/50 flex items-center justify-center">
                       <Icon className="w-5 h-5" />
                     </div>
                     <div className="text-left">
@@ -91,11 +91,11 @@ export default function CompensationModal({
             })}
           </div>
         ) : (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
             <p className="text-sm text-red-900 font-medium">
               No sources available to cover this overspend.
             </p>
-            <p className="text-xs text-red-700 mt-1">
+            <p className="text-xs text-red-400 mt-1">
               You must cancel this transaction or reduce the amount.
             </p>
           </div>
@@ -104,7 +104,7 @@ export default function CompensationModal({
         {/* Cancel Button */}
         <button
           onClick={onCancel}
-          className="w-full bg-gray-200 text-gray-800 px-4 py-3 rounded-xl hover:bg-gray-300 transition-all font-medium text-sm"
+          className="w-full bg-muted text-foreground px-4 py-3 rounded-xl hover:bg-muted transition-all font-medium text-sm"
         >
           Cancel Transaction
         </button>
@@ -130,11 +130,11 @@ export function getCompensationSourceIcon(source: CompensationSource): React.Com
 export function getCompensationSourceColor(source: CompensationSource): string {
   switch (source) {
     case 'groc':
-      return 'border-green-300 bg-green-50 hover:bg-green-100 text-green-900';
+      return 'border-green-300 bg-green-50 hover:bg-green-500/15 text-green-900';
     case 'ent':
       return 'border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-900';
     case 'save':
-      return 'border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-900';
+      return 'border-primary/40 bg-primary/10 hover:bg-primary/15 text-primary';
     case 'prev':
       return 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900';
   }

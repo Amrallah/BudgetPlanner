@@ -39,27 +39,27 @@ export default function ConfirmDialog({
       aria-modal="true"
       aria-labelledby={title ? 'confirm-dialog-title' : undefined}
     >
-      <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+      <div className="bg-card rounded-xl p-6 w-full max-w-md shadow-2xl">
         {title && (
-          <h3 id="confirm-dialog-title" className="text-lg font-bold mb-2 text-gray-900">
+          <h3 id="confirm-dialog-title" className="text-lg font-bold mb-2 text-foreground">
             {title}
           </h3>
         )}
-        <p className="text-sm text-gray-700 mb-5 whitespace-pre-line">{message}</p>
+        <p className="text-sm text-foreground/90 mb-5 whitespace-pre-line">{message}</p>
         <div className="flex flex-col sm:flex-row gap-2">
           <button
             onClick={onConfirm}
             className={`flex-1 text-white p-3 rounded-xl shadow-md transition-all ${
               danger
                 ? 'bg-red-600 hover:bg-red-700 active:bg-red-800'
-                : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
+                : 'bg-primary hover:bg-primary/90 active:bg-primary/80'
             }`}
           >
             {confirmLabel}
           </button>
           <button
             onClick={onCancel}
-            className="flex-1 bg-gray-400 text-white p-3 rounded-xl hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all"
+            className="flex-1 bg-muted-foreground/40 text-white p-3 rounded-xl hover:bg-muted-foreground/50 active:bg-muted-foreground/60 shadow-md transition-all"
           >
             {cancelLabel}
           </button>

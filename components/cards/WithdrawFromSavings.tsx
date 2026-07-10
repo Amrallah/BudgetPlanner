@@ -44,14 +44,14 @@ export default function WithdrawFromSavings({
   };
 
   return (
-    <div className="bg-red-100/30 rounded-2xl border border-red-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
+    <div className="bg-red-500/15/30 rounded-2xl border border-red-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
       <div className="flex items-center gap-2">
         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white flex items-center justify-center shadow-md">
           <Wallet className="w-5 h-5" />
         </div>
         <h3 className="font-bold text-red-900">Withdraw from Savings</h3>
       </div>
-      <p className="text-sm text-gray-700">Take money out of your total savings (e.g., for emergencies)</p>
+      <p className="text-sm text-foreground/90">Take money out of your total savings (e.g., for emergencies)</p>
       <div className="flex gap-2 flex-1 items-end">
         <input 
           type="number" 
@@ -63,7 +63,7 @@ export default function WithdrawFromSavings({
             const val = sanitizeNumberInput(e.target.value);
             onWithdrawAmountChange(Math.min(val, totalSavings));
           }}
-          className="flex-1 p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all text-sm"
+          className="flex-1 p-2 border-2 border-border rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all text-sm"
         />
         <button 
           onClick={handleWithdraw}
