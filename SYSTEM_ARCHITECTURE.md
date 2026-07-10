@@ -1,9 +1,11 @@
-# Finance Dashboard - System Architecture Document (COMPREHENSIVE UPDATE)
+# Finance Dashboard - System Architecture Document
 
-**Version:** 2.1 - Responsive Layout & UI Modernization  
-**Date:** January 4, 2026  
-**Status:** Fully Validated Against 3,029 Lines of Implementation  
+**Version:** 2.2 - Consolidated Documentation Set  
+**Date:** July 10, 2026  
+**Status:** Canonical architecture reference. This is the single source of truth for system architecture; all other historical architecture/analysis MD files have been retired and folded into this document.  
 **Architecture:** Hook-Based Distributed State (13 Custom Hooks, No Redux/Zustand)
+
+> This repository intentionally keeps exactly three living specification documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) (this file), [FUNCTIONAL_REQUIREMENTS.md](FUNCTIONAL_REQUIREMENTS.md), and [TEST_SCENARIOS.md](TEST_SCENARIOS.md). Update this file whenever architecture changes instead of creating new analysis/checkpoint files.
 
 **Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
 - ✅ Added responsive 2-column grid layout (Monthly+Variable left, Fixed 480px right)
@@ -86,7 +88,7 @@
 
 6. **Strict Budget Balance Validation:**
    - MUST equal exactly: `save + groc + ent === available`
-   - No flexibility or rounding tolerance (within 0.01 SEK)
+   - No flexibility beyond floating-point rounding tolerance (within 0.5 SEK, see `lib/budgetBalance.ts`)
    - Hard constraint blocking saves
    - Enforced in calculations AND validation layer
 
@@ -352,7 +354,7 @@ lib/
 **Rule:**
 ```
 For each month i:
-  savings + groceries + entertainment === available balance (within 0.01 SEK tolerance)
+  savings + groceries + entertainment === available balance (within 0.5 SEK tolerance)
 
 Where:
   available = income + extraInc - fixedExpenses
@@ -1065,7 +1067,7 @@ for each month i:
 
 ### V4: Split Allocation Validation
 **Rule:** Total of allocations must equal amount being split  
-**Tolerance:** 0.01 SEK (Swedish öre rounding)  
+**Tolerance:** 0.5 SEK (absorbs floating-point/rounding differences; enforced in `lib/budgetBalance.ts`)  
 **UI Feedback:** Real-time total display, disabled Apply if invalid
 
 **Examples:**

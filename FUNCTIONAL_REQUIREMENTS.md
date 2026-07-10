@@ -1,9 +1,9 @@
-# Finance Dashboard - Functional Requirements Document (COMPREHENSIVE UPDATE)
+# Finance Dashboard - Functional Requirements Document
 
-**Version:** 2.1 - UI Modernization & Fixed Expenses Redesign  
-**Date:** January 4, 2026  
-**Status:** Fully Analyzed, Verified Against 3,029 Lines of Implementation Code  
-**Last Verification:** Full codebase read - app/page.tsx (3029 lines), lib/ utilities, type definitions, hooks, components
+**Version:** 2.2 - Consolidated Documentation Set (includes former UI/UX Requirements content)  
+**Date:** July 10, 2026  
+**Status:** Canonical functional + UI/UX reference. This is the single source of truth for functional behavior and UI/UX design; `UI_UX_REQUIREMENTS.md` has been merged into this document (see [Appendix A](#appendix-a-uiux-design-reference)) and retired.  
+**Last Verification:** Full codebase read - app/page.tsx, lib/ utilities, type definitions, hooks, components
 
 **Recent Updates (Jan 4, 2026 - Session Commit c25c40b):**
 - ✅ Updated F10 (Fixed Expense Management) with modern UI documentation
@@ -211,6 +211,16 @@ The **Finance Dashboard** is a personal financial planning application that mode
 - Delete button (✕) on each expense item
 - Shows confirmation: "This will free up [amount] to reallocate"
 - Removes expense and associated budget allocations
+- **Scope "This and future months" / "Delete completely" with per-month proportional scaling:**
+  The split (save/groc/ent) the user enters in the modal is based on the fixed
+  expense's amount in the currently viewed month. If the expense's amount
+  differs in other affected months (e.g. a rounded first-month payment
+  followed by a flat recurring amount), `applySaveChanges` scales the
+  save/groc/ent deltas applied to each month proportionally to that month's
+  actual freed/changed amount (relative to the reference month), instead of
+  applying a flat amount everywhere. This keeps every affected month balanced
+  even when the fixed expense's per-month amount isn't uniform. See
+  `lib/saveChanges.ts`.
 
 **Styling Changes (Jan 2026 Update):**
 - Slate color palette: `border-slate-200`, `bg-slate-50` (replaces previous grays)
@@ -657,7 +667,7 @@ for each affected month:
 
 ### V1: Budget Balance (MUST EQUAL)
 - `saveBudget + grocBudget + entBudget === availableBalance`
-- No flexibility - must equal exactly (within 0.01 SEK tolerance)
+- No flexibility - must equal exactly (within 0.5 SEK tolerance, see `lib/budgetBalance.ts`)
 - **Blocking:** Cannot save if any month fails this rule
 - **Recovery:** Force Rebalance modal provides fixes
 
@@ -763,8 +773,64 @@ for each affected month:
 
 ---
 
+## Appendix A: UI/UX Design Reference
+
+Condensed from the retired `UI_UX_REQUIREMENTS.md`. This appendix is the canonical UI/UX reference going forward.
+
+### A.1 Design System
+- **Color palette (Slate):** `bg-white` cards, `bg-slate-50` inner sections, `border-slate-200` borders/dividers.
+- **Success:** Emerald (`text-emerald-700` / `bg-emerald-50`) — paid status, save confirmations.
+- **Warning:** Amber (`bg-amber-500` accent bar, `text-amber-700` / `bg-amber-50`) — pending/unpaid, upcoming months.
+- **Error:** Red (`text-red-600`) — validation failures, critical overspend, conflicts.
+- **Typography:** H1 24px bold (page title), H2 16px bold (section headers), Body 14px, Small/Caption 12px, placeholders 12px `text-slate-400`.
+- **Spacing:** Card padding `p-3 sm:p-4`; section gaps `gap-4 lg:gap-5`; list item spacing `space-y-2.5 sm:space-y-3`; inputs `h-9` (compact `h-8`); buttons `h-9`.
+- **Borders/Shadows:** `border-slate-200`, `shadow-sm`, `rounded-2xl` (cards), `rounded-xl` (list items), `rounded-lg` (buttons).
+
+### A.2 Main Layout
+- **Desktop (≥ lg, 1024px+):** 2-column responsive grid — left column (`flex-1`): Monthly Section + Budget Section (Groceries/Entertainment); right column (fixed `480px`): Fixed Expenses card.
+- **Mobile (< lg):** Full-width vertical stack of the same sections.
+- **Header (always visible):** Logo/brand, month navigator (prev/next + dropdown), pending-changes badge (conditional), last-saved timestamp badge, Save button (disabled when budget issues exist or no changes).
+
+### A.3 Screens
+1. **Setup Wizard (5 steps):** Initial savings → Base salary (+ apply-to-all-months) → Extra income → Fixed expenses (add/list/delete) → Budget allocation (save/groc/ent, must total available balance).
+2. **Monthly Section:** Income (editable), Previous savings (display + manual override), Savings (base + bonus + extra total), Balance (color-coded, critical overspend badge). Action buttons: Change Income, Edit Previous, Start new salary month (conditional), Undo Last Change (conditional).
+3. **Budget Section:** Groceries & Entertainment cards — budget/spent/remaining, progress bar (green < 80%, amber 80–100%, red > 100%), quick-amount transaction buttons, "View All" → Transaction modal.
+4. **Fixed Expenses Card (right column):** Header + total; help text; compact list items (name, amount, icon-only paid/unpaid toggle, edit, delete); "upcoming" label for future months; add-expense form at bottom.
+5. **Analytics Section:** 60-month net, average/month, min/max month, months in deficit; What-If scenario (salary delta %, cut-groceries checkbox); Emergency Buffer (months of coverage); Rollover status/link.
+6. **Utility Cards Row:** Withdraw from Savings (cascade: previous savings first, then current), Entertainment-from-Savings slider (0–100%), Emergency Buffer, What-If calculator.
+
+### A.4 Modal Dialogs (9 total)
+1. **Salary/Income Split Modal** — old/new/delta, 3-way split (groc/ent/save), "apply to future months" checkbox, total must equal delta.
+2. **Budget Rebalance Modal** — freed/needed amount, reallocate across the other 2 categories, "apply to future" checkbox.
+3. **Force Rebalance Modal** — lists problematic months with available/total/deficit; 4 quick fixes (Adjust Savings/Groceries/Entertainment, Equal Split) plus manual override; "Apply This Month" and "Fix All N" (uses whichever option the user selected); saves immediately on apply.
+4. **Extra Income Split Modal** — 3-way split of extra income, "apply same split to all affected months", records transaction.
+5. **Fixed Expense Add Modal** — name/amount/type/start month, duplicate-name warning, triggers split allocation modal.
+6. **Fixed Expense Edit Modal** — old/new amount, scope (this month / this+future / delete completely), multi-month scope queues to Pending Changes.
+7. **Compensation Modal (Overspend Coverage)** — shown when a transaction exceeds remaining budget; lists available sources (other category, planned savings, previous savings) with post-compensation amounts; single-select; blocks transaction if no source suffices.
+8. **Transaction History Modal** — tabbed Groceries/Entertainment, list with inline edit/delete, subtotal/budget/remaining, quick-amount add.
+9. **Manual Salary Rollover Modal** — triggered by "Start new salary month"; two options (keep leftovers in category vs. move all to savings); locks current month on confirm; error banner if already processed or at last month.
+
+### A.5 Error & Validation States
+- **Budget balance issue:** Red banner listing up to 3 problematic months (+ "N more"), "Fix Automatically" / "Manual Fix" actions; Save disabled until resolved.
+- **Split validation error:** Inline red text below split inputs, disabled Apply/Confirm button until total matches exactly (within 0.5 SEK).
+- **Duplicate fixed expense:** Warning modal, user may override.
+- **Firestore conflict:** Modal showing local vs remote timestamps with Reload / Force Save actions.
+- **Overspend / no compensation source available:** Alert; transaction rejected until amount reduced or budget increased.
+
+### A.6 Accessibility
+- Full keyboard navigation (tab order, Enter to submit, Escape to close modals, arrow keys for month navigation).
+- Labeled inputs, descriptive button text, `role="dialog"` + `aria-labelledby` on modals, `role="alert"` on error banners.
+- Color is never the sole error indicator (icon + text always paired). Minimum 4.5:1 contrast. Visible focus rings; focus trapped in modals and restored on close.
+
+### A.7 Responsive Breakpoints
+- **Mobile (< 768px):** single column, full-screen modals, 44×44px minimum touch targets.
+- **Tablet (768–1024px):** adjusted column widths, modals ~90% viewport width.
+- **Desktop (> 1024px):** 2-column grid, centered modals (max ~600px wide).
+
+---
+
 **End of Document**
 
-Generated: January 4, 2026  
-Based on: Complete codebase analysis (3,029 lines + utilities + hooks + components)  
-Verification Status: 100% accurate against implementation
+Generated: July 10, 2026 (consolidated from FUNCTIONAL_REQUIREMENTS.md + UI_UX_REQUIREMENTS.md)  
+Based on: Complete codebase analysis (app/page.tsx, utilities, hooks, components)  
+Verification Status: Accurate against implementation as of consolidation date
