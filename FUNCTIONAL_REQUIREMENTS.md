@@ -100,9 +100,15 @@ The **Finance Dashboard** is a personal financial planning application that mode
   2. **Adjust Groceries:** Set groceries to absorb the difference (keep save/ent unchanged)
   3. **Adjust Entertainment:** Set entertainment to absorb the difference (keep save/groc unchanged)
   4. **Equal Split:** Divide available balance equally across all 3 categories
-- **Manual Override:** Users can manually enter any combination that totals to available balance
-- **Multi-Month Fix:** "Fix All (N)" button appears when > 1 problematic month exists. Applies whichever option user selected (quick-fix OR manual values) to ALL problematic months at once
+- **Manual Override:** Users can manually enter any combination that totals to available balance. Manual values only ever apply to the currently-open month (see F4.1 below for why "Fix All" is unavailable in this case).
+- **Multi-Month Fix:** "Fix All (N)" button appears when > 1 problematic month exists AND a Quick-Fix option (not manual) is selected. Applies the selected quick-fix option to ALL problematic months at once, computed independently per month.
+- **Cancel:** Reverts `data`/`varExp`/`fixed` to the most recent snapshot that had no budget balance issues (captured automatically every time validation passes) and closes the popup - i.e. "undo whatever edit made this month invalid", consistent with the other popups always offering an escape.
 - **Immediate Persistence:** Force rebalance saves immediately to Firestore after apply
+
+### F4.1: Force Rebalance rework (fixed Jul 2026)
+- **Consistency:** overlay changed from `bg-black bg-opacity-70` to the standard `bg-black/50` used by every other popup; quick-fix option buttons changed from 4 different colors (blue/green/orange/purple) to a single neutral scheme with a blue ring/highlight on whichever option is currently selected.
+- **Cancel button added:** see F4 above.
+- **"Fix All" correctness:** the 4 quick-fix options (`adjust-save`/`adjust-groc`/`adjust-ent`/`equal-split`) already compute each month's allocation from THAT month's own available balance (verified in `tests/lib/forceRebalance.test.ts`), so "Fix All" is safe for them. The **"manual" entry** option applies the exact same raw numbers to every month regardless of each month's own available balance - this is almost never correct across months with different budgets, so the UI now hides the "Fix All" button (and shows an explanatory note) whenever `selectedOption === 'manual'`, with a matching guard in `applyForceRebalanceToAll`.
 
 ### F5: Comprehensive Undo System
 - **Undo Prompt:** Shows when reverting to a previous state
@@ -128,7 +134,7 @@ The **Finance Dashboard** is a personal financial planning application that mode
 
 ### F7: Salary Adjustments with Split Modal
 - **Trigger:** User changes income value and onBlur detects difference
-- **Modal Shows:**
+- **Modal Shows (centered popup overlay, see F6.1):**
   - Old salary vs new salary amount
   - Auto-calculated remaining to allocate (if increase)
   - Three input fields: Groceries adjustment, Entertainment adjustment, Savings adjustment
@@ -140,10 +146,11 @@ The **Finance Dashboard** is a personal financial planning application that mode
   3. System validates budget balance for all affected months
   4. On error: Shows balance validation message, blocks apply
   5. On success: Applies to selected month(s), records undo snapshot, sets `hasChanges=true`
+- **Cancel:** "Cancel & Revert Salary" always available — reverts `inc`/`baseSalary` back to the pre-change value and closes the popup. Never gets the user stuck.
 
 ### F8: Extra Income Split Modal
 - **Trigger:** User enters extraInc value > 0
-- **Modal Shows:**
+- **Modal Shows (centered popup overlay, see F6.1):**
   - Total extra income amount
   - Three input fields: Groceries, Entertainment, Savings
   - "Apply same split to all affected months" checkbox
@@ -156,7 +163,8 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - `data[sel].inc += extraInc` (merged into income)
   - `data[sel].extraInc = 0` (cleared)
   - Transaction recorded with timestamp
-- **Undo Capability:** "Undo Last Extra Split" button available after split
+- **Undo Capability:** "Undo Last Extra Split" button available after split (native confirm replaced by `ConfirmDialog`, see F6.1)
+- **Cancel:** "Cancel" button closes the popup, discards the draft split, AND reverts the "Extra Income" field itself back to its pre-edit value (fixed Jul 2026 - previously only the popup closed, leaving the input box showing the unresolved typed value).
 
 ### F9: Budget Rebalance Modal (Budget Change)
 - **Trigger:** User changes grocery/entertainment budget and difference detected
@@ -167,6 +175,21 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - "Apply to future months (from this month onward)" checkbox
 - **Validation:** Total allocation must equal change amount
 - **Application:** System updates other budgets by multiplier (-1 if increase, +1 if decrease)
+
+### F6.1: Popup/Modal Consistency & Cancel Guarantee (fixed Jul 2026)
+- **Bug:** Salary Split, Extra Income Split and New Fixed Expense Split were rendered as inline colored panels embedded in the normal page scroll flow (blue/purple/red gradients respectively) instead of centered popups, and Extra Income Split had no Cancel button at all (user could get stuck).
+- **Fix:** All three now use the same overlay pattern already used by the Delete/Change Fixed Expense and Force Rebalance popups: `fixed inset-0 bg-black/50 flex items-center justify-center z-50` + a white `rounded-xl` card, `role="dialog"`. Every popup now has a Cancel button:
+  - Salary Split: Cancel reverts salary to its pre-change value (already existed, only the container was fixed).
+  - Extra Income Split: Cancel added — closes the popup and resets the draft split to zero (nothing was saved yet).
+  - New Fixed Expense Split: Cancel already existed (discards the draft; the expense is only added to `fixed` on Confirm).
+- **Native `confirm()` replaced:** All `window.confirm()` calls (reset month, delete all data x2, undo extra split, duplicate expense name, delete transaction, delete extra allocation) now use the shared `components/ConfirmDialog.tsx` component so every confirmation looks the same and always has a working Cancel.
+- Regression tests: `tests/components/ConfirmDialog.test.tsx`, `tests/components/TransactionModal.test.tsx`.
+
+### F6.2: Chained confirm regression (fixed Jul 2026)
+- **Bug:** "Delete All" data silently stopped working after F6.1 - clicking the first confirm ("This will erase ALL data") did nothing, no second "are you REALLY sure" popup appeared, and the actual erase/Setup-wizard-reopen never ran.
+- **Root cause:** the confirm popup's `onConfirm` handler ran the pending action's callback THEN cleared the confirm state (`action.onConfirm(); setConfirmAction(null);`). When that callback itself opened a second, chained confirm via `askConfirm(...)` (setting new state), the trailing `setConfirmAction(null)` executed afterward in the same synchronous batch and overwrote/wiped out the new state - React batches multiple `setState` calls in one event handler and only the LAST one wins (they do not merge in call order).
+- **Fix:** extracted the confirm-popup state into `lib/hooks/useConfirmAction.ts` (`confirmAction`, `askConfirm`, `handleConfirm`, `handleCancel`). `handleConfirm` now clears the pending confirm BEFORE invoking its callback, so if the callback opens a new (chained) confirm, that call is the last `setConfirmAction` in the batch and is preserved.
+- Regression test: `tests/hooks/useConfirmAction.test.ts` ("supports chained/nested confirms").
 
 ### F10: Fixed Expense Management
 

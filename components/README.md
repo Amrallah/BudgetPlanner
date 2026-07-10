@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `components/` directory contains 5 reusable React components extracted from `app/page.tsx` through a systematic refactoring process (Phase 4). All components are optimized with `React.memo()` for performance.
+The `components/` directory contains 6 reusable React components extracted from `app/page.tsx` through a systematic refactoring process (Phase 4). All components are optimized with `React.memo()` for performance.
 
 ## Components
 
@@ -169,7 +169,7 @@ Displays and edits monthly income, expenses, savings.
 ---
 
 ### **TransactionModal** (185 lines)
-Modal showing transaction history with edit/delete capabilities.
+Modal showing transaction history with edit/delete capabilities. Delete actions go through the shared `ConfirmDialog` popup (own local `pendingDelete` state) instead of native `window.confirm()`.
 
 **Props** (13 total):
 - `isOpen`: Show modal?
@@ -190,7 +190,7 @@ Modal showing transaction history with edit/delete capabilities.
 **Features**:
 - Displays transaction list with amounts and timestamps
 - Inline editing (click edit, change value, save)
-- Delete transactions with confirmation
+- Delete transactions with confirmation via `ConfirmDialog` (Cancel always available, never deletes without an explicit confirm click)
 - Separate section for extra income allocations
 - Shows: For extra: Groceries/Entertainment/Savings split and date
 - Close button in header
@@ -212,7 +212,28 @@ Modal showing transaction history with edit/delete capabilities.
 />
 ```
 
-**Tests**: `tests/components/TransactionModal.test.tsx` (17 tests)
+**Tests**: `tests/components/TransactionModal.test.tsx` (18 tests)
+
+---
+
+### **ConfirmDialog** (added Jul 2026)
+Reusable confirmation popup used everywhere the app previously called native `window.confirm()` or rendered an inline "action panel" instead of a real popup (see `FUNCTIONAL_REQUIREMENTS.md` F6.1 for the bug this fixes).
+
+**Props**:
+- `open`: Show dialog?
+- `title?`: Optional heading
+- `message`: Body text
+- `confirmLabel?` (default "Confirm"), `cancelLabel?` (default "Cancel")
+- `danger?`: Use red styling for destructive actions
+- `onConfirm()`: Called when Confirm is clicked
+- `onCancel()`: Called when Cancel is clicked (always closes, never applies anything)
+
+**Features**:
+- Same overlay pattern as every other popup in the app: `fixed inset-0 bg-black/50 flex items-center justify-center z-[60]`, `role="dialog"`, white rounded card
+- Cancel is always rendered — guarantees the user can never get stuck in a confirmation
+- Used by: `app/page.tsx` (reset month, delete all data, undo extra split, duplicate expense name) and `TransactionModal` (delete transaction, delete extra allocation)
+
+**Tests**: `tests/components/ConfirmDialog.test.tsx` (6 tests)
 
 ---
 
@@ -324,6 +345,7 @@ import BudgetSection from '@/components/BudgetSection';
 import MonthlySection from '@/components/MonthlySection';
 import SetupSection from '@/components/SetupSection';
 import TransactionModal from '@/components/TransactionModal';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function FinancialPlanner() {
   // ... state and hooks ...

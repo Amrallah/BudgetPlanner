@@ -1,5 +1,6 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { Tx } from '@/lib/types';
+import ConfirmDialog from './ConfirmDialog';
 
 export type TransactionType = 'groc' | 'ent' | 'extra';
 
@@ -43,6 +44,8 @@ export default memo(function TransactionModal({
   onDeleteExtra,
   onEditValueChange
 }: TransactionModalProps) {
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'tx' | 'extra'; index: number } | null>(null);
+
   if (!isOpen) return null;
 
   const getTitle = () => {
@@ -117,11 +120,7 @@ export default memo(function TransactionModal({
                       Edit
                     </button>
                     <button 
-                      onClick={() => {
-                        if (confirm('Delete this transaction?')) {
-                          onDelete(i);
-                        }
-                      }} 
+                      onClick={() => setPendingDelete({ kind: 'tx', index: i })} 
                       className="bg-red-100 text-red-700 px-3 py-1 rounded"
                     >
                       Delete
@@ -144,11 +143,7 @@ export default memo(function TransactionModal({
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => {
-                        if (confirm('Delete this extra allocation? This will subtract its amounts from the month.')) {
-                          onDeleteExtra(i);
-                        }
-                      }} 
+                      onClick={() => setPendingDelete({ kind: 'extra', index: i })} 
                       className="bg-red-100 text-red-700 px-3 py-1 rounded"
                     >
                       Delete
@@ -182,6 +177,26 @@ export default memo(function TransactionModal({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete?.kind === 'extra' ? 'Delete extra allocation?' : 'Delete transaction?'}
+        message={
+          pendingDelete?.kind === 'extra'
+            ? 'This will subtract its amounts from the month.'
+            : 'This cannot be undone.'
+        }
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (pendingDelete?.kind === 'extra') {
+            onDeleteExtra(pendingDelete.index);
+          } else if (pendingDelete) {
+            onDelete(pendingDelete.index);
+          }
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }, (prevProps, nextProps) => {

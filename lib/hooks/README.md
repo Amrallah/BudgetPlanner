@@ -267,12 +267,31 @@ Manages force-rebalance modal for budget mismatches.
 
 **Key Features**:
 - Shows budget mismatch details
-- Provides quick-fix options (adjust save/groc/ent, equal split)
-- Allows manual entry
+- Provides quick-fix options (adjust save/groc/ent, equal split) - each computed independently per month, safe for "Fix All"
+- Allows manual entry (this-month-only; NOT safe to copy across months with different available balances, so "Fix All" is hidden/blocked whenever manual is selected - see F4.1 in FUNCTIONAL_REQUIREMENTS.md)
 - Validates new total equals available
-- Can fix all problematic months at once
+- Can fix all problematic months at once (quick-fix options only)
+- Cancel reverts to the last known-valid `data`/`varExp`/`fixed` snapshot (tracked in `app/page.tsx`'s `lastValidBudgetSnapshotRef`, updated every time `recomputeBudgetIssues` finds zero issues)
 
 **Used By**: page.tsx (budget validation & fixes)
+
+---
+
+#### **useConfirmAction** (added Jul 2026)
+Generic confirm-popup state, replacing native `window.confirm()` dialogs app-wide.
+
+**Returns**:
+- `confirmAction`: `{ title?, message, danger?, onConfirm } | null` - the pending confirm, or null
+- `askConfirm(message, onConfirm, options?)`: opens a confirm popup
+- `handleConfirm()`: clears the pending confirm THEN invokes its `onConfirm` callback
+- `handleCancel()`: clears the pending confirm without invoking anything
+
+**Key Features**:
+- Supports **chained/nested confirms** - an `onConfirm` callback can call `askConfirm(...)` again to open a second popup (e.g. "delete all data" → "are you REALLY sure"). This only works because `handleConfirm` clears state BEFORE invoking the callback; clearing after would wipe out a newly-opened nested confirm since React batches both `setState` calls and the last one wins (see the "chained confirm regression" bug in FUNCTIONAL_REQUIREMENTS.md F6.2).
+
+**Used By**: page.tsx (reset month, delete all data, undo extra split, duplicate expense name) + rendered via `components/ConfirmDialog.tsx`. `TransactionModal.tsx` uses its own local `pendingDelete` state instead (standalone component, doesn't need cross-tree sharing).
+
+**Tests**: `tests/hooks/useConfirmAction.test.ts`
 
 ---
 

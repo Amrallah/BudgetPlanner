@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import TransactionModal, { ExtraAllocation } from '@/components/TransactionModal';
@@ -26,6 +26,10 @@ describe('TransactionModal', () => {
     onDelete: vi.fn(),
     onDeleteExtra: vi.fn()
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('renders modal with correct title for groceries', () => {
     render(
@@ -145,7 +149,7 @@ describe('TransactionModal', () => {
     expect(mockHandlers.onEdit).toHaveBeenCalledWith(0, '250');
   });
 
-  it('calls onDelete when delete button clicked', () => {
+  it('shows a confirm popup (not a native browser dialog) when delete button clicked, and calls onDelete after confirming', () => {
     render(
       <TransactionModal
         isOpen={true}
@@ -158,11 +162,34 @@ describe('TransactionModal', () => {
         {...mockHandlers}
       />
     );
-    // Mock window.confirm to return true
-    window.confirm = vi.fn(() => true);
     const deleteButtons = screen.getAllByText('Delete');
     fireEvent.click(deleteButtons[0]);
+    // A confirm popup should appear instead of deleting immediately
+    expect(mockHandlers.onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Delete transaction?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('dialog').querySelector('button')!);
     expect(mockHandlers.onDelete).toHaveBeenCalledWith(0);
+  });
+
+  it('does not call onDelete when the confirm popup is cancelled (user never gets stuck)', () => {
+    render(
+      <TransactionModal
+        isOpen={true}
+        type="groc"
+        monthName="January 2025"
+        transactions={mockGrocTransactions}
+        extraAllocations={[]}
+        editingIndex={null}
+        editingValue=""
+        {...mockHandlers}
+      />
+    );
+    const deleteButtons = screen.getAllByText('Delete');
+    fireEvent.click(deleteButtons[0]);
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(mockHandlers.onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('shows edit input when editing a transaction', () => {
@@ -252,7 +279,7 @@ describe('TransactionModal', () => {
     expect(screen.getByText('Extra Income Allocations')).toBeInTheDocument();
   });
 
-  it('calls onDeleteExtra when delete extra allocation button clicked', () => {
+  it('shows a confirm popup and calls onDeleteExtra after confirming when delete extra allocation button clicked', () => {
     render(
       <TransactionModal
         isOpen={true}
@@ -265,9 +292,11 @@ describe('TransactionModal', () => {
         {...mockHandlers}
       />
     );
-    window.confirm = vi.fn(() => true);
     const deleteButtons = screen.getAllByText('Delete');
     fireEvent.click(deleteButtons[0]);
+    expect(mockHandlers.onDeleteExtra).not.toHaveBeenCalled();
+    expect(screen.getByText('Delete extra allocation?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('dialog').querySelector('button')!);
     expect(mockHandlers.onDeleteExtra).toHaveBeenCalledWith(0);
   });
 

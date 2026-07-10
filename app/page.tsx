@@ -16,11 +16,13 @@ import { useForceRebalanceModal } from "@/lib/hooks/useForceRebalanceModal";
 import { useSalarySplitModal } from "@/lib/hooks/useSalarySplitModal";
 import { useExtraSplitModal } from "@/lib/hooks/useExtraSplitModal";
 import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
+import { useConfirmAction } from "@/lib/hooks/useConfirmAction";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSelection";
 import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
 import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import SetupSection from "@/components/SetupSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
 import AdditionalFeaturesSection from "@/components/AdditionalFeaturesSection";
@@ -90,6 +92,10 @@ export default function FinancialPlanner() {
   const [rolloverChoice, setRolloverChoice] = useState<RolloverChoice>('carryToBudgets');
   const [rolloverConfirmOpen, setRolloverConfirmOpen] = useState(false);
   const [rolloverError, setRolloverError] = useState<string | null>(null);
+  // Generic confirm popup used to replace native window.confirm() dialogs so every
+  // confirmation in the app has the same look/feel and always offers a Cancel that
+  // simply closes without applying anything. Supports chained/nested confirms.
+  const { confirmAction, askConfirm, handleConfirm: handleConfirmAction, handleCancel: handleCancelAction } = useConfirmAction();
   const [editSpent, setEditSpent] = useState({ groc: false, ent: false });
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
@@ -243,12 +249,26 @@ export default function FinancialPlanner() {
 
   const { user, loading: authLoading } = useAuth();
 
+  // Tracks the most recent fully-valid (no budget balance issues) snapshot of the core
+  // budget arrays, so the Force Rebalance popup's Cancel button can revert to "the state
+  // right before whatever edit made a month invalid" instead of just closing and leaving
+  // the invalid data in place.
+  const lastValidBudgetSnapshotRef = useRef<{ data: DataItem[]; varExp: VarExp; fixed: FixedExpense[] } | null>(null);
+
   const recomputeBudgetIssues = useCallback((opts?: { dataOverride?: DataItem[]; varOverride?: VarExp; fixedOverride?: FixedExpense[] }) => {
     const result = checkForIssues(opts);
 
     setBudgetBalanceIssues(result.issues);
 
     if (result.issues.length === 0) {
+      const validData = opts?.dataOverride ?? data;
+      const validVar = opts?.varOverride ?? varExp;
+      const validFixed = opts?.fixedOverride ?? fixed;
+      lastValidBudgetSnapshotRef.current = {
+        data: validData.map(d => ({ ...d })),
+        varExp: { ...validVar, grocBudg: [...validVar.grocBudg], entBudg: [...validVar.entBudg] },
+        fixed: validFixed.map(f => ({ ...f, amts: [...f.amts], spent: [...f.spent] }))
+      };
       setForceRebalanceOpen(false);
       setForceRebalanceError('');
       setForceRebalanceTarget(null);
@@ -271,6 +291,9 @@ export default function FinancialPlanner() {
     }
   }, [
     checkForIssues,
+    data,
+    fixed,
+    varExp,
     forceRebalanceInitialized,
     forceRebalanceOpen,
     setBudgetBalanceIssues,
@@ -1310,6 +1333,13 @@ export default function FinancialPlanner() {
       setForceRebalanceError('Please select an option or enter manual values first');
       return;
     }
+    // "Manual" values are specific to the current month's own available balance and
+    // can't be safely copied verbatim into other months with different available
+    // balances - the UI hides the "Fix All" button for this case, but guard here too.
+    if (selectedOption === 'manual') {
+      setForceRebalanceError('Manual values only apply to this month. Choose a Quick Fix option to fix all months at once.');
+      return;
+    }
 
     const result = checkForIssues();
     if (result.issues.length === 0) {
@@ -1376,6 +1406,39 @@ export default function FinancialPlanner() {
     varExp
   ]);
 
+  // Cancel button for the Force Rebalance popup: reverts data/varExp/fixed to the most
+  // recent snapshot that had NO budget balance issues (captured in recomputeBudgetIssues),
+  // i.e. "undo whatever edit caused this month to become invalid". If no such snapshot
+  // exists yet (e.g. issue present since before this session), just closes the popup.
+  const cancelForceRebalance = useCallback(() => {
+    const snapshot = lastValidBudgetSnapshotRef.current;
+    if (snapshot) {
+      setData(snapshot.data);
+      setVarExp(snapshot.varExp);
+      setFixed(snapshot.fixed);
+      setHasChanges(true);
+      setSelectedOption(null);
+      recomputeBudgetIssues({ dataOverride: snapshot.data, varOverride: snapshot.varExp, fixedOverride: snapshot.fixed });
+    } else {
+      setForceRebalanceOpen(false);
+      setForceRebalanceError('');
+      setForceRebalanceTarget(null);
+      setSelectedOption(null);
+      forceRebalanceInitialized.current = false;
+    }
+  }, [
+    forceRebalanceInitialized,
+    recomputeBudgetIssues,
+    setData,
+    setFixed,
+    setForceRebalanceError,
+    setForceRebalanceOpen,
+    setForceRebalanceTarget,
+    setHasChanges,
+    setSelectedOption,
+    setVarExp
+  ]);
+
   const saveChanges = () => {
     const { fixed: nf, data: nd } = applySaveChanges({ fixed, data, pendingChanges, applySavingsForward });
     setFixed(nf);
@@ -1403,75 +1466,92 @@ export default function FinancialPlanner() {
   };
 
   const deleteCurrentMonth = () => {
-    if (!confirm(`Are you sure? This will erase all financial data for ${months[sel].name}.`)) return;
-    const n = [...data];
-    n[sel] = {
-      inc: 0,
-      prev: null,
-      prevManual: false,
-      save: 0,
-      defSave: 0,
-      extraInc: 0,
-      grocBonus: 0,
-      entBonus: 0,
-      saveBonus: 0,
-      grocExtra: 0,
-      entExtra: 0,
-      saveExtra: 0,
-      rolloverProcessed: false
-    };
-    const nf = fixed.map(f => ({...f, amts: f.amts.map((amt, i) => i === sel ? 0 : amt)}));
-    const nv = {
-      ...varExp,
-      grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b),
-      entBudg: varExp.entBudg.map((b, i) => i === sel ? 0 : b),
-      grocSpent: varExp.grocSpent.map((s, i) => i === sel ? 0 : s),
-      entSpent: varExp.entSpent.map((s, i) => i === sel ? 0 : s)
-    };
-    setData(n);
-    setFixed(nf);
-    setVarExp(nv);
-    setHasChanges(true);
+    askConfirm(
+      `This will erase all financial data for ${months[sel].name}.`,
+      () => {
+        const n = [...data];
+        n[sel] = {
+          inc: 0,
+          prev: null,
+          prevManual: false,
+          save: 0,
+          defSave: 0,
+          extraInc: 0,
+          grocBonus: 0,
+          entBonus: 0,
+          saveBonus: 0,
+          grocExtra: 0,
+          entExtra: 0,
+          saveExtra: 0,
+          rolloverProcessed: false
+        };
+        const nf = fixed.map(f => ({...f, amts: f.amts.map((amt, i) => i === sel ? 0 : amt)}));
+        const nv = {
+          ...varExp,
+          grocBudg: varExp.grocBudg.map((b, i) => i === sel ? 0 : b),
+          entBudg: varExp.entBudg.map((b, i) => i === sel ? 0 : b),
+          grocSpent: varExp.grocSpent.map((s, i) => i === sel ? 0 : s),
+          entSpent: varExp.entSpent.map((s, i) => i === sel ? 0 : s)
+        };
+        setData(n);
+        setFixed(nf);
+        setVarExp(nv);
+        setHasChanges(true);
+      },
+      { title: 'Reset this month?', danger: true }
+    );
   };
 
   const deleteAllMonths = () => {
-    if (!confirm('Are you sure? This will erase ALL financial data from all months. This cannot be undone.')) return;
-    if (!confirm('This is your last chance. Really delete everything?')) return;
-    const n = Array(60).fill(0).map(() => ({
-      inc: 0,
-      prev: null,
-      prevManual: false,
-      save: 0,
-      defSave: 0,
-      extraInc: 0,
-      grocBonus: 0,
-      entBonus: 0,
-      saveBonus: 0,
-      grocExtra: 0,
-      entExtra: 0,
-      saveExtra: 0,
-      rolloverProcessed: false
-    }));
-    const nf: FixedExpense[] = []; // Clear all fixed expenses completely
-    const nv = {
-      ...varExp,
-      grocBudg: Array(60).fill(0),
-      entBudg: Array(60).fill(0),
-      grocSpent: Array(60).fill(0),
-      entSpent: Array(60).fill(0)
+    const eraseEverything = () => {
+      const n = Array(60).fill(0).map(() => ({
+        inc: 0,
+        prev: null,
+        prevManual: false,
+        save: 0,
+        defSave: 0,
+        extraInc: 0,
+        grocBonus: 0,
+        entBonus: 0,
+        saveBonus: 0,
+        grocExtra: 0,
+        entExtra: 0,
+        saveExtra: 0,
+        rolloverProcessed: false
+      }));
+      const nf: FixedExpense[] = []; // Clear all fixed expenses completely
+      const nv = {
+        ...varExp,
+        grocBudg: Array(60).fill(0),
+        entBudg: Array(60).fill(0),
+        grocSpent: Array(60).fill(0),
+        entSpent: Array(60).fill(0)
+      };
+      setData(n);
+      setFixed(nf);
+      setVarExp(nv);
+      setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
+      setHasChanges(true);
+      setSel(0);
+      // Reset the plan anchor/payday too, so re-running Setup with a new salary
+      // day actually re-anchors the 60-month plan instead of keeping the old one.
+      resetPlanAnchor();
+      // Open setup wizard from the first step
+      setShowSetup(true);
+      setSetupStep('prev');
     };
-    setData(n);
-    setFixed(nf);
-    setVarExp(nv);
-    setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
-    setHasChanges(true);
-    setSel(0);
-    // Reset the plan anchor/payday too, so re-running Setup with a new salary
-    // day actually re-anchors the 60-month plan instead of keeping the old one.
-    resetPlanAnchor();
-    // Open setup wizard from the first step
-    setShowSetup(true);
-    setSetupStep('prev');
+
+    askConfirm(
+      'This will erase ALL financial data from all months. This cannot be undone.',
+      () => {
+        askConfirm(
+          'This is your last chance. Really delete everything?',
+          eraseEverything,
+          { title: 'Final confirmation', danger: true }
+        );
+      },
+      { title: 'Delete all data?', danger: true }
+    );
   };
 
   const openManualRollover = () => {
@@ -1865,7 +1945,8 @@ return (
               }}
             />
             {salarySplitActive && (
-              <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-300 rounded-xl shadow-md">
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
+              <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-blue-700" />
                 <h3 className="font-bold text-blue-900">Salary Changed: {salaryInitial !== 0 ? (data[sel].inc - salaryInitial > 0 ? 'Increase' : 'Decrease') : 'New'} of {Math.abs(data[sel].inc - salaryInitial).toFixed(0)} SEK</h3>
@@ -2055,17 +2136,18 @@ return (
                   </button>
                 </div>
               </div>
+              </div>
             </div>
           )}
 
           {forceRebalanceOpen && budgetBalanceIssues.length > 0 && (
-            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
               <div className="bg-white rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className="w-6 h-6 text-red-700" />
-                  <h3 className="text-xl font-bold text-red-900">Budget Rebalance Required</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Budget Rebalance Required</h3>
                 </div>
-                <div className="mb-4 p-3 bg-red-50 rounded-lg">
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-800 font-medium mb-1">Month: {months[forceRebalanceTotals?.idx ?? sel].name}</p>
                   <p className="text-sm text-red-800">
                     Your budget allocations must equal the available balance. Current difference: <span className="font-bold">{(forceRebalanceTotals?.deficit ?? 0).toFixed(0)} SEK</span>
@@ -2094,8 +2176,8 @@ return (
                         setSelectedOption('adjust-save');
                         setForceRebalanceError('');
                       }}
-                      className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-300 rounded-lg text-left transition-all">
-                      <div className="font-medium text-blue-900">Option 1: Adjust Savings</div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-save' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
+                      <div className="font-medium text-gray-900">Option 1: Adjust Savings</div>
                       <div className="text-sm text-blue-700 mt-1">Savings: {(forceRebalanceTotals?.saveTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
                       <div className="text-xs text-gray-600 mt-1">Keep groceries and entertainment unchanged</div>
                     </button>
@@ -2106,9 +2188,9 @@ return (
                         setSelectedOption('adjust-groc');
                         setForceRebalanceError('');
                       }}
-                      className="w-full p-3 bg-green-50 hover:bg-green-100 border border-green-300 rounded-lg text-left transition-all">
-                      <div className="font-medium text-green-900">Option 2: Adjust Groceries</div>
-                      <div className="text-sm text-green-700 mt-1">Groceries: {(forceRebalanceTotals?.grocTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-groc' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
+                      <div className="font-medium text-gray-900">Option 2: Adjust Groceries</div>
+                      <div className="text-sm text-blue-700 mt-1">Groceries: {(forceRebalanceTotals?.grocTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</span></div>
                       <div className="text-xs text-gray-600 mt-1">Keep savings and entertainment unchanged</div>
                     </button>
                     <button
@@ -2118,9 +2200,9 @@ return (
                         setSelectedOption('adjust-ent');
                         setForceRebalanceError('');
                       }}
-                      className="w-full p-3 bg-orange-50 hover:bg-orange-100 border border-orange-300 rounded-lg text-left transition-all">
-                      <div className="font-medium text-orange-900">Option 3: Adjust Entertainment</div>
-                      <div className="text-sm text-orange-700 mt-1">Entertainment: {(forceRebalanceTotals?.entTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0)).toFixed(0)} SEK</span></div>
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'adjust-ent' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
+                      <div className="font-medium text-gray-900">Option 3: Adjust Entertainment</div>
+                      <div className="text-sm text-blue-700 mt-1">Entertainment: {(forceRebalanceTotals?.entTotal ?? 0).toFixed(0)} → <span className="font-bold">{Math.max(0, (forceRebalanceTotals?.available ?? 0) - (forceRebalanceTotals?.saveTotal ?? 0) - (forceRebalanceTotals?.grocTotal ?? 0)).toFixed(0)} SEK</span></div>
                       <div className="text-xs text-gray-600 mt-1">Keep savings and groceries unchanged</div>
                     </button>
                     <button
@@ -2130,9 +2212,9 @@ return (
                         setSelectedOption('equal-split');
                         setForceRebalanceError('');
                       }}
-                      className="w-full p-3 bg-purple-50 hover:bg-purple-100 border border-purple-300 rounded-lg text-left transition-all">
-                      <div className="font-medium text-purple-900">Option 4: Equal Split</div>
-                      <div className="text-sm text-purple-700 mt-1">
+                      className={`w-full p-3 border rounded-lg text-left transition-all ${selectedOption === 'equal-split' ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-200' : 'bg-gray-50 hover:bg-blue-50 border-gray-200'}`}>
+                      <div className="font-medium text-gray-900">Option 4: Equal Split</div>
+                      <div className="text-sm text-blue-700 mt-1">
                         Each category: <span className="font-bold">{(((forceRebalanceTotals?.available ?? 0) / 3)).toFixed(0)} SEK</span>
                       </div>
                       <div className="text-xs text-gray-600 mt-1">Distribute available balance equally across all categories</div>
@@ -2141,7 +2223,7 @@ return (
                 </div>
 
                 <div className="mb-4">
-                  <h4 className="font-semibold text-gray-900 mb-2">Or Adjust Manually</h4>
+                  <h4 className="font-semibold text-gray-900 mb-2">Or Adjust Manually (this month only)</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs mb-1 font-medium text-gray-700">Savings</label>
@@ -2154,7 +2236,7 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                       />
                     </div>
                     <div>
@@ -2168,7 +2250,7 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                       />
                     </div>
                     <div>
@@ -2182,7 +2264,7 @@ return (
                           setSelectedOption('manual');
                           setForceRebalanceError('');
                         }}
-                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-200 transition-all"
+                        className="w-full p-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
                       />
                     </div>
                   </div>
@@ -2190,24 +2272,36 @@ return (
                     <span>New total: <span className={Math.abs(forceRebalanceTotal - (forceRebalanceTotals?.available ?? 0)) > 0.01 ? 'text-red-600 font-bold' : 'text-green-600 font-bold'}>{forceRebalanceTotal.toFixed(0)} SEK</span></span>
                     <span>Must equal: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></span>
                   </div>
+                  {selectedOption === 'manual' && budgetBalanceIssues.length > 1 && (
+                    <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      Manual values only apply to this month (each problematic month has a different available balance, so the same numbers can&apos;t be copied to all of them). Use a Quick Fix option above to fix all {budgetBalanceIssues.length} months at once.
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={applyForceRebalance}
-                    className="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 active:bg-red-800 shadow-md transition-all font-semibold"
+                    className="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 active:bg-blue-800 shadow-md transition-all font-semibold"
                   >
                     Apply This Month
                   </button>
-                  {budgetBalanceIssues && budgetBalanceIssues.length > 1 && (
+                  {budgetBalanceIssues && budgetBalanceIssues.length > 1 && selectedOption !== 'manual' && (
                     <button
                       onClick={applyForceRebalanceToAll}
-                      className="flex-1 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 active:bg-purple-800 shadow-md transition-all font-semibold"
+                      className="flex-1 bg-blue-800 text-white px-4 py-3 rounded-lg hover:bg-blue-900 active:bg-blue-950 shadow-md transition-all font-semibold"
                       title={`Apply selected option to all ${budgetBalanceIssues.length} problematic months at once`}
                     >
                       Fix All ({budgetBalanceIssues.length})
                     </button>
                   )}
+                  <button
+                    onClick={cancelForceRebalance}
+                    className="flex-1 bg-gray-400 text-white px-4 py-3 rounded-lg hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all font-semibold"
+                    title="Revert to the last valid budget state for this month and close"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             </div>
@@ -2467,7 +2561,8 @@ return (
             const balanceGap = postBudgets - availableAfterAdd;
 
             return (
-              <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-300 rounded-xl shadow-md">
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
+              <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className="w-5 h-5 text-red-700" />
                   <h3 className="font-bold text-red-900">New Fixed Expense: {newExpenseSplit.expense.name}</h3>
@@ -2655,11 +2750,13 @@ return (
                   </div>
                 </div>
               </div>
+              </div>
             );
           })()}
 
           {extraSplitActive && data[sel].extraInc > 0 && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-xl shadow-md">
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
+            <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle className="w-5 h-5 text-purple-700" />
                 <h3 className="font-bold text-purple-900">Split Extra Income: {data[sel].extraInc.toFixed(0)} SEK</h3>
@@ -2803,26 +2900,41 @@ return (
                   </button>
                   {lastExtraApply && lastExtraApply.sel === sel && (
                     <button onClick={() => {
-                      if (!confirm('Undo the last extra income split? This will restore the extra income and remove the allocated amounts.')) return;
-                      // undo: restore data and remove the last recorded extra allocation
-                      const n = [...data];
-                      const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
-                      const la = lastExtraApply;
-                      if (tcopy.extra[la.sel] && tcopy.extra[la.sel][la.idx]) {
-                        tcopy.extra[la.sel].splice(la.idx, 1);
-                      }
-                      n[la.sel].grocExtra = la.prev.grocExtra;
-                      n[la.sel].entExtra = la.prev.entExtra;
-                      n[la.sel].saveExtra = la.prev.saveExtra;
-                      n[la.sel].extraInc = la.prev.extraInc;
-                      n[la.sel].inc = la.prev.inc;
-                      setData(n);
-                      setTransactions(tcopy);
-                      setLastExtraApply(null);
-                      setHasChanges(true);
+                      askConfirm('Undo the last extra income split? This will restore the extra income and remove the allocated amounts.', () => {
+                        // undo: restore data and remove the last recorded extra allocation
+                        const n = [...data];
+                        const tcopy = { groc: transactions.groc.map(a=>a.slice()), ent: transactions.ent.map(a=>a.slice()), extra: transactions.extra.map(a=>a.slice()) } as { groc: Tx[][]; ent: Tx[][]; extra: ExtraAlloc[][] };
+                        const la = lastExtraApply;
+                        if (tcopy.extra[la.sel] && tcopy.extra[la.sel][la.idx]) {
+                          tcopy.extra[la.sel].splice(la.idx, 1);
+                        }
+                        n[la.sel].grocExtra = la.prev.grocExtra;
+                        n[la.sel].entExtra = la.prev.entExtra;
+                        n[la.sel].saveExtra = la.prev.saveExtra;
+                        n[la.sel].extraInc = la.prev.extraInc;
+                        n[la.sel].inc = la.prev.inc;
+                        setData(n);
+                        setTransactions(tcopy);
+                        setLastExtraApply(null);
+                        setHasChanges(true);
+                      }, { title: 'Undo extra income split?' });
                     }} className="mt-2 w-full bg-gray-100 text-gray-800 p-2 rounded-xl hover:bg-gray-200">Undo Last Extra Split</button>
                   )}
+                  <button
+                    onClick={() => {
+                      // Revert the "Extra Income" field itself (not just close the popup) -
+                      // otherwise the box still shows the unresolved value the user typed.
+                      const n = [...data];
+                      n[sel].extraInc = extraIncBeforeEdit;
+                      setData(n);
+                      setExtraSplitActive(false);
+                    }}
+                    className="mt-2 w-full bg-gray-400 text-white p-2 rounded-xl hover:bg-gray-500 active:bg-gray-600 shadow-md transition-all"
+                  >
+                    Cancel
+                  </button>
                 </div>
+              </div>
               </div>
             </div>
           )}
@@ -2991,30 +3103,32 @@ return (
                     alert('Please enter an amount greater than 0');
                     return;
                   }
+                  const proceedAddExpense = () => {
+                    const amts=Array(60).fill(0).map((_,i)=>{
+                      if(i<newExp.start)return 0;
+                      if(newExp.type==='once')return i===newExp.start?newExp.amt:0;
+                      if(newExp.type==='monthly')return newExp.amt;
+                      const int=parseInt(newExp.type);
+                      return(i-newExp.start)%int===0?newExp.amt:0;
+                    });
+                    // Trigger split modal for affected months
+                    setNewExpenseSplit({
+                      expense: {id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)},
+                      split: { save: 0, groc: 0, ent: 0 },
+                      applyToAll: false
+                    });
+                    setNewExpenseSplitError('');
+                    setNewExp({name:'',amt:0,type:'monthly',start:0});
+                    setShowAdd(false);
+                  };
                   // Check for duplicate names only for the same month start
                   const startIdx = newExp.start ?? sel;
                   const existsActive = fixed.some(f => f.name.toLowerCase() === trimmedName.toLowerCase() && ((f.amts[startIdx] || 0) > 0));
                   if (existsActive) {
-                    if(!confirm(`An expense named \"${trimmedName}\" already exists. Add anyway?`)) {
-                      return;
-                    }
+                    askConfirm(`An expense named "${trimmedName}" already exists. Add anyway?`, proceedAddExpense, { title: 'Duplicate expense name' });
+                    return;
                   }
-                  const amts=Array(60).fill(0).map((_,i)=>{
-                    if(i<newExp.start)return 0;
-                    if(newExp.type==='once')return i===newExp.start?newExp.amt:0;
-                    if(newExp.type==='monthly')return newExp.amt;
-                    const int=parseInt(newExp.type);
-                    return(i-newExp.start)%int===0?newExp.amt:0;
-                  });
-                  // Trigger split modal for affected months
-                  setNewExpenseSplit({
-                    expense: {id:Date.now(),name:trimmedName,amts,spent:Array(60).fill(false)},
-                    split: { save: 0, groc: 0, ent: 0 },
-                    applyToAll: false
-                  });
-                  setNewExpenseSplitError('');
-                  setNewExp({name:'',amt:0,type:'monthly',start:0});
-                  setShowAdd(false);
+                  proceedAddExpense();
                 }} 
                 className="h-9 px-4 bg-amber-600 text-white rounded-lg hover:bg-amber-700 active:bg-amber-800 shadow-sm transition-all text-sm font-semibold"
               >
@@ -3369,6 +3483,15 @@ return (
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={confirmAction !== null}
+          title={confirmAction?.title}
+          message={confirmAction?.message ?? ''}
+          danger={confirmAction?.danger}
+          onConfirm={handleConfirmAction}
+          onCancel={handleCancelAction}
+        />
 
         <SetupSection
           isOpen={showSetup === true}
