@@ -177,6 +177,8 @@ Use these for smoke testing before releases, or when automated coverage is insuf
 3. Select a source and confirm the budget/savings adjustment matches the documented formulas.
 4. Edit the compensated transaction's amount and confirm the original compensation is reversed before the new amount is (re-)validated.
 5. Attempt an overspend with no sufficient source; confirm the transaction is rejected with a clear message.
+6. Save changes, refresh the page (or re-open the app), and confirm the compensated transaction still shows its "compensated from X" note in history.
+7. After the refresh, delete (or edit) that same transaction and confirm the compensation source (other budget / planned savings / previous savings) is correctly restored — not silently lost. (Regression test: `tests/bugs/compensationPersistence.test.ts`.)
 
 ### Scenario H — Manual Salary Month Rollover
 1. On a month with unspent grocery/entertainment budget, click "Start new salary month".

@@ -333,6 +333,11 @@ if source === 'prev' (using previous savings):
 - Restore budgets or previous savings to original state
 - Then apply new compensation (if needed) based on new amount
 
+**Persistence (Firestore save/reload):**
+- `compensation` metadata on a transaction MUST survive `saveData()` → Firestore → page refresh/reload.
+- `lib/hooks/useFinancialState.ts` `serializeTransactions` keeps `compensation` when writing to Firestore; `deserializeTransactions` must also copy `compensation` (when present) when rebuilding transactions from the loaded document, for both `groc` and `ent`.
+- **Bug fixed (Jul 2026):** `deserializeTransactions` previously rebuilt each transaction as `{ amt, ts }` only, dropping `compensation`. This caused the "compensated from X" note to disappear after a refresh, and made edit/delete on a reloaded compensated transaction skip `reverseCompensation`, permanently losing the amount taken from the compensation source. Fixed by preserving `compensation` in the structured-format deserialization branch. See `tests/bugs/compensationPersistence.test.ts`.
+
 **Example Workflow:**
 1. User adds 1000 SEK grocery transaction
 2. Remaining budget: 300 SEK → Overspend = 700 SEK
