@@ -76,16 +76,41 @@ describe('advanceSalaryMonth', () => {
     expect(res.data[2].rolloverIncome).toBe(1500 + 800); // RolloverIncome increased to balance equation
   });
 
-  it('does not carry overspend forward', () => {
+  it('compensates net overspend from next month savings (carryToSavings)', () => {
     const { data, varExp } = baseState();
     varExp.grocBudg[5] = 500;
-    varExp.grocSpent[5] = 700; // overspend
+    varExp.grocSpent[5] = 700; // overspend 200
     varExp.entBudg[5] = 500;
-    varExp.entSpent[5] = 700; // overspend
+    varExp.entSpent[5] = 700; // overspend 200
     const res = advanceSalaryMonth({ data, varExp, currentIdx: 5, choice: 'carryToSavings' });
     expect(res.status).toBe('ok');
-    expect(res.data[6].save).toBe(2000); // unchanged
-    expect(res.data[6].rolloverIncome).toBeUndefined(); // rolloverIncome not set (no leftover to carry)
+    expect(res.data[6].save).toBe(2000 - 400); // 400 net overspend deducted from next month's savings
+    expect(res.data[6].rolloverIncome).toBe(-400); // available balance reduced to match
+  });
+
+  it('compensates net overspend from next month budgets (carryToBudgets)', () => {
+    const { data, varExp } = baseState();
+    varExp.grocBudg[5] = 500;
+    varExp.grocSpent[5] = 700; // overspend 200
+    varExp.entBudg[5] = 500;
+    varExp.entSpent[5] = 600; // overspend 100
+    const res = advanceSalaryMonth({ data, varExp, currentIdx: 5, choice: 'carryToBudgets' });
+    expect(res.status).toBe('ok');
+    expect(res.data[6].grocExtra).toBe(-200);
+    expect(res.data[6].entExtra).toBe(-100);
+    expect(res.data[6].rolloverIncome).toBe(-300);
+  });
+
+  it('offsets overspend in one category against underspend in the other before compensating', () => {
+    const { data, varExp } = baseState();
+    varExp.grocBudg[5] = 500;
+    varExp.grocSpent[5] = 700; // overspend 200
+    varExp.entBudg[5] = 500;
+    varExp.entSpent[5] = 100; // underspend 400 -> net leftover +200
+    const res = advanceSalaryMonth({ data, varExp, currentIdx: 5, choice: 'carryToSavings' });
+    expect(res.status).toBe('ok');
+    expect(res.data[6].save).toBe(2000 + 200); // net positive after offset
+    expect(res.data[6].rolloverIncome).toBe(200);
   });
 
   it('resets spent fields for next month', () => {

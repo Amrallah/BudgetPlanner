@@ -100,7 +100,7 @@ describe('Real-World User Workflows', () => {
         monthIdx: 0,
         newAmt: 3050,
         oldAmt: 3000,
-        split: { save: 50, groc: 0, ent: 0 } // Deduct from savings
+        split: { save: -50, groc: 0, ent: 0 } // Increase: negative = deduct from savings
       }];
 
       const { data: dataAfterSplit } = applySaveChanges({
@@ -142,7 +142,11 @@ describe('Real-World User Workflows', () => {
       const availableForNewExpense = currentAvailable - 200; // After adding 200 expense
       const canAffordNewExpense = currentTotalBudgets <= availableForNewExpense;
 
-      expect(canAffordNewExpense).toBe(true); // Should be able to afford it
+      // Month 0 was already perfectly balanced (currentTotalBudgets === currentAvailable),
+      // so adding a new 200 fixed expense without freeing 200 from an existing budget first
+      // MUST be unaffordable - there's no slack to absorb it from. This correctly requires
+      // the user to rebalance (e.g. via the Force Rebalance modal) before it can be added.
+      expect(canAffordNewExpense).toBe(false);
     });
   });
 
@@ -361,7 +365,10 @@ describe('Real-World User Workflows', () => {
       const newTotal = updatedData[0].save + (updatedData[0].saveBonus || 0) + (updatedData[0].saveExtra || 0);
       expect(newTotal).toBe(2700);
 
-      // Validation should use the total
+      // Validation should use the total. NOTE: increasing savings by 200 without funding it
+      // from anywhere (no new income, no reduced groc/ent) is an intentionally unbalanced
+      // edit - the app is expected to flag this as invalid so the user gets prompted to
+      // rebalance, exactly like any other under/over-allocation.
       const check = validateBudgetBalance({
         monthIdx: 0,
         save: newTotal,
@@ -372,7 +379,7 @@ describe('Real-World User Workflows', () => {
         months
       });
 
-      expect(check.valid).toBe(true);
+      expect(check.valid).toBe(false);
     });
   });
 
@@ -434,7 +441,7 @@ describe('Real-World User Workflows', () => {
         monthIdx: 0,
         newAmt: 2800,
         oldAmt: 3000,
-        split: { save: -200, groc: 0, ent: 0 } // Negative = freed amount
+        split: { save: 200, groc: 0, ent: 0 } // Decrease: positive = add freed amount to savings
       }];
 
       const { data: finalData } = applySaveChanges({

@@ -304,6 +304,8 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - Trigger: "Start new salary month" button
   - Choices: carry leftovers to next groc/ent budgets **or** move all leftovers to next month savings
   - Effects: sets `rolloverProcessed=true`, locks month, sets `monthLocked`/`entBudgLocked`, adds leftover to next `rolloverIncome`, allocates per choice, resets next month spent to 0, advances selection and saves immediately
+  - **Overspend handling (fixed Jul 2026):** groceries/entertainment overspend in the closing month is netted against underspend in the other category first; any remaining net overspend is NOT blocked or discarded - it's compensated automatically by deducting it from next month's `rolloverIncome` (and from savings for `carryToSavings`, or from `grocExtra`/`entExtra` for `carryToBudgets`), symmetric to how a positive leftover is added. This intentionally lets those next-month fields go negative rather than silently absorbing the overspend with no consequence. `lib/salaryRollover.ts` (`advanceSalaryMonth`).
+  - Existing manual `grocExtra`/`entExtra` allocations on the next month (if any) are ADDED to, not replaced by, the new rollover leftover - both allocations are independent and legitimately additive.
 
 ### F15: Overspend Compensation System (NEW - CRITICAL)
 **Purpose:** Handle transactions that exceed available budget in a month by offering compensation sources

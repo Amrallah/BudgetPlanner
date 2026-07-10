@@ -47,34 +47,37 @@ export function advanceSalaryMonth({ data, varExp, currentIdx, choice }: Params)
   nextData[currentIdx].monthLocked = true;
   nextData[currentIdx].entBudgLocked = true;
 
-  // Compute both groceries and entertainment leftovers (no overspend carry)
+  // Compute both groceries and entertainment leftovers. Overspend (negative leftover) in one
+  // category is first offset against underspend in the other; any remaining net overspend is
+  // compensated automatically from NEXT month's budget (deducted from savings/extras), rather
+  // than blocking rollover - keeps the same "distribute the delta" logic symmetric for both signs.
   const grocBudg = nextVar.grocBudg[currentIdx] ?? 0;
   const grocSpent = nextVar.grocSpent[currentIdx] ?? 0;
-  const grocLeftover = Math.max(0, grocBudg - grocSpent);
-  
+  const grocLeftover = grocBudg - grocSpent;
+
   const entBudg = nextVar.entBudg[currentIdx] ?? 0;
   const entSpent = nextVar.entSpent[currentIdx] ?? 0;
-  const entLeftover = Math.max(0, entBudg - entSpent);
-  
+  const entLeftover = entBudg - entSpent;
+
   const totalLeftover = grocLeftover + entLeftover;
 
-  if (totalLeftover > 0) {
-    // Add leftover to next month's rolloverIncome to increase available balance for validation
+  if (totalLeftover !== 0) {
+    // Add/subtract leftover to/from next month's rolloverIncome to adjust available balance
     const baseRollover = nextData[nextIdx].rolloverIncome ?? 0;
     nextData[nextIdx].rolloverIncome = baseRollover + totalLeftover;
 
-    // Then: allocate the leftover according to choice
+    // Then: allocate the leftover (or deduct the shortfall) according to choice
     if (choice === 'carryToSavings') {
-      // Add total leftover to next month's savings
+      // Add total leftover to next month's savings (can reduce savings if net negative)
       const baseNextSave = nextData[nextIdx].save ?? 0;
       nextData[nextIdx].save = baseNextSave + totalLeftover;
     } else if (choice === 'carryToBudgets') {
-      // Add groc leftover to next grocExtra, ent leftover to next entExtra
-      if (grocLeftover > 0) {
+      // Add groc leftover to next grocExtra, ent leftover to next entExtra (can go negative)
+      if (grocLeftover !== 0) {
         const baseGrocExtra = nextData[nextIdx].grocExtra ?? 0;
         nextData[nextIdx].grocExtra = baseGrocExtra + grocLeftover;
       }
-      if (entLeftover > 0) {
+      if (entLeftover !== 0) {
         const baseEntExtra = nextData[nextIdx].entExtra ?? 0;
         nextData[nextIdx].entExtra = baseEntExtra + entLeftover;
       }

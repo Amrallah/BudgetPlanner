@@ -157,7 +157,7 @@ describe('Edge Cases - Validation', () => {
       });
 
       expect(check.valid).toBe(true);
-      expect(check.available).toBe(0);
+      expect(check.availableBudget).toBe(0);
     });
 
     it('should handle all budgets at zero', () => {
@@ -202,7 +202,7 @@ describe('Edge Cases - Validation', () => {
       });
 
       expect(check.valid).toBe(true);
-      expect(check.available).toBe(0);
+      expect(check.availableBudget).toBe(0);
     });
 
     it('should handle very large numbers (millions)', () => {
@@ -291,8 +291,8 @@ describe('Edge Cases - Manual Rollover', () => {
 
       expect(rolloverResult.status).toBe('ok');
       
-      // No leftover to carry
-      expect(rolloverResult.data[1].rolloverIncome).toBe(0);
+      // No leftover to carry - rolloverIncome is left unset (not forced to 0)
+      expect(rolloverResult.data[1].rolloverIncome).toBeUndefined();
       expect(rolloverResult.data[1].save).toBe(2000); // Unchanged
     });
 
@@ -423,8 +423,11 @@ describe('Edge Cases - Manual Rollover', () => {
         choice: 'carryToSavings'
       });
 
-      // Should be blocked due to overspend
-      expect(rolloverResult.status).toBe('insufficient_previous');
+      // Overspend (800) is compensated automatically from next month's savings
+      // rather than blocking rollover (net leftover = -800, entertainment breaks even)
+      expect(rolloverResult.status).toBe('ok');
+      expect(rolloverResult.data[1].rolloverIncome).toBe(-800);
+      expect(rolloverResult.data[1].save).toBe(2000 - 800);
     });
   });
 
@@ -466,7 +469,7 @@ describe('Edge Cases - Manual Rollover', () => {
         choice: 'carryToSavings'
       });
 
-      expect(rolloverResult.status).toBe('already_processed');
+      expect(rolloverResult.status).toBe('already-processed');
     });
 
     it('should not allow rollover on last month in array', () => {
@@ -506,7 +509,8 @@ describe('Edge Cases - Manual Rollover', () => {
         choice: 'carryToSavings'
       });
 
-      expect(rolloverResult.status).toBe('invalid_month');
+      expect(rolloverResult.status).toBe('blocked');
+      expect(rolloverResult.reason).toBe('missing-next-month');
     });
   });
 });
@@ -618,7 +622,7 @@ describe('Edge Cases - Save Changes / Split Modal', () => {
         monthIdx: 0,
         newAmt: 300,
         oldAmt: 0,
-        split: { save: 300, groc: 0, ent: 0 }
+        split: { save: -300, groc: 0, ent: 0 } // Increase: negative = deduct from savings
       }];
 
       const result1 = applySaveChanges({
@@ -642,7 +646,7 @@ describe('Edge Cases - Save Changes / Split Modal', () => {
         monthIdx: 0,
         newAmt: 200,
         oldAmt: 0,
-        split: { save: 0, groc: 100, ent: 100 }
+        split: { save: 0, groc: -100, ent: -100 } // Increase: negative = deduct from groc/ent
       }];
 
       const finalFixed = [
