@@ -49,8 +49,10 @@ export function checkTransactionOverspend(
     });
   }
   
-  // Planned savings
-  const plannedSavings = dataItem.save;
+  // Planned savings - total pool (base + freed/rollover bonus + extra income), not just the base amount.
+  // Bonus/extra are kept only as a historical/analytics breakdown; they are not separately
+  // gated here because the base absorbs any compensation delta (see applyCompensation).
+  const plannedSavings = dataItem.save + (dataItem.saveBonus || 0) + (dataItem.saveExtra || 0);
   if (plannedSavings >= overspendAmount) {
     availableSources.push({
       source: 'save',
@@ -92,22 +94,27 @@ export function applyCompensation(
 
   switch (source) {
     case 'groc':
-      // Transfer budget from groceries to entertainment
+      // Transfer from groceries' TOTAL pool (base + grocBonus + grocExtra) to entertainment.
+      // The base absorbs the full delta (can go below the original base value, even negative)
+      // so the effective total (base+bonus+extra) shrinks by exactly `amount`; bonus/extra stay
+      // untouched as a historical record of where the budget originally came from.
       if (target === 'ent') {
-        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - amount);
+        newVarExp.grocBudg[monthIndex] -= amount;
         newVarExp.entBudg[monthIndex] += amount;
       }
       break;
     case 'ent':
-      // Transfer budget from entertainment to groceries
+      // Transfer from entertainment's TOTAL pool to groceries (see 'groc' case above).
       if (target === 'groc') {
-        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - amount);
+        newVarExp.entBudg[monthIndex] -= amount;
         newVarExp.grocBudg[monthIndex] += amount;
       }
       break;
     case 'save':
-      // Fund overspend from planned savings by boosting target budget
-      newDataItem.save = Math.max(0, dataItem.save - amount);
+      // Fund overspend from savings' TOTAL pool (save + saveBonus + saveExtra) by boosting the
+      // target budget. Base absorbs the full delta (see 'groc' case above); saveBonus/saveExtra
+      // are left untouched.
+      newDataItem.save = dataItem.save - amount;
       if (target === 'groc') newVarExp.grocBudg[monthIndex] += amount; else newVarExp.entBudg[monthIndex] += amount;
       break;
     case 'prev':
@@ -148,21 +155,21 @@ export function reverseCompensation(
     case 'groc':
       if (target === 'ent') {
         newVarExp.grocBudg[monthIndex] += compensation.amount;
-        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - compensation.amount);
+        newVarExp.entBudg[monthIndex] -= compensation.amount;
       }
       break;
     case 'ent':
       if (target === 'groc') {
         newVarExp.entBudg[monthIndex] += compensation.amount;
-        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - compensation.amount);
+        newVarExp.grocBudg[monthIndex] -= compensation.amount;
       }
       break;
     case 'save':
       newDataItem.save = dataItem.save + compensation.amount;
       if (target === 'groc') {
-        newVarExp.grocBudg[monthIndex] = Math.max(0, newVarExp.grocBudg[monthIndex] - compensation.amount);
+        newVarExp.grocBudg[monthIndex] -= compensation.amount;
       } else {
-        newVarExp.entBudg[monthIndex] = Math.max(0, newVarExp.entBudg[monthIndex] - compensation.amount);
+        newVarExp.entBudg[monthIndex] -= compensation.amount;
       }
       break;
     case 'prev':

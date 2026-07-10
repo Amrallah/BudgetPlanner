@@ -69,7 +69,10 @@ export default memo(function BudgetSection({
                   Total Budget
                   {(field.bonus > 0 || field.extra > 0) && (
                     <span className="text-emerald-700 ml-1 block text-[11px]">
-                      Base {field.baseBudget.toFixed(0)}
+                      {/* Only show "Base X" when base is non-negative - once compensation/edits
+                          have pulled more than the base itself (base goes negative), showing
+                          "Base -100" is confusing. The total above is still exactly correct. */}
+                      {field.baseBudget >= 0 && `Base ${field.baseBudget.toFixed(0)}`}
                       {field.bonus > 0 && ` +${field.bonus.toFixed(0)} freed`}
                       {field.extra > 0 && ` +${field.extra.toFixed(0)} extra`}
                     </span>

@@ -83,8 +83,14 @@ The **Finance Dashboard** is a personal financial planning application that mode
 - **Rule:** `savingsBudget + groceriesBudget + entertainmentBudget === availableBalance` (exactly)
 - **Enforcement:** Blocks save and shows list of problematic months
 - **Available Balance:** `income + extraInc + rolloverIncome - fixedExpenses`
-- **Extras Tracking:** Bonuses and extras are INCLUDED in budget totals
+- **Extras Tracking:** Bonus/extra fields are historical/analytics-only (see Data Model) but are still summed into each category's live total for this validation, since the base is what absorbs all edits/compensation (see F3.1 below) - so the sum stays exact.
 - **Formula:** `(baseGrocBudget + grocBonus + grocExtra) + (baseEntBudget + entBonus + entExtra) + (baseSavings + saveBonus + saveExtra) === available`
+
+### F3.1: Base absorbs all changes; bonus/extra are historical-only (design decision, Jul 2026)
+- `grocBonus`/`entBonus`/`saveBonus` (freed/rollover budget) and `grocExtra`/`entExtra`/`saveExtra` (extra income allocation) are set ONCE when money is added to a category (extra income split modal, rollover "carry to budgets", freed-budget bonus) and are purely a historical/analytics record of where that month's budget originally came from.
+- Every subsequent operation that changes a category's total - manual budget/savings field edits, transaction overspend compensation, and the Budget Rebalance modal - modifies ONLY the base (`varExp.grocBudg[i]`, `varExp.entBudg[i]`, `data[i].save`), never the bonus/extra fields.
+- The base is allowed to go negative (no `Math.max(0, ...)` clamping) so that `base + bonus + extra` always equals exactly the intended total, even when the requested change is larger than the base alone. This replaced an earlier bug where clamping the base at 0 silently discarded part of a compensation/edit whenever bonus/extra made up a large share of the total. See `tests/bugs/compensationFromExtraSavings.test.ts`.
+- **UI:** the "Base X +Y freed +Z extra" breakdown (`BudgetSection`'s Total Budget label, and the Savings field label in `app/page.tsx`) omits the "Base X" segment whenever the base is negative - showing "Base -100" would be confusing since it's just an internal accounting detail once compensation/edits have pulled more than the base itself. The freed/extra amounts and the overall total are still shown/correct in that case. See the `hides the "Base X" segment when baseBudget is negative` test in `tests/components/BudgetSection.test.tsx`.
 
 ### F4: Force Rebalance Modal
 - **Trigger:** When budget balance fails validation on ANY month
@@ -340,22 +346,27 @@ if source === 'prev' (using previous savings):
 - `compensation` metadata on a transaction MUST survive `saveData()` → Firestore → page refresh/reload.
 - `lib/hooks/useFinancialState.ts` `serializeTransactions` keeps `compensation` when writing to Firestore; `deserializeTransactions` must also copy `compensation` (when present) when rebuilding transactions from the loaded document, for both `groc` and `ent`.
 - **Bug fixed (Jul 2026):** `deserializeTransactions` previously rebuilt each transaction as `{ amt, ts }` only, dropping `compensation`. This caused the "compensated from X" note to disappear after a refresh, and made edit/delete on a reloaded compensated transaction skip `reverseCompensation`, permanently losing the amount taken from the compensation source. Fixed by preserving `compensation` in the structured-format deserialization branch. See `tests/bugs/compensationPersistence.test.ts`.
+- **Bug fixed (Jul 2026): compensation must draw from the category's TOTAL pool, not just base.** Previously, `checkTransactionOverspend`/`applyCompensation` only looked at `dataItem.save` (base) for the 'save' source, ignoring `saveBonus`/`saveExtra` - so if a month's savings consisted mostly of freed/extra money (e.g. `save=0, saveExtra=300`), the app reported "no savings available" even though 300 SEK of total savings existed. The groc↔ent transfer path had a related bug: `applyCompensation` clamped the source's *base* `varExp.grocBudg`/`entBudg` at 0 with `Math.max(0, ...)`, silently losing money whenever `grocBonus`/`grocExtra`/`entBonus`/`entExtra` made up more of the "available" amount than the base itself did.
+  - **Root cause:** the base/bonus/extra split exists purely to record *where* a month's budget money originally came from (recurring plan vs. rollover-freed budget vs. one-off extra income) for audit/analytics purposes (see `BudgetSection` "+X freed +Y extra" breakdown). Nothing about spending/compensation logic needs that distinction - only the combined total matters.
+  - **Fix (adopted design):** `grocBonus`/`entBonus`/`saveBonus`/`grocExtra`/`entExtra`/`saveExtra` are now purely historical/analytics values, set only when money is *added* to a category (extra income split, rollover "carry to budgets", freed-budget bonus). They are **never read or modified** by compensation, manual budget/savings edits, or the Budget Rebalance modal. All of those instead only ever change the **base** (`varExp.grocBudg[i]`, `varExp.entBudg[i]`, `data[i].save`), and the base is allowed to go **negative** if the desired total is less than the existing bonus/extra (e.g. compensating away savings that's mostly "extra" money drives `save` negative while `saveExtra` stays untouched) - this keeps `total = base + bonus + extra` always exactly correct without needing to know/redistribute which sub-field the money "really" came from. The previous `Math.max(0, total - extras)` clamp in these code paths was the actual bug: it silently threw away the portion of a request that exceeded the base, rather than letting the base go negative.
+  - **Files changed:** `lib/compensation.ts` (`checkTransactionOverspend`, `applyCompensation`, `reverseCompensation`), `app/page.tsx` (`handleMonthlyChange`'s `save` case, and the Budget Rebalance modal's Apply/Cancel handlers).
+  - See `tests/bugs/compensationFromExtraSavings.test.ts` for regression coverage.
 
 **Example Workflow:**
 1. User adds 1000 SEK grocery transaction
 2. Remaining budget: 300 SEK → Overspend = 700 SEK
 3. CompensationModal shows:
    - Entertainment remaining: 500 SEK (insufficient)
-   - Planned savings: 2000 SEK ✅
+   - Planned savings (base + bonus + extra total): 2000 SEK ✅
    - Previous savings: 5000 SEK ✅
 4. User selects "Planned Savings"
-5. System reduces `data[month].save` by 700 SEK
+5. System reduces `data[month].save` (base) by 700 SEK - `saveBonus`/`saveExtra` are left untouched, and `save` may go negative if most of the month's savings was bonus/extra money
 6. Increases grocery budget by 700 SEK
 7. Transaction added with compensation metadata
 8. Total spent now matches budget
 
 **No compensation available case:**
-- If no sources can cover: Alert "Overspend cannot be covered by any source"
+- If no source's TOTAL (base+bonus+extra) can cover the overspend: Alert "Overspend cannot be covered by any source"
 - Transaction not added
 - User must reduce amount or increase budgets first
 
@@ -370,15 +381,15 @@ if source === 'prev' (using previous savings):
   baseSalary?: number;            // Original salary (for change tracking)
   prev: number | null;            // Previous month's savings (calculated or manual)
   prevManual: boolean;            // Was prev set manually? (override calculated)
-  save: number;                   // Savings budget for this month
+  save: number;                   // Savings BASE budget for this month (absorbs all deductions/edits; can go negative if bonus/extra exceed the desired total - see "compensation must draw from TOTAL pool" fix above)
   defSave: number;                // Default savings (for freed amount calculation)
-  saveBonus?: number;             // Freed savings allocated to savings when below defSave
+  saveBonus?: number;              // HISTORICAL/ANALYTICS ONLY: freed savings originally allocated to savings when below defSave. Never read/modified by compensation, manual edits, or rebalancing - only used to display the "+X freed" breakdown and to compute the live total (save + saveBonus + saveExtra).
   extraInc: number;               // Extra income (bonus, side gigs)
-  grocBonus: number;              // Freed savings allocated to groceries
-  entBonus: number;               // Freed savings allocated to entertainment
-  grocExtra: number;              // Extra income allocated to groceries
-  entExtra: number;               // Extra income allocated to entertainment
-  saveExtra: number;              // Extra income allocated to savings
+  grocBonus: number;              // HISTORICAL/ANALYTICS ONLY: freed savings originally allocated to groceries (see saveBonus note above)
+  entBonus: number;               // HISTORICAL/ANALYTICS ONLY: freed savings originally allocated to entertainment (see saveBonus note above)
+  grocExtra: number;              // HISTORICAL/ANALYTICS ONLY: extra income originally allocated to groceries (see saveBonus note above)
+  entExtra: number;               // HISTORICAL/ANALYTICS ONLY: extra income originally allocated to entertainment (see saveBonus note above)
+  saveExtra: number;              // HISTORICAL/ANALYTICS ONLY: extra income originally allocated to savings (see saveBonus note above)
   rolloverIncome?: number;        // Manual/auto rollover carryover added to available
   rolloverProcessed: boolean;     // Has 5-day rollover already happened?
   monthLocked?: boolean;          // View-only after manual/auto rollover

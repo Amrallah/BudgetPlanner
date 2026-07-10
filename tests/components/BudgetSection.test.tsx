@@ -71,6 +71,29 @@ describe('BudgetSection', () => {
     expect(screen.getByText(/\+200 extra/)).toBeInTheDocument();
   });
 
+  it('hides the "Base X" segment when baseBudget is negative, but still shows freed/extra', () => {
+    // BUG FIX (Jul 2026): compensation/edits can drive baseBudget negative when bonus/extra
+    // cover more than the base itself. Showing "Base -100" is confusing, so the base number is
+    // omitted in that case while the freed/extra breakdown (and the total budget input) remain.
+    const fieldsWithNegativeBase: BudgetField[] = [
+      {
+        ...mockFields[0],
+        totalBudget: 500,
+        baseBudget: -100,
+        bonus: 300,
+        extra: 300
+      },
+      mockFields[1]
+    ];
+    render(<BudgetSection fields={fieldsWithNegativeBase} {...mockHandlers} />);
+    expect(screen.queryByText(/Base -100/)).not.toBeInTheDocument();
+    expect(screen.getByText(/\+300 freed/)).toBeInTheDocument();
+    expect(screen.getByText(/\+300 extra/)).toBeInTheDocument();
+    // Total budget input still shows the correct overall total
+    const budgetInputs = screen.getAllByPlaceholderText('0');
+    expect(budgetInputs[0]).toHaveValue(500);
+  });
+
   it('shows spent amounts', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
     const spentInputs = screen.getAllByDisplayValue(/3200|1500/);

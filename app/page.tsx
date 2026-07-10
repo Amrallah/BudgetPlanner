@@ -619,9 +619,15 @@ export default function FinancialPlanner() {
   const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
     const saveExtra = data[sel].saveExtra || 0;
     const saveBonus = data[sel].saveBonus || 0;
-    const savingsTotal = data[sel].save + saveBonus + saveExtra;
-    const savingsLabel = saveExtra > 0
-      ? `Savings (Base ${data[sel].save.toFixed(0)} +${saveExtra.toFixed(0)} extra)`
+    const saveBase = data[sel].save;
+    const savingsTotal = saveBase + saveBonus + saveExtra;
+    // Only show the "Base X" breakdown when base is non-negative - once compensation/edits have
+    // pulled more than the base itself (base goes negative), showing "Base -100" is confusing;
+    // the total is still exactly correct, just no longer meaningfully split into "base + extra".
+    const savingsLabel = (saveBonus > 0 || saveExtra > 0)
+      ? (saveBase >= 0
+          ? `Savings (Base ${saveBase.toFixed(0)}${saveBonus > 0 ? ` +${saveBonus.toFixed(0)} freed` : ''}${saveExtra > 0 ? ` +${saveExtra.toFixed(0)} extra` : ''})`
+          : 'Savings')
       : 'Savings';
 
     return ([
@@ -1011,8 +1017,11 @@ export default function FinancialPlanner() {
       const n = [...data];
       const currentExtra = n[sel].saveExtra || 0;
       const currentBonus = n[sel].saveBonus || 0;
-      // User edits total savings; keep bonus/extra components and adjust base portion accordingly
-      n[sel].save = Math.max(0, value - currentExtra - currentBonus);
+      // User edits the TOTAL savings; bonus/extra are kept as historical/analytics-only values
+      // and are never adjusted here. The base absorbs the entire delta (can go negative if the
+      // user's desired total is less than the existing bonus/extra) so the effective total
+      // (base+bonus+extra) always equals exactly what the user typed.
+      n[sel].save = value - currentExtra - currentBonus;
       setData(n);
     }
     setHasChanges(true);
@@ -2327,10 +2336,13 @@ return (
                       const multiplier = budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? -1 : 1; // If budget increased, others decrease
                       const diffVal = budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal;
                       const affectedMonths = budgetRebalanceApplyFuture ? Array.from({ length: 60 - sel }, (_, i) => sel + i) : [sel];
+                      // NOTE: bonus/extra are historical/analytics-only values and are never
+                      // adjusted by rebalancing; the base absorbs the full delta (can go negative)
+                      // so the effective total (base+bonus+extra) matches the target exactly.
                       const baselineData = data.map((d, idx) => {
                         if (budgetRebalanceModal.type === 'save' && idx === sel) {
                           const saveExtras = (d.saveBonus || 0) + (d.saveExtra || 0);
-                          const baseSave = Math.max(0, budgetRebalanceModal.oldVal - saveExtras);
+                          const baseSave = budgetRebalanceModal.oldVal - saveExtras;
                           return { ...d, save: baseSave, defSave: baseSave };
                         }
                         return { ...d };
@@ -2352,23 +2364,25 @@ return (
                         let newGrocBase = tempVar.grocBudg[idx];
                         let newEntBase = tempVar.entBudg[idx];
 
+                        // Base absorbs the full delta (no clamping) so bonus/extra stay untouched
+                        // historical values and the effective total matches the target exactly.
                         if (budgetRebalanceModal.type === 'save') {
-                          const baseSaveTarget = Math.max(0, budgetRebalanceModal.newVal - saveExtras);
-                          newSaveVal = idx === sel ? baseSaveTarget : Math.max(0, tempData[idx].save + diffVal);
-                          newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.a));
-                          newEntBase = Math.max(0, newEntBase + (multiplier * budgetRebalanceModal.split.b));
+                          const baseSaveTarget = budgetRebalanceModal.newVal - saveExtras;
+                          newSaveVal = idx === sel ? baseSaveTarget : tempData[idx].save + diffVal;
+                          newGrocBase = newGrocBase + (multiplier * budgetRebalanceModal.split.a);
+                          newEntBase = newEntBase + (multiplier * budgetRebalanceModal.split.b);
                         } else if (budgetRebalanceModal.type === 'groc') {
                           newGrocBase = idx === sel
-                            ? Math.max(0, budgetRebalanceModal.newVal - grocExtras)
-                            : Math.max(0, newGrocBase + diffVal);
-                          newSaveVal = Math.max(0, tempData[idx].save + (multiplier * budgetRebalanceModal.split.a));
-                          newEntBase = Math.max(0, newEntBase + (multiplier * budgetRebalanceModal.split.b));
+                            ? budgetRebalanceModal.newVal - grocExtras
+                            : newGrocBase + diffVal;
+                          newSaveVal = tempData[idx].save + (multiplier * budgetRebalanceModal.split.a);
+                          newEntBase = newEntBase + (multiplier * budgetRebalanceModal.split.b);
                         } else {
                           newEntBase = idx === sel
-                            ? Math.max(0, budgetRebalanceModal.newVal - entExtras)
-                            : Math.max(0, newEntBase + diffVal);
-                          newSaveVal = Math.max(0, tempData[idx].save + (multiplier * budgetRebalanceModal.split.a));
-                          newGrocBase = Math.max(0, newGrocBase + (multiplier * budgetRebalanceModal.split.b));
+                            ? budgetRebalanceModal.newVal - entExtras
+                            : newEntBase + diffVal;
+                          newSaveVal = tempData[idx].save + (multiplier * budgetRebalanceModal.split.a);
+                          newGrocBase = newGrocBase + (multiplier * budgetRebalanceModal.split.b);
                         }
 
                         const newSaveTotal = newSaveVal + saveExtras;
@@ -2417,9 +2431,10 @@ return (
                         n[sel].save = budgetRebalanceModal.oldVal;
                         n[sel].defSave = budgetRebalanceModal.oldVal;
                       } else if (budgetRebalanceModal.type === 'groc') {
-                        nv.grocBudg[sel] = Math.max(0, budgetRebalanceModal.oldVal - data[sel].grocBonus - (data[sel].grocExtra || 0));
+                        // Revert to the exact pre-edit total; base absorbs bonus/extra without clamping.
+                        nv.grocBudg[sel] = budgetRebalanceModal.oldVal - data[sel].grocBonus - (data[sel].grocExtra || 0);
                       } else if (budgetRebalanceModal.type === 'ent') {
-                        nv.entBudg[sel] = Math.max(0, budgetRebalanceModal.oldVal - data[sel].entBonus - (data[sel].entExtra || 0));
+                        nv.entBudg[sel] = budgetRebalanceModal.oldVal - data[sel].entBonus - (data[sel].entExtra || 0);
                       }
                       setData(n);
                       setVarExp(nv);
