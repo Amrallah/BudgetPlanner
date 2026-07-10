@@ -645,6 +645,8 @@ Reversal (on Edit/Delete):
 - `varExp: VarExp` - Grocery/entertainment budgets and spent
 - `transactions: Transactions` - Transaction history
 - `autoRollover: boolean` - Rollover setting
+- `salaryDay: number` - Day of month (1-31) the user is paid, default 25
+- `planStartDate: Date` - Anchor date for the 60-month plan; fixed once a document exists (persisted `startDate`, or the legacy Dec 25 2025 constant), otherwise computed live from `salaryDay`
 - `loading: boolean` - Firestore load state
 - `error: string | null` - Load errors
 - `lastSaved: string | null` - Last save timestamp
@@ -655,6 +657,7 @@ Reversal (on Edit/Delete):
 - `updateData(month, updates)`: Batches month updates
 - `updateFixed(expenses)`: Updates fixed expenses
 - `updateVarExp(updates)`: Updates variable budgets
+- `resetPlanAnchor()`: Clears the fixed plan anchor and resets `salaryDay` to the default, so `planStartDate` goes back to being computed live. Called when the user deletes all their data and re-runs Setup, so picking a new payday actually re-anchors the plan instead of the old persisted `startDate` silently overriding it.
 
 **Dependencies:**
 - Firebase `doc()`, `getDoc()`, `setDoc()`, `serverTimestamp()`
@@ -662,19 +665,21 @@ Reversal (on Edit/Delete):
 - `calculateMonthly()` for derived state
 
 #### Hook 2: useMonthSelection
-**Purpose:** Current month navigation state  
+**Purpose:** Current month navigation state
 **State Variables:**
-- `selectedMonth: number` - Current month (0-59)
-- `monthNames: string[]` - Month labels (Dec 2025 - Nov 2030)
+- `sel: number` - Currently selected month index (0-59). Defaults to the index of the most recently-active "salary month" - the last month whose date (including its salary-day component) is `<= now` - not always 0 and not simple calendar-month matching. E.g. if the plan's salary day is the 25th and today is July 10, the active index is still June, since the 25th hasn't occurred yet in July.
+- `currentIndex: number` - The active salary month's index, computed independently of `sel`/user navigation. Used to render past/current/future status (e.g. the month dropdown's ✅/🟢/🔴 icons) so it stays correct even if the user has manually selected a different month.
+- `months: MonthItem[]` - Month labels/dates, generated from a `startDate` anchor (default: legacy Dec 25 2025 constant `DEFAULT_START_DATE`, overridden by the caller with the user's persisted `planStartDate` once loaded from Firestore — see `useFinancialState`). Each month preserves the same day-of-month as the anchor (clamped for short months like February) for `date`/`day`, but `name` is labeled after the calendar month containing the TRUE majority of the cycle's days by actual day-count (see `getCycleLabelDate`), e.g. a payday on the 25th labels the June25–July24 cycle "Jul 2026" (24 July days vs 6 June days), and a payday on the 5th labels the July5–Aug4 cycle "Jul 2026" (27 July days vs 4 August days) — not simply "whichever month the cycle's last day falls in", which is wrong for early paydays.
 
 **Key Functions:**
-- `selectMonth(n)`: Sets current month
-- `nextMonth()`: Increments month
-- `previousMonth()`: Decrements month
-- `getMonthName(n)`: Returns label for month
+- `goToMonth(n)` / `setSel(n)`: Sets current month (clamped)
+- `goNext()`: Increments month
+- `goPrev()`: Decrements month
+- `isPassed(n)`, `getRolloverDays(n)`
+- `resolveSalaryAnchorDate(now, salaryDay)`: exported helper - given "today" and a salary day-of-month, returns the most recent salary date `<= now` (rolling back to the previous month if this month's payday hasn't happened yet). Used by `useFinancialState` to anchor brand-new users' plans.
 
 **Dependencies:**
-- useFinancialState (for base date calculation)
+- `useFinancialState` (supplies `planStartDate` and `salaryDay`, the per-user plan anchor and payday, via `app/page.tsx`)
 
 #### Hook 3: useTransactions
 **Purpose:** Transaction CRUD operations  
@@ -1096,6 +1101,13 @@ firestore
             ├── varExp: VarExp         (budgets + spent)
             ├── transactions: Transactions (history)
             ├── autoRollover: boolean  (setting)
+            ├── startDate: string      ("yyyy-MM-dd", first day of the user's plan, day = salaryDay;
+            │                           set once at first save, defaults to the user's currently-active
+            │                           salary cycle at registration; absent on documents saved before
+            │                           this field existed - see lib/hooks/useMonthSelection.ts
+            │                           DEFAULT_START_DATE fallback)
+            ├── salaryDay: number      (1-31, day of month the user is paid; chosen during Setup,
+            │                           defaults to 25 - see DEFAULT_SALARY_DAY in useFinancialState.ts)
             └── updatedAt: timestamp   (last save time)
 ```
 
@@ -1113,6 +1125,8 @@ firestore
   varExp: VarExp;             // Object with budgets/spent
   transactions: Transactions; // Transaction history
   autoRollover: boolean;      // User preference
+  startDate: string;          // "yyyy-MM-dd"; resolved once, then reused on every subsequent save
+  salaryDay: number;          // 1-31; day of month the user is paid (default 25)
   updatedAt: Timestamp;       // Server time (not local)
 }
 ```

@@ -115,6 +115,12 @@ export type FinancialDoc = {
   varExp: VarExp;
   transactions?: SerializedTransactions | LegacyTransactions | null;
   autoRollover?: boolean;
+  /** ISO date string (yyyy-MM-dd) marking the first day of the user's 60-month plan.
+   *  Set once at first registration/save; absent on documents saved before this field existed. */
+  startDate?: string;
+  /** Day of month (1-31) the user gets paid. Defaults to 25 (legacy behavior) when absent.
+   *  Used to determine which "salary month" is currently active. */
+  salaryDay?: number;
   updatedAt?: unknown;
 };
 

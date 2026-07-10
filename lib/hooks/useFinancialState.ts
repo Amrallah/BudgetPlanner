@@ -7,12 +7,23 @@
  * @returns {object} Financial state and operations
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Timestamp } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 import { getFinancialData } from '@/lib/finance';
 import { saveFinancialDataSafe } from '@/lib/financeSafe';
+import { DEFAULT_START_DATE, resolveSalaryAnchorDate } from '@/lib/hooks/useMonthSelection';
 import type { DataItem, FixedExpense, VarExp, Transactions, SerializedTransactions, LegacyTransactions, Tx, ExtraAlloc } from '@/lib/types';
+
+// Formats a Date as a yyyy-MM-dd string (local time, no timezone conversion).
+const toDateOnlyString = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const DEFAULT_SALARY_DAY = 25;
 
 // Helper functions for empty state initialization
 const createEmptyData = (): DataItem[] => Array.from({ length: 60 }, () => ({
@@ -57,6 +68,28 @@ export function useFinancialState() {
   const [varExp, setVarExp] = useState<VarExp>(createEmptyVarExp());
   const [transactions, setTransactions] = useState<Transactions>(createEmptyTransactions());
   const [autoRollover, setAutoRollover] = useState(false);
+  // Day of month (1-31) the user gets paid. Defaults to 25 (legacy behavior) until
+  // loaded from Firestore, or changed by the user during setup.
+  const [salaryDay, setSalaryDay] = useState<number>(DEFAULT_SALARY_DAY);
+  // Fixed anchor for the user's 60-month plan once known: either the persisted
+  // `startDate`, or the legacy Dec 25, 2025 constant for documents saved before
+  // this field existed. Null only while a brand-new user hasn't saved yet, in
+  // which case `planStartDate` is computed live from `salaryDay` below.
+  const [planStartDateBase, setPlanStartDateBase] = useState<Date | null>(null);
+  const planStartDate = useMemo(
+    () => planStartDateBase ?? resolveSalaryAnchorDate(new Date(), salaryDay),
+    [planStartDateBase, salaryDay]
+  );
+
+  // Clears the fixed plan anchor and resets the payday to the default, so
+  // `planStartDate` goes back to being computed live from `salaryDay` (the same
+  // path a brand-new user takes). Used when the user deletes all their data and
+  // re-runs Setup, so picking a new payday actually re-anchors the 60-month plan
+  // instead of being silently ignored in favor of the old persisted startDate.
+  const resetPlanAnchor = useCallback(() => {
+    setPlanStartDateBase(null);
+    setSalaryDay(DEFAULT_SALARY_DAY);
+  }, []);
 
   // Loading and error state
   const [isLoading, setIsLoading] = useState(true);
@@ -131,6 +164,8 @@ export function useFinancialState() {
         setVarExp(createEmptyVarExp());
         setTransactions(createEmptyTransactions());
         setAutoRollover(false);
+        setSalaryDay(DEFAULT_SALARY_DAY);
+        setPlanStartDateBase(null);
         setLastSaved(null);
         setBaseUpdatedAt(null);
         setSaveConflict(false);
@@ -193,17 +228,26 @@ export function useFinancialState() {
           setVarExp(varExpData);
           
           setAutoRollover(saved.autoRollover ?? false);
+          setSalaryDay(saved.salaryDay ?? DEFAULT_SALARY_DAY);
+          // Existing documents saved before per-user plan start dates were introduced
+          // don't have `startDate` yet; fall back to the legacy fixed anchor so their
+          // month-indexed data (fixed expenses, budgets, etc.) stays aligned.
+          setPlanStartDateBase(saved.startDate ? new Date(`${saved.startDate}T00:00:00`) : DEFAULT_START_DATE);
           setLastSaved((saved.updatedAt as Timestamp | undefined)?.toDate?.() ?? null);
           setBaseUpdatedAt((saved.updatedAt as Timestamp | null | undefined) ?? null);
           lastLoadedUid.current = user.uid;
         } else {
-          // No data found, initialize empty state
+          // No data found: this is a brand-new user. Leave planStartDateBase unset so
+          // planStartDate is computed live from their (possibly still-default) salaryDay
+          // until their first save persists a fixed startDate.
           console.info('No financial data found for user; initializing empty state', { uid: user.uid });
           setData(createEmptyData());
           setFixed(createEmptyFixed());
           setVarExp(createEmptyVarExp());
           setTransactions(createEmptyTransactions());
           setAutoRollover(false);
+          setSalaryDay(DEFAULT_SALARY_DAY);
+          setPlanStartDateBase(null);
           lastLoadedUid.current = user.uid;
         }
       } catch (err) {
@@ -244,6 +288,10 @@ export function useFinancialState() {
         fixed: overrides?.fixed ?? fixed,
         varExp: overrides?.varExp ?? varExp,
         autoRollover: overrides?.autoRollover ?? autoRollover,
+        // Persist once resolved; never recomputed on subsequent saves so the plan's
+        // anchor month never shifts under the user's existing month-indexed data.
+        startDate: toDateOnlyString(planStartDate),
+        salaryDay,
         transactions: serializeTransactions(overrides?.transactions ?? transactions)
       };
 
@@ -270,7 +318,7 @@ export function useFinancialState() {
       
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
-  }, [user, data, fixed, varExp, autoRollover, transactions, baseUpdatedAt, serializeTransactions, sanitizeForFirestore]);
+  }, [user, data, fixed, varExp, autoRollover, planStartDate, salaryDay, transactions, baseUpdatedAt, serializeTransactions, sanitizeForFirestore]);
 
   return {
     // Core state
@@ -284,6 +332,10 @@ export function useFinancialState() {
     setTransactions,
     autoRollover,
     setAutoRollover,
+    planStartDate,
+    salaryDay,
+    setSalaryDay,
+    resetPlanAnchor,
     
     // Loading and error state
     isLoading,

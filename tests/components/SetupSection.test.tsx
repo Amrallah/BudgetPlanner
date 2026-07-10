@@ -16,6 +16,7 @@ describe('SetupSection', () => {
     setupPrev: '',
     setupSalary: '',
     setupSalaryApplyAll: false,
+    setupSalaryDay: '25',
     setupExtraInc: '0',
     setupSave: '',
     setupGroc: '',
@@ -28,6 +29,7 @@ describe('SetupSection', () => {
     onSetupPrevChange: vi.fn(),
     onSetupSalaryChange: vi.fn(),
     onSetupSalaryApplyAllChange: vi.fn(),
+    onSetupSalaryDayChange: vi.fn(),
     onSetupExtraIncChange: vi.fn(),
     onSetupSaveChange: vi.fn(),
     onSetupGrocChange: vi.fn(),
@@ -109,6 +111,19 @@ describe('SetupSection', () => {
       const checkbox = screen.getByRole('checkbox');
       fireEvent.click(checkbox);
       expect(defaultProps.onSetupSalaryApplyAllChange).toHaveBeenCalled();
+    });
+
+    it('renders the salary day input with a default placeholder of 25', () => {
+      render(<SetupSection {...defaultProps} setupStep="salary" />);
+      expect(screen.getByText('Salary Day (day of month you get paid)')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('25')).toBeInTheDocument();
+    });
+
+    it('calls onSetupSalaryDayChange when salary day input changes', () => {
+      render(<SetupSection {...defaultProps} setupStep="salary" />);
+      const input = screen.getByPlaceholderText('25');
+      fireEvent.change(input, { target: { value: '10' } });
+      expect(defaultProps.onSetupSalaryDayChange).toHaveBeenCalledWith('10');
     });
   });
 

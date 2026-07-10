@@ -188,6 +188,12 @@ export const validateFinancialDoc = (raw: unknown): ValidationResult<FinancialDo
 
   const transactions = validateTransactionsShape(transactionsRaw, errors, 'FinancialDoc');
 
+  const startDateRaw = (raw as Record<string, unknown>).startDate;
+  const startDate = typeof startDateRaw === 'string' ? startDateRaw : undefined;
+
+  const salaryDayRaw = (raw as Record<string, unknown>).salaryDay;
+  const salaryDay = isNumber(salaryDayRaw) && salaryDayRaw >= 1 && salaryDayRaw <= 31 ? salaryDayRaw : undefined;
+
   return {
     valid: errors.length === 0,
     errors,
@@ -197,6 +203,8 @@ export const validateFinancialDoc = (raw: unknown): ValidationResult<FinancialDo
       varExp: varExpResult.value,
       transactions,
       autoRollover: isBoolean(raw.autoRollover) ? raw.autoRollover : false,
+      startDate,
+      salaryDay,
       updatedAt: (raw as Record<string, unknown>).updatedAt
     }
   };

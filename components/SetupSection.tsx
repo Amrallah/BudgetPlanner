@@ -8,6 +8,7 @@ export interface SetupSectionProps {
   setupPrev: string;
   setupSalary: string;
   setupSalaryApplyAll: boolean;
+  setupSalaryDay: string;
   setupExtraInc: string;
   setupSave: string;
   setupGroc: string;
@@ -20,6 +21,7 @@ export interface SetupSectionProps {
   onSetupPrevChange: (value: string) => void;
   onSetupSalaryChange: (value: string) => void;
   onSetupSalaryApplyAllChange: (checked: boolean) => void;
+  onSetupSalaryDayChange: (value: string) => void;
   onSetupExtraIncChange: (value: string) => void;
   onSetupSaveChange: (value: string) => void;
   onSetupGrocChange: (value: string) => void;
@@ -39,6 +41,7 @@ export default memo(function SetupSection({
   setupPrev,
   setupSalary,
   setupSalaryApplyAll,
+  setupSalaryDay,
   setupExtraInc,
   setupSave,
   setupGroc,
@@ -51,6 +54,7 @@ export default memo(function SetupSection({
   onSetupPrevChange,
   onSetupSalaryChange,
   onSetupSalaryApplyAllChange,
+  onSetupSalaryDayChange,
   onSetupExtraIncChange,
   onSetupSaveChange,
   onSetupGrocChange,
@@ -113,6 +117,17 @@ export default memo(function SetupSection({
               onChange={(e) => onSetupSalaryChange(e.target.value)}
               className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
             />
+            <label className="block text-sm font-semibold mb-2 text-gray-700">Salary Day (day of month you get paid)</label>
+            <input
+              type="number"
+              min="1"
+              max="31"
+              placeholder="25"
+              value={setupSalaryDay}
+              onChange={(e) => onSetupSalaryDayChange(e.target.value)}
+              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all mb-4"
+            />
+            <p className="text-sm text-gray-600 mb-4">Used to determine which month's budget is currently active (e.g. if paid on the 25th, spending between the 1st-24th still counts toward the previous month).</p>
             <label className="flex items-center gap-2 mb-6 cursor-pointer">
               <input 
                 type="checkbox"

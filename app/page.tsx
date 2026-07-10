@@ -17,7 +17,7 @@ import { useSalarySplitModal } from "@/lib/hooks/useSalarySplitModal";
 import { useExtraSplitModal } from "@/lib/hooks/useExtraSplitModal";
 import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
-import { useMonthSelection } from "@/lib/hooks/useMonthSelection";
+import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSelection";
 import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
 import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
@@ -52,7 +52,33 @@ import type {
 } from '@/lib/hooks/types';
 
 export default function FinancialPlanner() {
-  const { months, sel, setSel, isPassed } = useMonthSelection();
+  // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving).
+  // Called before useMonthSelection so the user's actual plan start date (resolved
+  // from Firestore, or "today" for brand-new registrations) can anchor the month range.
+  const {
+    data,
+    setData,
+    fixed,
+    setFixed,
+    varExp: varExpFromState,
+    setVarExp: setVarExpState,
+    transactions: transactionsFromState,
+    setTransactions: setTransactionsState,
+    autoRollover,
+    setAutoRollover,
+    planStartDate,
+    salaryDay,
+    setSalaryDay,
+    resetPlanAnchor,
+    hydrated: financialHydrated,
+    lastSaved,
+    saveConflict,
+    setSaveConflict,
+    saveData
+  } = useFinancialState();
+  const { months, sel, setSel, currentIndex } = useMonthSelection(
+    planStartDate ? { startDate: planStartDate } : undefined
+  );
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
   const [adj, setAdj] = useState({ groc: 0, ent: 0, save: 0 });
@@ -154,24 +180,6 @@ export default function FinancialPlanner() {
   } = useNewExpenseSplitModal();
   const [editingExpenseDraft, setEditingExpenseDraft] = useState<Record<string, string>>({});
   const [editingExpenseOriginal, setEditingExpenseOriginal] = useState<ExpenseEdit | null>(null);
-  // Financial state hook (manages data, fixed, varExp, transactions, autoRollover, loading, saving)
-  const {
-    data,
-    setData,
-    fixed,
-    setFixed,
-    varExp: varExpFromState,
-    setVarExp: setVarExpState,
-    transactions: transactionsFromState,
-    setTransactions: setTransactionsState,
-    autoRollover,
-    setAutoRollover,
-    hydrated: financialHydrated,
-    lastSaved,
-    saveConflict,
-    setSaveConflict,
-    saveData
-  } = useFinancialState();
 
   // Variable expense management hook
   const {
@@ -213,6 +221,7 @@ export default function FinancialPlanner() {
   const [setupPrev, setSetupPrev] = useState('');
   const [setupSalary, setSetupSalary] = useState('');
   const [setupSalaryApplyAll, setSetupSalaryApplyAll] = useState(false);
+  const [setupSalaryDay, setSetupSalaryDay] = useState(String(salaryDay));
   const [setupExtraInc, setSetupExtraInc] = useState('0');
   const [setupSave, setSetupSave] = useState('');
   const [setupGroc, setSetupGroc] = useState('');
@@ -313,6 +322,19 @@ export default function FinancialPlanner() {
   }, [financialHydrated, user, data, fixed, setupStep, setupPrev, setupSalary, setupExtraInc, setupFixedExpenses, setupSave, setupGroc, setupEnt]);
 
   // Run budget check only on initial load (see loadFromFirestore) and explicit actions
+
+  // Keep the Setup wizard's salary-day field in sync with the real, persisted
+  // salaryDay whenever the wizard (re)opens - e.g. it may have finished loading
+  // from Firestore after the wizard's input state was first initialized, or the
+  // wizard may be reopening after "delete all data" wiped month data (but not
+  // the payday setting). Only runs on the open transition, so it won't clobber
+  // whatever the user is actively typing mid-wizard.
+  useEffect(() => {
+    if (showSetup) {
+      setSetupSalaryDay(String(salaryDay));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSetup]);
 
   const handleApplyUndo = useCallback(() => {
     if (!undoPrompt) return;
@@ -422,6 +444,12 @@ export default function FinancialPlanner() {
         setSetupError('Salary must be a positive number');
         return;
       }
+      const salaryDayVal = parseInt(setupSalaryDay || '25', 10);
+      if (!Number.isFinite(salaryDayVal) || salaryDayVal < 1 || salaryDayVal > 31) {
+        setSetupError('Salary day must be a number between 1 and 31');
+        return;
+      }
+      setSalaryDay(salaryDayVal);
       const n = [...data];
       n[0].inc = salVal;
       n[0].baseSalary = salVal;
@@ -1430,6 +1458,9 @@ export default function FinancialPlanner() {
     setTransactions({ groc: Array(60).fill(0).map(()=>[]), ent: Array(60).fill(0).map(()=>[]), extra: Array(60).fill(0).map(()=>[]) });
     setHasChanges(true);
     setSel(0);
+    // Reset the plan anchor/payday too, so re-running Setup with a new salary
+    // day actually re-anchors the 60-month plan instead of keeping the old one.
+    resetPlanAnchor();
     // Open setup wizard from the first step
     setShowSetup(true);
     setSetupStep('prev');
@@ -1656,9 +1687,19 @@ return (
                       className="text-sm bg-transparent focus:outline-none w-full py-1"
                       aria-label="Quick month select"
                     >
-                      {months.map((m, i) => (
-                        <option key={i} value={i}>{`${m.name} - Day ${m.day} ${isPassed(i) ? '✓' : '⏳'}`}</option>
-                      ))}
+                      {months.map((m, i) => {
+                        const icon = i < currentIndex ? '✅' : i === currentIndex ? '🟢' : '🔴';
+                        const paidLabel = `${m.day} ${m.date.toLocaleString('en-US', { month: 'short' })}`;
+                        // Salary is understood as paid in arrears: "for" the calendar month
+                        // containing the true majority of days in the pay period leading up
+                        // to this payday (not simply "payday's month minus one" - see
+                        // getPayPeriodLabelDate for why that flat rule is wrong).
+                        const workMonthDate = getPayPeriodLabelDate(m.date);
+                        const workMonthLabel = workMonthDate.toLocaleString('en-US', { month: 'short' });
+                        return (
+                          <option key={i} value={i}>{`${m.name} (for ${workMonthLabel}, paid ${paidLabel}) ${icon}`}</option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -3321,6 +3362,7 @@ return (
           setupPrev={setupPrev}
           setupSalary={setupSalary}
           setupSalaryApplyAll={setupSalaryApplyAll}
+          setupSalaryDay={setupSalaryDay}
           setupExtraInc={setupExtraInc}
           setupSave={setupSave}
           setupGroc={setupGroc}
@@ -3333,6 +3375,7 @@ return (
           onSetupPrevChange={(value) => setSetupPrev(value)}
           onSetupSalaryChange={(value) => setSetupSalary(value)}
           onSetupSalaryApplyAllChange={(checked) => setSetupSalaryApplyAll(checked)}
+          onSetupSalaryDayChange={(value) => setSetupSalaryDay(value)}
           onSetupExtraIncChange={(value) => setSetupExtraInc(value)}
           onSetupSaveChange={(value) => setSetupSave(value)}
           onSetupGrocChange={(value) => setSetupGroc(value)}

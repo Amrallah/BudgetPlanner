@@ -18,12 +18,15 @@ Key files & responsibilities
 
 Data flows & integration points
 - Auth -> onAuthStateChanged (AuthProvider) -> create user doc -> `app/page.tsx` loads/saves financial data by calling `getFinancialData(uid)` and `saveFinancialData(uid, payload)`.
-- Firestore paths used: `doc(db, "users", uid, "financial", "data")` (persisted object includes `data`, `fixed`, `varExp`, `autoRollover`, `updatedAt`).
+- Firestore paths used: `doc(db, "users", uid, "financial", "data")` (persisted object includes `data`, `fixed`, `varExp`, `autoRollover`, `startDate`, `salaryDay`, `updatedAt`).
 - Autosave: `app/page.tsx` debounces saves in a `useEffect` that calls `saveFinancialData` ~1s after changes.
 
 Project-specific conventions & patterns
 - Single large client component pattern: `app/page.tsx` contains business logic and should be the primary edit point for calculations and UX flow.
 - 60-month fixed-length arrays: data structures use 60-length arrays for months (see initial state in `app/page.tsx`). Preserve indexes when modifying.
+- Per-user plan start date: the 60-month range is anchored to `planStartDate` (from `useFinancialState`, persisted as `startDate` on the financial doc). New users are anchored to their currently-active salary cycle at registration; existing docs saved before this field existed fall back to the legacy `DEFAULT_START_DATE` (Dec 25, 2025) constant in `lib/hooks/useMonthSelection.ts` so their month-indexed data stays aligned. Never recompute/overwrite an already-persisted `startDate`.
+- Salary day (payday): `salaryDay` (1-31, default 25) is chosen during Setup and persisted alongside `startDate`. Month boundaries and the default selected month are salary-day-aware (via `resolveSalaryAnchorDate` and the day-aware `getCurrentMonthIndex` logic in `useMonthSelection`), not simple calendar-month matching — e.g. if paid on the 25th and today is before the 25th of the current month, the previous month is still "active".
+- Default month selection: `useMonthSelection` selects the currently-active salary month by default (not index 0). Don't reintroduce a hardcoded `useState(0)` for `sel`, and don't switch back to calendar-month-only matching.
 - Rollover and locking semantics: months can be "passed"; `entBudgLocked` and `rolloverProcessed` affect future logic — search `rollover` and `entBudgLocked` in `app/page.tsx` for examples.
 - Minimal abstraction: helpers in `lib/` are thin wrappers around Firebase — avoid duplicating Firestore path logic; reuse `lib/finance.ts` and `lib/firestore.ts`.
 
