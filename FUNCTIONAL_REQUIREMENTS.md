@@ -217,9 +217,10 @@ The **Finance Dashboard** is a personal financial planning application that mode
 - Color-coded visual feedback (emerald for paid, amber for pending)
 
 **Create:**
-- Inline form with fields: Name, Amount, Type, Start Month
+- Inline form with fields: Name, Amount, Type, Start Month, (optional) Duration
 - Form styling: `h-9` inputs with `placeholder:text-xs placeholder:text-slate-400` (smaller, subtle placeholders)
 - Type dropdown: "Once", "Monthly", "Every 2 months", "Every 3 months"
+- Duration field ("Repeat for how many months?"): only shown for recurring types ("Monthly"/"Every 2 months"/"Every 3 months"), hidden/ignored for "Once". Optional - left blank means the expense repeats until the end of the 60-month plan (original/legacy behavior, fully backward compatible). When set to N, the expense produces exactly N occurrences starting at Start Month, then reverts to 0 for all later months. Computed via the pure helper `computeFixedExpenseAmts` in `lib/newExpenseAmts.ts` (also used to keep the amts-generation logic unit-testable outside the page component).
 - Add button: `h-9 px-4` (matching input heights for cohesive look)
 
 **Duplicate Detection:**

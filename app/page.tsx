@@ -32,6 +32,7 @@ import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
 import { advanceSalaryMonth, type RolloverChoice } from "@/lib/salaryRollover";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
+import { computeFixedExpenseAmts } from '@/lib/newExpenseAmts';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import type {
@@ -82,7 +83,7 @@ export default function FinancialPlanner() {
     planStartDate ? { startDate: planStartDate } : undefined
   );
   const [showAdd, setShowAdd] = useState(false);
-  const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0 });
+  const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0, duration: '' });
   const [adj, setAdj] = useState({ groc: 0, ent: 0, save: 0 });
   const [editPrev, setEditPrev] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -3083,7 +3084,7 @@ return (
                 }} 
                 className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all"
               />
-              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
+              <select value={newExp.type} onChange={(e)=>setNewExp({...newExp,type:e.target.value, duration: e.target.value==='once' ? '' : newExp.duration})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
                 <option value="once">Once</option>
                 <option value="monthly">Monthly</option>
                 <option value="2">Every 2 months</option>
@@ -3092,6 +3093,20 @@ return (
               <select value={newExp.start} onChange={(e)=>setNewExp({...newExp,start:parseInt(e.target.value)})} className="h-9 px-3 text-sm border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900">
                 {months.slice(0,12).map((m,i)=><option key={i} value={i}>{m.name}</option>)}
               </select>
+              {newExp.type!=='once' && (
+                <input
+                  type="number"
+                  min="1"
+                  max="60"
+                  placeholder="Repeat for how many months? (blank = no end)"
+                  value={newExp.duration}
+                  onChange={(e)=>{
+                    const val = sanitizeNumberInput(e.target.value);
+                    setNewExp({...newExp, duration: val ? String(val) : ''});
+                  }}
+                  className="h-9 px-3 text-sm placeholder:text-xs placeholder:text-slate-400 border border-slate-200 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-100 transition-all text-slate-900"
+                />
+              )}
               <button 
                 onClick={()=>{
                   const trimmedName = newExp.name.trim();
@@ -3104,12 +3119,12 @@ return (
                     return;
                   }
                   const proceedAddExpense = () => {
-                    const amts=Array(60).fill(0).map((_,i)=>{
-                      if(i<newExp.start)return 0;
-                      if(newExp.type==='once')return i===newExp.start?newExp.amt:0;
-                      if(newExp.type==='monthly')return newExp.amt;
-                      const int=parseInt(newExp.type);
-                      return(i-newExp.start)%int===0?newExp.amt:0;
+                    const durationNum = parseInt(newExp.duration, 10);
+                    const amts = computeFixedExpenseAmts({
+                      start: newExp.start,
+                      type: newExp.type,
+                      amt: newExp.amt,
+                      duration: Number.isNaN(durationNum) ? undefined : durationNum
                     });
                     // Trigger split modal for affected months
                     setNewExpenseSplit({
@@ -3118,7 +3133,7 @@ return (
                       applyToAll: false
                     });
                     setNewExpenseSplitError('');
-                    setNewExp({name:'',amt:0,type:'monthly',start:0});
+                    setNewExp({name:'',amt:0,type:'monthly',start:0,duration:''});
                     setShowAdd(false);
                   };
                   // Check for duplicate names only for the same month start

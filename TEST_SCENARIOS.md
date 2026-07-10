@@ -164,6 +164,7 @@ Use these for smoke testing before releases, or when automated coverage is insuf
 3. Delete an expense and confirm the freed amount must be reallocated.
 4. Add a duplicate name for the same start month and confirm the warning/override flow.
 5. **Regression:** Create a fixed expense whose amount differs across months (e.g. a rounded first-month amount followed by a flat recurring amount). Delete it with scope "This and future months" and confirm the split freed amount is accepted for all future months without a false "total budget exceeds available balance" error. See `tests/bugs/deleteFixedExpenseFutureScope.test.ts`.
+6. **Duration/end-month for recurring expenses:** When adding a "Monthly", "Every 2 months", or "Every 3 months" expense, an optional "Repeat for how many months?" field appears. Leaving it blank preserves the old behavior (expense repeats until the end of the 60-month plan). Entering a number (e.g. 6) stops the expense after that many occurrences - later months revert to 0 for that expense, same as if it were deleted going forward. The field is hidden/ignored for "Once" expenses. See `tests/bugs/fixedExpenseDuration.test.ts`.
 
 ### Scenario F — Force Rebalance Recovery
 1. Manually create an imbalance (e.g. edit budgets so total ≠ available).
