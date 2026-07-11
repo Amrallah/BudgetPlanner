@@ -96,9 +96,12 @@ export default memo(function BudgetSection({
   const renderBudgetBlock = (field: BudgetField) => {
     const isLocked = field.locked ?? false;
     return (
-      <div key={field.type} className={`p-3 sm:p-4 bg-muted/50 rounded-xl border border-border h-full ${isLocked ? 'opacity-70' : ''}`} aria-disabled={isLocked}>
+      <div key={field.type} className={`p-3 sm:p-4 bg-muted/50 rounded-xl border border-border h-full @container ${isLocked ? 'opacity-70' : ''}`} aria-disabled={isLocked}>
         <div className="font-semibold mb-2 text-foreground text-sm sm:text-base">{field.label}</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        {/* Container-query based (not viewport-based) so these 3 fields only go side-by-side
+            once THIS block actually has enough width - avoids values getting visually clipped
+            when 3 budget blocks are squeezed into a 3-column page layout (columns view). */}
+        <div className="grid grid-cols-1 @[420px]:grid-cols-3 gap-3 mb-3">
           {/* Total Budget Input */}
           <div>
             <label className="text-[11px] font-semibold text-foreground/90 block mb-1">
@@ -215,9 +218,9 @@ export default memo(function BudgetSection({
   };
 
   const renderSavingsBlock = () => (
-    <div key="save" className="p-3 sm:p-4 bg-muted/50 rounded-xl border border-border h-full">
+    <div key="save" className="p-3 sm:p-4 bg-muted/50 rounded-xl border border-border h-full @container">
       <div className="font-semibold mb-2 text-foreground text-sm sm:text-base">💰 {savingsField.label}</div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 @[300px]:grid-cols-2 gap-3 mb-3">
         <div>
           <label htmlFor="savings-total-input" className="text-[11px] font-semibold text-foreground/90 block mb-1">Total Savings</label>
           <input

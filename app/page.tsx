@@ -3185,9 +3185,9 @@ return (
               const monthLocked = isMonthLocked;
               return (
                 <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border shadow-sm hover:shadow-md transition-all">
-                  <div className="w-full lg:w-40 lg:shrink-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold text-foreground text-sm break-words" title={e.name}>{e.name}</span>
+                  <div className="w-full lg:w-40 lg:shrink-0 min-w-0">
+                    <div className="flex flex-nowrap items-center gap-2 mb-1">
+                      <span className="font-semibold text-foreground text-sm truncate min-w-0" title={e.name}>{e.name}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -3200,7 +3200,7 @@ return (
                           setFixed(n);
                           setHasChanges(true);
                         }}
-                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-500/10'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        className={`p-1 rounded-lg transition-all shrink-0 ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-500/10'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
                         title={isPaid ? 'Mark unpaid' : 'Mark paid'}
                         aria-label={isPaid ? 'Mark unpaid' : 'Mark paid'}
                       >

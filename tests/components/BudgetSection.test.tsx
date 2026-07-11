@@ -308,4 +308,24 @@ describe('BudgetSection', () => {
     expect(grocAmounts[0]).toBe('300 SEK'); // newest first
     expect(grocAmounts[grocAmounts.length - 1]).toBe('100 SEK'); // oldest last
   });
+
+  // --- Regression: container-query layout (bug fix - values were getting visually clipped
+  // when 3 budgets were squeezed side-by-side in columns mode, using a viewport-based
+  // sm:grid-cols-3 breakpoint that ignored the block's own much narrower width). ---
+  it('marks each budget block as a query container and uses container-based (not viewport-based) breakpoints for its inner fields', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    const grocBlock = screen.getByText('🛒 Groceries').closest('.bg-muted\\/50');
+    expect(grocBlock?.className).toContain('@container');
+    const innerGrid = grocBlock?.querySelector('.grid');
+    expect(innerGrid?.className).toContain('@[420px]:grid-cols-3');
+    expect(innerGrid?.className).not.toContain('sm:grid-cols-3');
+  });
+
+  it('marks the savings block as a query container with container-based inner columns too', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    const savingsBlock = screen.getByLabelText('Total Savings').closest('.bg-muted\\/50');
+    expect(savingsBlock?.className).toContain('@container');
+    const innerGrid = savingsBlock?.querySelector('.grid');
+    expect(innerGrid?.className).toContain('@[300px]:grid-cols-2');
+  });
 });
