@@ -104,26 +104,35 @@ export default memo(function BudgetSection({
         <div className="grid grid-cols-1 @[420px]:grid-cols-3 gap-3 mb-3">
           {/* Total Budget Input */}
           <div>
-            {/* Fixed min-height reserves space for the optional "Base X +Y freed" breakdown
-                line (truncated to a single line so it can never wrap to 2 lines) so the
-                Total Budget input below always starts at the same y-position whether or not
-                this budget has a breakdown - keeps Groceries/Entertainment/Savings blocks
-                visually aligned with each other when shown side by side. */}
-            <label className="text-[11px] font-semibold text-foreground/90 block mb-1 min-h-[2.25em]">
-              <span className="block">Total Budget</span>
-              {(field.bonus > 0 || field.extra > 0) && (
-                <span
-                  className="text-emerald-700 block text-[11px] truncate"
-                  title={`${field.baseBudget >= 0 ? `Base ${field.baseBudget.toFixed(0)}` : ''}${field.bonus > 0 ? ` +${field.bonus.toFixed(0)} freed` : ''}${field.extra > 0 ? ` +${field.extra.toFixed(0)} extra` : ''}`}
-                >
-                  {/* Only show "Base X" when base is non-negative - once compensation/edits
-                      have pulled more than the base itself (base goes negative), showing
-                      "Base -100" is confusing. The total above is still exactly correct. */}
-                  {field.baseBudget >= 0 && `Base ${field.baseBudget.toFixed(0)}`}
-                  {field.bonus > 0 && ` +${field.bonus.toFixed(0)} freed`}
-                  {field.extra > 0 && ` +${field.extra.toFixed(0)} extra`}
-                </span>
-              )}
+            {/* ALWAYS render 2 lines (title + breakdown-or-placeholder), instead of
+                conditionally rendering the 2nd line only when there's a breakdown. A
+                min-height guess is fragile (depends on exact font metrics/line-height and
+                can be off by a pixel or two); rendering the identical 2-span DOM structure
+                every time and just hiding the 2nd span's content (via `invisible`, which
+                still reserves its layout box) guarantees pixel-identical label height across
+                Groceries/Entertainment/Savings regardless of whether a breakdown is shown. */}
+            <label className="text-[11px] font-semibold text-foreground/90 block mb-1">
+              <span className="block leading-tight">Total Budget</span>
+              <span
+                className={`block leading-tight text-[11px] truncate ${(field.bonus > 0 || field.extra > 0) ? 'text-emerald-700' : 'invisible'}`}
+                title={(field.bonus > 0 || field.extra > 0)
+                  ? `${field.baseBudget >= 0 ? `Base ${field.baseBudget.toFixed(0)}` : ''}${field.bonus > 0 ? ` +${field.bonus.toFixed(0)} freed` : ''}${field.extra > 0 ? ` +${field.extra.toFixed(0)} extra` : ''}`
+                  : undefined}
+                aria-hidden={!(field.bonus > 0 || field.extra > 0)}
+              >
+                {/* Only show "Base X" when base is non-negative - once compensation/edits
+                    have pulled more than the base itself (base goes negative), showing
+                    "Base -100" is confusing. The total above is still exactly correct.
+                    When there's nothing to show, render a placeholder (not shown visually,
+                    via `invisible` above) so this line still reserves its height. */}
+                {(field.bonus > 0 || field.extra > 0)
+                  ? <>
+                      {field.baseBudget >= 0 && `Base ${field.baseBudget.toFixed(0)}`}
+                      {field.bonus > 0 && ` +${field.bonus.toFixed(0)} freed`}
+                      {field.extra > 0 && ` +${field.extra.toFixed(0)} extra`}
+                    </>
+                  : '\u00A0'}
+              </span>
             </label>
             <input
               type="number"
@@ -230,10 +239,14 @@ export default memo(function BudgetSection({
       <div className="font-semibold mb-2 text-foreground text-sm sm:text-base">💰 {savingsField.label}</div>
       <div className="grid grid-cols-1 @[300px]:grid-cols-2 gap-3 mb-3">
         <div>
-          {/* Matches the min-h-[2.25em] reserved on Groceries/Entertainment's "Total Budget"
-              label so all 3 budget blocks' inputs start at the same y-position when shown
-              side by side, even though Savings never shows a breakdown line. */}
-          <label htmlFor="savings-total-input" className="text-[11px] font-semibold text-foreground/90 block mb-1 min-h-[2.25em]">Total Savings</label>
+          {/* Matches Groceries/Entertainment's "Total Budget" label exactly (title line +
+              an always-rendered, invisible-when-empty 2nd line) so all 3 budget blocks'
+              inputs start at the identical y-position when shown side by side, even though
+              Savings itself never has a breakdown line of its own. */}
+          <label htmlFor="savings-total-input" className="text-[11px] font-semibold text-foreground/90 block mb-1">
+            <span className="block leading-tight">Total Savings</span>
+            <span className="block leading-tight text-[11px] invisible" aria-hidden="true">&nbsp;</span>
+          </label>
           <input
             id="savings-total-input"
             type="number"

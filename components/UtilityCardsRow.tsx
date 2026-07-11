@@ -63,13 +63,14 @@ export default function UtilityCardsRow({
   whatIfProjection,
 }: UtilityCardsRowProps) {
   return (
-    <div className="mb-6">
+    <div className="mb-4">
       <div className="flex items-center gap-2 mb-3">
         <span className="h-2 w-10 rounded-full bg-purple-500" aria-hidden />
         <h3 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">Tools &amp; Insights</h3>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-      {/* Column 1: Withdraw from Savings & Emergency Buffer (stacked) */}
+      {/* Stacked vertically (not a 3-column grid) - this section now lives in the narrower
+          left column (below Budgets) instead of full-width below both columns, so it can fill
+          the space that used to sit empty next to a long Fixed Expenses list. */}
       <div className="flex flex-col gap-3 sm:gap-4">
         <WithdrawFromSavings
           totalSavings={totalSavings}
@@ -83,17 +84,11 @@ export default function UtilityCardsRow({
           emergencyBufferMonths={emergencyBufferMonths}
           monthlyExpenseBaseline={monthlyExpenseBaseline}
         />
-      </div>
-
-      {/* Column 2: Entertainment Budget */}
-      <EntertainmentBudgetCard
-        totalSavings={totalSavings}
-        entSavingsPercent={entSavingsPercent}
-        onEntSavingsPercentChange={onEntSavingsPercentChange}
-      />
-
-      {/* Column 3: What-if Calculator & Reserved (stacked) */}
-      <div className="flex flex-col gap-3 sm:gap-4">
+        <EntertainmentBudgetCard
+          totalSavings={totalSavings}
+          entSavingsPercent={entSavingsPercent}
+          onEntSavingsPercentChange={onEntSavingsPercentChange}
+        />
         <WhatIfCalculator
           whatIfSalaryDelta={whatIfSalaryDelta}
           onWhatIfSalaryDeltaChange={onWhatIfSalaryDeltaChange}
@@ -101,7 +96,6 @@ export default function UtilityCardsRow({
           onWhatIfGrocCutChange={onWhatIfGrocCutChange}
           whatIfProjection={whatIfProjection}
         />
-      </div>
       </div>
     </div>
   );

@@ -665,7 +665,7 @@ export default function FinancialPlanner() {
             el?.focus();
             el?.select();
           }}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold normal-case text-primary hover:text-primary"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 active:bg-primary/25 transition-all shrink-0"
           title="Update your salary"
         >
           <Edit2 size={12} /> Change
@@ -688,7 +688,7 @@ export default function FinancialPlanner() {
             el?.focus();
             el?.select();
           }}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold normal-case text-primary hover:text-primary"
+          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 active:bg-primary/25 transition-all shrink-0"
           title="Add extra income"
         >
           <Plus size={12} /> Add
@@ -3119,6 +3119,42 @@ return (
               viewMode={budgetsViewMode}
               onViewModeChange={setBudgetsViewMode}
             />
+
+            {/* Tools & Insights: moved into this (left) column, stacked below Budgets, so it
+                fills the space that used to sit empty next to a long Fixed Expenses list -
+                Fixed Expenses stays predictably in the right column always. */}
+            <UtilityCardsRow
+              totalSavings={cur.totSave}
+              previousSavings={cur.prev}
+              currentSavings={cur.save}
+              withdrawAmount={withdrawAmount}
+              onWithdrawAmountChange={setWithdrawAmount}
+              onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
+                const n = [...data];
+                if (amount <= prevSavings) {
+                  n[sel].prev = prevSavings - amount;
+                  n[sel].prevManual = true;
+                } else {
+                  const fromPrev = prevSavings;
+                  const fromCurrent = amount - fromPrev;
+                  n[sel].prev = 0;
+                  n[sel].prevManual = true;
+                  n[sel].save = Math.max(0, curSavings - fromCurrent);
+                }
+                setData(n);
+                setHasChanges(true);
+                onSuccess(n[sel].prev, n[sel].save);
+              }}
+              emergencyBufferMonths={emergencyBufferMonths}
+              monthlyExpenseBaseline={monthlyExpenseBaseline}
+              entSavingsPercent={entSavingsPercent}
+              onEntSavingsPercentChange={setEntSavingsPercent}
+              whatIfSalaryDelta={whatIfSalaryDelta}
+              onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
+              whatIfGrocCut={whatIfGrocCut}
+              onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
+              whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
+            />
           </div>
 
           {/* Right column: Fixed Expenses only */}
@@ -3686,39 +3722,6 @@ return (
           </div>
         )}
 
-        {/* Utility Cards Row with Withdraw, Emergency Buffer, Entertainment Budget, What-if */}
-        <UtilityCardsRow
-          totalSavings={cur.totSave}
-          previousSavings={cur.prev}
-          currentSavings={cur.save}
-          withdrawAmount={withdrawAmount}
-          onWithdrawAmountChange={setWithdrawAmount}
-          onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
-            const n = [...data];
-            if (amount <= prevSavings) {
-              n[sel].prev = prevSavings - amount;
-              n[sel].prevManual = true;
-            } else {
-              const fromPrev = prevSavings;
-              const fromCurrent = amount - fromPrev;
-              n[sel].prev = 0;
-              n[sel].prevManual = true;
-              n[sel].save = Math.max(0, curSavings - fromCurrent);
-            }
-            setData(n);
-            setHasChanges(true);
-            onSuccess(n[sel].prev, n[sel].save);
-          }}
-          emergencyBufferMonths={emergencyBufferMonths}
-          monthlyExpenseBaseline={monthlyExpenseBaseline}
-          entSavingsPercent={entSavingsPercent}
-          onEntSavingsPercentChange={setEntSavingsPercent}
-          whatIfSalaryDelta={whatIfSalaryDelta}
-          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
-          whatIfGrocCut={whatIfGrocCut}
-          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
-          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
-        />
 
         <div className="fixed bottom-4 right-4 z-40">
           <button

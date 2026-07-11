@@ -295,15 +295,28 @@ describe('BudgetSection', () => {
   // --- Regression: vertical alignment across side-by-side blocks (bug fix - Groceries'
   // "Base X +Y freed" breakdown line made its Total Budget input start lower than
   // Entertainment/Savings, which never show that line). All 3 "Total Budget"/"Total Savings"
-  // labels reserve the same min-height regardless of whether a breakdown is shown. ---
-  it('reserves the same label height for budgets with and without a bonus/extra breakdown', () => {
+  // labels ALWAYS render 2 lines (title + breakdown-or-invisible-placeholder) so their
+  // rendered height is pixel-identical regardless of whether a breakdown is shown. ---
+  it('reserves the same 2-line label height for budgets with and without a bonus/extra breakdown', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
     // mockFields[0] (groceries) has bonus+extra (breakdown shown), mockFields[1] (entertainment) does not
     const totalBudgetLabels = screen.getAllByText('Total Budget').map(el => el.closest('label'));
     expect(totalBudgetLabels).toHaveLength(2);
-    totalBudgetLabels.forEach(label => expect(label?.className).toContain('min-h-[2.25em]'));
+    // Entertainment (no breakdown) still renders a 2nd span, just invisible (reserves height)
+    const entLabel = totalBudgetLabels[1];
+    const entSpans = entLabel?.querySelectorAll('span');
+    expect(entSpans).toHaveLength(2);
+    expect(entSpans?.[1].className).toContain('invisible');
+    // Groceries (has breakdown) shows real text in its 2nd span, not invisible
+    const grocLabel = totalBudgetLabels[0];
+    const grocSpans = grocLabel?.querySelectorAll('span');
+    expect(grocSpans?.[1].className).not.toContain('invisible');
+    expect(grocSpans?.[1].textContent).toContain('freed');
+    // Savings mirrors the same 2-span structure (always-invisible 2nd line, no breakdown ever)
     const savingsLabel = screen.getByText('Total Savings').closest('label');
-    expect(savingsLabel?.className).toContain('min-h-[2.25em]');
+    const savingsSpans = savingsLabel?.querySelectorAll('span');
+    expect(savingsSpans).toHaveLength(2);
+    expect(savingsSpans?.[1].className).toContain('invisible');
   });
 
   // --- Transaction ordering (bug fix: newest was showing last/bottom) ---

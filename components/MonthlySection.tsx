@@ -54,9 +54,17 @@ export default memo(function MonthlySection({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {fields.filter(f => f.key !== 'bal').map((field) => (
           <div key={field.key}>
-            <label htmlFor={`field-${field.key}`} className="block text-xs font-semibold leading-snug mb-1.5 flex gap-2 text-foreground/90">
-              {field.label} {field.button}
-            </label>
+            {/* field.button is rendered as a SIBLING of <label>, never nested inside it - a
+                native <label for="..."> forwards clicks anywhere within it (including empty
+                gaps) to its associated input, so an action button nested inside the label
+                would make the WHOLE row seem to "do something" when clicked anywhere, not
+                just on the button itself. */}
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label htmlFor={`field-${field.key}`} className="block text-xs font-semibold leading-snug text-foreground/90">
+                {field.label}
+              </label>
+              {field.button}
+            </div>
             <input
               id={`field-${field.key}`}
               type="number"
