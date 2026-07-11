@@ -231,6 +231,21 @@ describe('BudgetSection', () => {
     expect(screen.getByText(/500 SEK/)).toBeInTheDocument();
   });
 
+  it('shows only dd/mm date (not hh:mm:ss time) for recent transactions', () => {
+    const fieldsWithTransactions = mockFields.map((f, idx) => ({
+      ...f,
+      recentTransactions: idx === 0 ? [
+        { amt: 250, ts: '2026-03-07T15:42:31.000Z' }
+      ] : []
+    }));
+    render(<BudgetSection fields={fieldsWithTransactions} {...mockHandlers} />);
+    const d = new Date('2026-03-07T15:42:31.000Z');
+    const expectedDay = String(d.getDate()).padStart(2, '0');
+    const expectedMonth = String(d.getMonth() + 1).padStart(2, '0');
+    expect(screen.getByText(`${expectedDay}/${expectedMonth}`)).toBeInTheDocument();
+    expect(screen.queryByText(/\d{1,2}:\d{2}:\d{2}/)).not.toBeInTheDocument();
+  });
+
   // --- Savings block (consolidated 3rd budget bucket) ---
   it('renders the Savings block alongside Groceries and Entertainment', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);

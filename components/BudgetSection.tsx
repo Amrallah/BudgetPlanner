@@ -2,6 +2,16 @@ import { Check, Edit2, LayoutGrid, Rows3 } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { sanitizeNumberInput } from "@/lib/uiHelpers";
 
+// Recent transactions only need the date (dd/mm) - the exact time-of-day isn't useful here
+// and made the chip list noisier than necessary. Full timestamps are still available in the
+// Transactions History modal if ever needed.
+const formatTransactionDate = (ts: string) => {
+  const d = new Date(ts);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+};
+
 export type BudgetType = 'groc' | 'ent';
 
 export type BudgetsViewMode = 'columns' | 'tabs';
@@ -232,7 +242,7 @@ export default memo(function BudgetSection({
               {[...field.recentTransactions].slice(-5).reverse().map((t, i) => (
                 <li key={i} className="flex items-center justify-between bg-card border border-border rounded-md px-2 py-1">
                   <span className="font-medium text-foreground/90">{t.amt.toFixed(0)} SEK</span>
-                  <span className="text-muted-foreground">{new Date(t.ts).toLocaleTimeString()}</span>
+                  <span className="text-muted-foreground">{formatTransactionDate(t.ts)}</span>
                 </li>
               ))}
             </ul>

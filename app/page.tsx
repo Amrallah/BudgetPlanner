@@ -1937,7 +1937,11 @@ return (
                 redundant shortcut to an already-editable input). */}
             <IncomeSection
               income={data[sel].baseSalary ?? data[sel].inc}
-              extraIncome={data[sel].extraInc}
+              // Display the SUM of extra income already allocated this month (groc+ent+save
+              // extras), not the transient "not yet split" data[sel].extraInc queue value -
+              // that resets to 0 right after a split is applied, which made the stat look
+              // like the extra income "disappeared" even though it was fully allocated.
+              extraIncome={(data[sel].grocExtra || 0) + (data[sel].entExtra || 0) + (data[sel].saveExtra || 0)}
               locked={isMonthLocked}
               onChangeSalary={(newValue) => {
                 handleMonthlyFocus('inc');
