@@ -19,13 +19,35 @@ export const metadata: Metadata = {
   description: "Monthly budget planner",
 };
 
+// Runs before hydration/paint so the correct theme class is set immediately - avoids a
+// flash of the wrong theme. Mirrors the fallback logic in lib/hooks/useTheme.ts
+// (getInitialTheme): persisted choice > OS preference > dark.
+const themeInitScript = `
+  (function () {
+    try {
+      var stored = window.localStorage.getItem('fd-theme');
+      var theme = stored === 'light' || stored === 'dark'
+        ? stored
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

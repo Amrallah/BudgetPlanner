@@ -92,10 +92,10 @@ export default function CompensationModal({
           </div>
         ) : (
           <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4">
-            <p className="text-sm text-red-900 font-medium">
+            <p className="text-sm text-red-900 dark:text-red-300 font-medium">
               No sources available to cover this overspend.
             </p>
-            <p className="text-xs text-red-400 mt-1">
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
               You must cancel this transaction or reduce the amount.
             </p>
           </div>
@@ -130,13 +130,13 @@ export function getCompensationSourceIcon(source: CompensationSource): React.Com
 export function getCompensationSourceColor(source: CompensationSource): string {
   switch (source) {
     case 'groc':
-      return 'border-green-300 bg-green-50 hover:bg-green-500/15 text-green-900';
+      return 'border-green-300 dark:border-green-500/30 bg-green-50 dark:bg-green-500/10 hover:bg-green-100 dark:hover:bg-green-500/20 text-green-900 dark:text-green-300';
     case 'ent':
-      return 'border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-900';
+      return 'border-orange-300 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/10 hover:bg-orange-100 dark:hover:bg-orange-500/20 text-orange-900 dark:text-orange-300';
     case 'save':
       return 'border-primary/40 bg-primary/10 hover:bg-primary/15 text-primary';
     case 'prev':
-      return 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900';
+      return 'border-purple-300 dark:border-purple-500/30 bg-purple-50 dark:bg-purple-500/10 hover:bg-purple-100 dark:hover:bg-purple-500/20 text-purple-900 dark:text-purple-300';
   }
 }
 

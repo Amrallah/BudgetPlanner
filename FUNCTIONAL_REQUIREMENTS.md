@@ -5,6 +5,13 @@
 **Status:** Canonical functional + UI/UX reference. This is the single source of truth for functional behavior and UI/UX design; `UI_UX_REQUIREMENTS.md` has been merged into this document (see [Appendix A](#appendix-a-uiux-design-reference)) and retired.  
 **Last Verification:** Full codebase read - app/page.tsx, lib/ utilities, type definitions, hooks, components
 
+**Recent Updates (Jul 11, 2026 - Light/dark theme toggle):**
+- ✅ Added a persistent light/dark mode toggle (header + login screen); user's choice is saved
+  and restored across sessions, falling back to OS preference, then dark, when unset.
+- ✅ Fixed several category/alert colors that were unreadable in light mode after the earlier
+  dark-only redesign pass (Entertainment Budget, Savings What-If, Groceries/Income/Entertainment
+  summary cards, warning/error banners) - now correctly styled for both themes.
+
 **Recent Updates (Jul 11, 2026 - Dark professional theme redesign):**
 - ✅ App-wide visual redesign: dark navy/charcoal theme by default with a single indigo/blue
   accent color, replacing the previous light gray/blue ad-hoc palette across all sections,

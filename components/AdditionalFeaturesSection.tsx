@@ -44,13 +44,13 @@ export default function AdditionalFeaturesSection({
       {overspendWarning && (
         <div className={`rounded-xl p-4 border-2 flex items-start gap-3 ${
           criticalOverspend
-            ? 'bg-red-500/10 border-red-300'
-            : 'bg-yellow-500/10 border-yellow-300'
+            ? 'bg-red-50 dark:bg-red-500/10 border-red-300 dark:border-red-500/30'
+            : 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-300 dark:border-yellow-500/30'
         }`}>
           <AlertTriangle className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-            criticalOverspend ? 'text-red-400' : 'text-yellow-700'
+            criticalOverspend ? 'text-red-600 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'
           }`} />
-          <div className={criticalOverspend ? 'text-red-800' : 'text-yellow-400'}>
+          <div className={criticalOverspend ? 'text-red-800 dark:text-red-300' : 'text-yellow-800 dark:text-yellow-300'}>
             <div className="font-bold">{criticalOverspend ? 'Critical Overspend' : 'Overspend Warning'}</div>
             <div className="text-sm mt-1">{overspendWarning}</div>
           </div>

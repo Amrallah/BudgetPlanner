@@ -49,10 +49,10 @@ const Card = ({ label, value, icon: Icon, color, sub }: Card) => {
   };
 
   const bgClasses = {
-    blue: 'bg-primary/15/80 border-primary/40',
-    green: 'bg-green-500/15/80 border-green-300',
-    purple: 'bg-purple-100/80 border-purple-300',
-    orange: 'bg-orange-100/80 border-orange-300'
+    blue: 'bg-primary/10 border-primary/30',
+    green: 'bg-green-50 dark:bg-green-500/10 border-green-300 dark:border-green-500/30',
+    purple: 'bg-purple-50 dark:bg-purple-500/10 border-purple-300 dark:border-purple-500/30',
+    orange: 'bg-orange-50 dark:bg-orange-500/10 border-orange-300 dark:border-orange-500/30'
   };
 
   return (
@@ -115,31 +115,31 @@ export default memo(function AnalyticsSection({
       </div>
 
       {overspendWarning && (
-        <div className={`${criticalOverspend ? 'bg-red-500/15 border-red-500' : 'bg-yellow-100 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
+        <div className={`${criticalOverspend ? 'bg-red-50 dark:bg-red-500/15 border-red-500' : 'bg-yellow-50 dark:bg-yellow-500/15 border-yellow-500'} border-l-4 p-4 mb-6 rounded-xl shadow-md`}>
           <div className="flex items-start gap-3">
-            <AlertTriangle className={`w-5 h-5 mt-0.5 ${criticalOverspend ? 'text-red-400' : 'text-yellow-700'}`} />
+            <AlertTriangle className={`w-5 h-5 mt-0.5 ${criticalOverspend ? 'text-red-600 dark:text-red-400' : 'text-yellow-700 dark:text-yellow-400'}`} />
             <div>
-              <h3 className={`font-bold ${criticalOverspend ? 'text-red-900' : 'text-yellow-900'} mb-1`}>
+              <h3 className={`font-bold ${criticalOverspend ? 'text-red-900 dark:text-red-300' : 'text-yellow-900 dark:text-yellow-300'} mb-1`}>
                 {criticalOverspend ? '🚨 Critical Budget Alert' : '⚠️ Budget Warning'}
               </h3>
-              <p className={`text-sm ${criticalOverspend ? 'text-red-800' : 'text-yellow-400'}`}>{overspendWarning}</p>
+              <p className={`text-sm ${criticalOverspend ? 'text-red-800 dark:text-red-300' : 'text-yellow-800 dark:text-yellow-300'}`}>{overspendWarning}</p>
             </div>
           </div>
         </div>
       )}
 
       {hasRollover && !showRollover && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 border-l-4 border-green-600 p-4 mb-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
           <div className="flex-1">
-            <h3 className="font-bold text-green-900 text-base sm:text-lg flex items-center gap-2 mb-1">
+            <h3 className="font-bold text-green-900 dark:text-green-300 text-base sm:text-lg flex items-center gap-2 mb-1">
               <PiggyBank className="w-5 h-5" />
               Unspent from Last Month
             </h3>
-            <p className="text-sm text-green-400">
+            <p className="text-sm text-green-700 dark:text-green-400">
               You have {rolloverAmount.toFixed(0)} SEK unused budget
             </p>
             {(rolloverDaysRemaining ?? 0) > 0 && (
-              <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+              <p className="text-xs text-green-700 dark:text-green-400 mt-1 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {autoRollover ? `Auto-rollover in ${rolloverDaysRemaining ?? 0} days` : `Available in ${rolloverDaysRemaining ?? 0} days`}
               </p>
@@ -152,9 +152,9 @@ export default memo(function AnalyticsSection({
       )}
 
       {showRollover && (
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
-          <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900">Add {rolloverAmount.toFixed(0)} SEK to savings?</h3>
-          <p className="text-sm text-green-400 mb-3">This will move your unused budget from last month into savings.</p>
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-500/10 dark:to-emerald-500/10 border-l-4 border-green-600 p-4 mb-4 rounded-xl shadow-md">
+          <h3 className="font-semibold mb-2 text-base sm:text-lg text-green-900 dark:text-green-300">Add {rolloverAmount.toFixed(0)} SEK to savings?</h3>
+          <p className="text-sm text-green-700 dark:text-green-400 mb-3">This will move your unused budget from last month into savings.</p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button 
               onClick={onConfirmRollover}
@@ -164,7 +164,7 @@ export default memo(function AnalyticsSection({
             </button>
             <button 
               onClick={onCancelRollover}
-              className="flex-1 sm:flex-none bg-card text-green-700 px-4 py-2 rounded-xl hover:bg-green-50 border-2 border-green-300 transition-all"
+              className="flex-1 sm:flex-none bg-card text-green-700 dark:text-green-400 px-4 py-2 rounded-xl hover:bg-green-50 dark:hover:bg-green-500/10 border-2 border-green-300 dark:border-green-500/30 transition-all"
             >
               Cancel
             </button>

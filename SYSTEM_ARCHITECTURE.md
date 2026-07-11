@@ -7,6 +7,20 @@
 
 > This repository intentionally keeps exactly three living specification documents: [SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) (this file), [FUNCTIONAL_REQUIREMENTS.md](FUNCTIONAL_REQUIREMENTS.md), and [TEST_SCENARIOS.md](TEST_SCENARIOS.md). Update this file whenever architecture changes instead of creating new analysis/checkpoint files.
 
+**Recent Updates (Jul 11, 2026 - Light/dark theme toggle + contrast rework):**
+- ✅ App now supports BOTH light and dark themes with a persistent user toggle (sun/moon
+  button in the header and on the login screen), instead of dark-only. Choice is saved to
+  `localStorage['fd-theme']` (`lib/hooks/useTheme.ts`, `components/ThemeToggle.tsx`) and
+  restored on every visit; falls back to OS `prefers-color-scheme` when nothing is stored, then
+  defaults to dark. A blocking inline script in `app/layout.tsx`'s `<head>` applies the theme
+  class before first paint to avoid a flash of the wrong theme.
+- ✅ Reworked all semantic accent colors (category cards, alert/warning banners, badges) to use
+  paired `text-COLOR-700 dark:text-COLOR-400` / `bg-COLOR-50 dark:bg-COLOR-500/10` style classes
+  so contrast is correct in both themes, replacing several dark-only shades that were unreadable
+  once real light mode returned.
+- ✅ Refined the light-mode CSS palette (`app/globals.css` `:root`) to match the same
+  indigo/blue accent hue as dark mode instead of the plain grayscale shadcn default.
+
 **Recent Updates (Jul 11, 2026 - Dark professional theme redesign):**
 - ✅ App now runs in dark mode by default (`<html className="dark">`), with a navy/charcoal
   background + single indigo/blue `--primary` accent defined in `app/globals.css` (shadcn/ui

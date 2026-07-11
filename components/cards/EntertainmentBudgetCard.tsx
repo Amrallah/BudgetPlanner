@@ -15,12 +15,12 @@ export default function EntertainmentBudgetCard({
   onEntSavingsPercentChange,
 }: EntertainmentBudgetProps) {
   return (
-    <div className="bg-orange-100/30 rounded-2xl border border-orange-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
+    <div className="bg-orange-50 dark:bg-orange-500/10 rounded-2xl border border-orange-300 dark:border-orange-500/30 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
       <div className="flex items-center gap-2">
         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center shadow-md">
           <DollarSign className="w-5 h-5" />
         </div>
-        <h3 className="font-bold text-orange-900">Entertainment Budget</h3>
+        <h3 className="font-bold text-orange-900 dark:text-orange-300">Entertainment Budget</h3>
       </div>
       <p className="text-sm text-foreground/90">Calculate how much you can spend from savings on entertainment</p>
       <div className="flex items-center gap-2 mb-2">
@@ -33,13 +33,13 @@ export default function EntertainmentBudgetCard({
             const val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
             onEntSavingsPercentChange(val);
           }}
-          className="w-16 p-2 border-2 border-border rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 transition-all text-sm"
+          className="w-16 p-2 border-2 border-border rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 dark:focus:ring-orange-500/20 transition-all text-sm"
         />
         <span className="text-xs text-muted-foreground">% of {totalSavings.toFixed(0)} SEK</span>
       </div>
-      <div className="bg-card p-2 rounded-lg border-2 border-orange-200 mt-auto">
-        <div className="text-lg font-bold text-orange-900">{((totalSavings * entSavingsPercent) / 100).toFixed(0)} SEK</div>
-        <div className="text-xs text-orange-700 mt-1">Available for entertainment</div>
+      <div className="bg-card p-2 rounded-lg border-2 border-orange-200 dark:border-orange-500/30 mt-auto">
+        <div className="text-lg font-bold text-orange-900 dark:text-orange-300">{((totalSavings * entSavingsPercent) / 100).toFixed(0)} SEK</div>
+        <div className="text-xs text-orange-700 dark:text-orange-400 mt-1">Available for entertainment</div>
       </div>
     </div>
   );

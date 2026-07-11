@@ -44,12 +44,12 @@ export default function WithdrawFromSavings({
   };
 
   return (
-    <div className="bg-red-500/15/30 rounded-2xl border border-red-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
+    <div className="bg-red-50 dark:bg-red-500/10 rounded-2xl border border-red-300 dark:border-red-500/30 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
       <div className="flex items-center gap-2">
         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-red-500 to-red-600 text-white flex items-center justify-center shadow-md">
           <Wallet className="w-5 h-5" />
         </div>
-        <h3 className="font-bold text-red-900">Withdraw from Savings</h3>
+        <h3 className="font-bold text-red-900 dark:text-red-300">Withdraw from Savings</h3>
       </div>
       <p className="text-sm text-foreground/90">Take money out of your total savings (e.g., for emergencies)</p>
       <div className="flex gap-2 flex-1 items-end">

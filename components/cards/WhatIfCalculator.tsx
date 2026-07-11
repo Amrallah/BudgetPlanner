@@ -25,8 +25,8 @@ export default function WhatIfCalculator({
   whatIfProjection,
 }: WhatIfCalculatorProps) {
   return (
-    <div className="bg-pink-100/30 rounded-2xl border border-pink-300 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
-      <h3 className="font-bold text-base text-pink-900 mb-3">Savings What-If</h3>
+    <div className="bg-pink-50 dark:bg-pink-500/10 rounded-2xl border border-pink-300 dark:border-pink-500/30 shadow-xl p-4 sm:p-5 flex flex-col gap-3 h-full">
+      <h3 className="font-bold text-base text-pink-900 dark:text-pink-300 mb-3">Savings What-If</h3>
 
       {/* Controls: Salary Slider + Checkbox on same line */}
       <div className="flex-1 flex flex-col space-y-2">
@@ -67,11 +67,11 @@ export default function WhatIfCalculator({
               </div>
               <div>
                 <span className="text-muted-foreground font-medium">Net:</span>
-                <span className={`font-bold ml-1 ${whatIfProjection.projectedNet >= 0 ? 'text-green-700' : 'text-red-400'}`}>
+                <span className={`font-bold ml-1 ${whatIfProjection.projectedNet >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {whatIfProjection.projectedNet.toFixed(0)}
                 </span>
                 {whatIfProjection.delta !== 0 && (
-                  <span className={`font-bold ml-1 ${whatIfProjection.delta > 0 ? 'text-green-700' : 'text-red-400'}`}>
+                  <span className={`font-bold ml-1 ${whatIfProjection.delta > 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     {whatIfProjection.delta > 0 ? '↑' : '↓'}{Math.abs(whatIfProjection.delta).toFixed(0)}
                   </span>
                 )}

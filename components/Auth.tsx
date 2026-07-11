@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/components/AuthProvider";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Auth() {
   const [email, setEmail] = useState("");
@@ -95,10 +96,10 @@ export default function Auth() {
             <p className="text-sm text-muted-foreground">Signed in</p>
             <p className="text-lg font-semibold text-foreground">{user.email}</p>
           </div>
-          <span className="inline-flex items-center px-3 py-1 text-xs font-semibold text-green-400 bg-green-500/15 rounded-full border border-green-500/30">Active</span>
+          <span className="inline-flex items-center px-3 py-1 text-xs font-semibold text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-500/15 rounded-full border border-green-300 dark:border-green-500/30">Active</span>
         </div>
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
             {error}
           </div>
         )}
@@ -119,7 +120,9 @@ export default function Auth() {
           <p className="text-sm text-muted-foreground">Welcome back</p>
           <h3 className="text-2xl font-bold text-foreground">Finance Dashboard</h3>
         </div>
-        <div className="flex gap-2 text-sm font-semibold">
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <div className="flex gap-2 text-sm font-semibold">
           <button
             className={`px-3 py-1 rounded-lg ${mode === "login" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"}`}
             onClick={() => {
@@ -138,6 +141,7 @@ export default function Auth() {
           >
             Register
           </button>
+          </div>
         </div>
       </div>
 
@@ -184,7 +188,7 @@ export default function Auth() {
         </div>
 
         {error && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg text-sm">
+          <div className="p-3 bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
             {error}
           </div>
         )}

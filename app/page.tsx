@@ -5,6 +5,7 @@ import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColo
 import type { CompensationOption } from "@/components/CompensationModal";
 import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
 import Auth from "@/components/Auth";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useAuth } from "@/components/AuthProvider";
 import { useFinancialState } from "@/lib/hooks/useFinancialState";
 import { useFixedExpenses } from "@/lib/hooks/useFixedExpenses";
@@ -1754,14 +1755,17 @@ return (
                   <p className="text-xs sm:text-sm text-muted-foreground leading-snug">Monthly Budget Planner</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-auto">
-                <span className="font-semibold truncate max-w-[180px] sm:max-w-[220px] text-left">{user?.email ?? 'Account'}</span>
-                <button
-                  onClick={() => signOut(auth)}
-                  className="px-3 py-1 rounded-md bg-primary text-white text-xs font-semibold hover:bg-secondary"
-                >
-                  Log out
-                </button>
+              <div className="flex items-center justify-between gap-3 sm:justify-end w-full sm:w-auto">
+                <ThemeToggle />
+                <div className="flex items-center justify-between gap-3 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm flex-1 sm:flex-none sm:w-auto">
+                  <span className="font-semibold truncate max-w-[180px] sm:max-w-[220px] text-left">{user?.email ?? 'Account'}</span>
+                  <button
+                    onClick={() => signOut(auth)}
+                    className="px-3 py-1 rounded-md bg-primary text-white text-xs font-semibold hover:bg-secondary"
+                  >
+                    Log out
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1804,7 +1808,7 @@ return (
                   {undoPrompt && (
                     <button
                       onClick={handleApplyUndo}
-                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-100 shadow-sm min-w-[110px]"
+                      className="flex-1 sm:flex-none px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30 hover:bg-amber-200 dark:hover:bg-amber-500/20 shadow-sm min-w-[110px]"
                     >
                       Undo last change
                     </button>
@@ -1842,12 +1846,12 @@ return (
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
                   {lastSaved && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-400 border border-green-500/30">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-500/30">
                       <Check className="w-4 h-4" /> Saved {lastSaved.toLocaleTimeString()}
                     </div>
                   )}
                   {pendingChanges.length > 0 && (
-                    <div className="flex items-center gap-2 bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-500/30 text-yellow-400 shadow-sm">
+                    <div className="flex items-center gap-2 bg-yellow-100 dark:bg-yellow-500/10 px-3 py-1.5 rounded-full border border-yellow-300 dark:border-yellow-500/30 text-yellow-700 dark:text-yellow-400 shadow-sm">
                       <AlertTriangle className="w-4 h-4" />
                       <span className="text-sm font-medium">{pendingChanges.length} pending changes</span>
                     </div>
@@ -1862,24 +1866,24 @@ return (
 
               {saveConflict && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-red-500/10 px-3 py-2 rounded-xl border border-red-500/30 shadow-sm">
-                  <div className="flex items-center gap-2 text-red-400 text-sm font-medium">
+                  <div className="flex items-center gap-2 text-red-700 dark:text-red-400 text-sm font-medium">
                     <AlertTriangle className="w-4 h-4" />
                     <span>Save conflict detected — remote changes exist.</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={handleReloadRemote} className="bg-card text-red-400 px-3 py-1 rounded-md shadow-sm border border-red-500/30">Reload</button>
+                    <button onClick={handleReloadRemote} className="bg-card text-red-700 dark:text-red-400 px-3 py-1 rounded-md shadow-sm border border-red-500/30">Reload</button>
                     <button onClick={handleForceSave} className="bg-red-700 text-white px-3 py-1 rounded-md shadow-sm">Force</button>
                   </div>
                 </div>
               )}
             </div>
             {budgetBalanceIssues.length > 0 && (
-              <div className="flex flex-col gap-2 bg-red-500/10 border border-red-300 px-3 py-2 rounded-lg w-full shadow-sm">
-                <div className="flex items-center gap-2 text-red-800 text-sm font-medium">
+              <div className="flex flex-col gap-2 bg-red-50 dark:bg-red-500/10 border border-red-300 px-3 py-2 rounded-lg w-full shadow-sm">
+                <div className="flex items-center gap-2 text-red-800 dark:text-red-300 text-sm font-medium">
                   <AlertTriangle className="w-4 h-4" />
                   Budget allocations exceed available budget balance. Saving is disabled until budgets are rebalanced.
                 </div>
-                <ul className="text-xs text-red-400 list-disc pl-5">
+                <ul className="text-xs text-red-700 dark:text-red-400 list-disc pl-5">
                   {budgetBalanceIssues.slice(0,3).map((msg, idx) => (
                     <li key={idx}>{msg}</li>
                   ))}
@@ -1959,7 +1963,7 @@ return (
               </p>
               
               {salarySplitError && (
-                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {salarySplitError}
                 </div>
@@ -2145,15 +2149,15 @@ return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
               <div className="bg-card rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                  <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
                   <h3 className="text-xl font-bold text-foreground">Budget Rebalance Required</h3>
                 </div>
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                  <p className="text-sm text-red-800 font-medium mb-1">Month: {months[forceRebalanceTotals?.idx ?? sel].name}</p>
-                  <p className="text-sm text-red-800">
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-500/10 border border-red-300 dark:border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-800 dark:text-red-300 font-medium mb-1">Month: {months[forceRebalanceTotals?.idx ?? sel].name}</p>
+                  <p className="text-sm text-red-800 dark:text-red-300">
                     Your budget allocations must equal the available balance. Current difference: <span className="font-bold">{(forceRebalanceTotals?.deficit ?? 0).toFixed(0)} SEK</span>
                   </p>
-                  <div className="mt-2 text-xs text-red-400">
+                  <div className="mt-2 text-xs text-red-700 dark:text-red-400">
                     <div>Available balance: <span className="font-bold">{(forceRebalanceTotals?.available ?? 0).toFixed(0)} SEK</span></div>
                     <div>Current total budgets: {((forceRebalanceTotals?.saveTotal ?? 0) + (forceRebalanceTotals?.grocTotal ?? 0) + (forceRebalanceTotals?.entTotal ?? 0)).toFixed(0)} SEK</div>
                     <div className="font-medium mt-1">⚠️ Sum of budgets must exactly equal available balance</div>
@@ -2161,7 +2165,7 @@ return (
                 </div>
 
                 {forceRebalanceError && (
-                  <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
                     {forceRebalanceError}
                   </div>
@@ -2309,20 +2313,20 @@ return (
           )}
 
           {budgetRebalanceModal && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-xl shadow-md">
+            <div className="mt-4 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-500/10 dark:to-orange-500/10 border-2 border-yellow-300 dark:border-yellow-500/30 rounded-xl shadow-md">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-yellow-700" />
-                <h3 className="font-bold text-yellow-900">
+                <AlertTriangle className="w-5 h-5 text-yellow-700 dark:text-yellow-400" />
+                <h3 className="font-bold text-yellow-900 dark:text-yellow-300">
                   Budget Changed: {budgetRebalanceModal.type === 'save' ? 'Savings' : budgetRebalanceModal.type === 'groc' ? 'Groceries' : 'Entertainment'} 
                   {' '}({budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? '+' : ''}{(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK)
                 </h3>
               </div>
-              <p className="text-sm text-yellow-400 mb-3">
+              <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-3">
                 To maintain budget balance, redistribute {Math.abs(budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal).toFixed(0)} SEK between the other budgets.
               </p>
               
               {budgetRebalanceError && (
-                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {budgetRebalanceError}
                 </div>
@@ -2565,17 +2569,17 @@ return (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
               <div className="bg-card rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
-                  <h3 className="font-bold text-red-900">New Fixed Expense: {newExpenseSplit.expense.name}</h3>
+                  <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                  <h3 className="font-bold text-red-900 dark:text-red-300">New Fixed Expense: {newExpenseSplit.expense.name}</h3>
                 </div>
-                <p className="text-sm text-red-800 mb-3">
+                <p className="text-sm text-red-800 dark:text-red-300 mb-3">
                   This expense affects {newExpenseSplit.expense.amts.filter(a => a > 0).length} month(s). 
                   For the first affected month ({months[firstIdx].name}), allocate {firstAmt.toFixed(0)} SEK budget reduction across categories.
                 </p>
                 <div className="mb-3 p-3 bg-card border border-red-500/30 rounded-lg text-xs text-foreground/90">
                   <div className="flex justify-between"><span>Available after adding</span><span>{availableAfterAdd.toFixed(0)} SEK</span></div>
                   <div className="flex justify-between"><span>Budgets after split</span><span>{postBudgets.toFixed(0)} SEK</span></div>
-                  <div className={`flex justify-between font-semibold ${Math.abs(balanceGap) > 0.5 ? 'text-red-400' : 'text-green-700'}`}>
+                  <div className={`flex justify-between font-semibold ${Math.abs(balanceGap) > 0.5 ? 'text-red-600 dark:text-red-400' : 'text-green-700 dark:text-green-400'}`}>
                     <span>Balance gap</span>
                     <span>{balanceGap.toFixed(0)} SEK</span>
                   </div>
@@ -2587,7 +2591,7 @@ return (
                 </div>
                 
                 {newExpenseSplitError && (
-                  <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                  <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />
                     {newExpenseSplitError}
                   </div>
@@ -2759,13 +2763,13 @@ return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
             <div className="bg-card rounded-xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle className="w-5 h-5 text-purple-700" />
-                <h3 className="font-bold text-purple-900">Split Extra Income: {data[sel].extraInc.toFixed(0)} SEK</h3>
+                <AlertTriangle className="w-5 h-5 text-purple-700 dark:text-purple-400" />
+                <h3 className="font-bold text-purple-900 dark:text-purple-300">Split Extra Income: {data[sel].extraInc.toFixed(0)} SEK</h3>
               </div>
-              <p className="text-sm text-purple-800 mb-3">Allocate your extra income across categories. Total must equal {data[sel].extraInc.toFixed(0)} SEK.</p>
+              <p className="text-sm text-purple-800 dark:text-purple-300 mb-3">Allocate your extra income across categories. Total must equal {data[sel].extraInc.toFixed(0)} SEK.</p>
               
               {extraSplitError && (
-                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {extraSplitError}
                 </div>
@@ -2946,7 +2950,7 @@ return (
               <p className="text-sm text-primary mb-3">You reduced savings. Allocate the freed amount across categories.</p>
               
               {Math.abs((adj.groc + adj.ent + adj.save) - cur.extra) > 0.01 && (
-                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   Total allocation must equal {cur.extra.toFixed(0)} SEK. Current: {(adj.groc + adj.ent + adj.save).toFixed(0)} SEK
                 </div>
@@ -3353,7 +3357,7 @@ return (
               </p>
               
               {splitError && (
-                <div className="mb-3 p-3 bg-red-500/15 border border-red-400 rounded-lg text-red-800 text-sm flex items-center gap-2">
+                <div className="mb-3 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded-lg text-red-800 dark:text-red-300 text-sm flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   {splitError}
                 </div>
@@ -3557,7 +3561,7 @@ return (
                 </div>
               )}
               {rolloverError && (
-                <div className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/30 px-3 py-2 rounded-lg text-sm">
+                <div className="flex items-center gap-2 bg-red-500/10 text-red-700 dark:text-red-400 border border-red-500/30 px-3 py-2 rounded-lg text-sm">
                   <AlertTriangle className="w-4 h-4" /> {rolloverError}
                 </div>
               )}

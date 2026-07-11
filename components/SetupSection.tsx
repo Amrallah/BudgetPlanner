@@ -83,7 +83,7 @@ export default memo(function SetupSection({
         </div>
         
         {setupError && (
-          <div className="mb-4 p-3 bg-red-500/15 border border-red-400 rounded text-red-800 text-sm">
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-500/15 border border-red-300 dark:border-red-400 rounded text-red-800 dark:text-red-300 text-sm">
             {setupError}
           </div>
         )}
@@ -195,7 +195,7 @@ export default memo(function SetupSection({
                 {setupFixedExpenses.map((exp, idx) => (
                   <div key={idx} className="flex justify-between items-center py-1 border-b last:border-b-0">
                     <span className="text-sm">{exp.name}: {parseFloat(exp.amt).toFixed(0)} SEK</span>
-                    <button onClick={() => onRemoveFixedExpense(idx)} className="text-red-600 text-xs hover:text-red-800">Remove</button>
+                    <button onClick={() => onRemoveFixedExpense(idx)} className="text-red-600 dark:text-red-400 text-xs hover:text-red-800 dark:hover:text-red-300">Remove</button>
                   </div>
                 ))}
                 <div className="mt-2 pt-2 border-t font-semibold text-sm">

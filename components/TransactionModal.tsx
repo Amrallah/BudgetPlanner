@@ -121,7 +121,7 @@ export default memo(function TransactionModal({
                     </button>
                     <button 
                       onClick={() => setPendingDelete({ kind: 'tx', index: i })} 
-                      className="bg-red-500/15 text-red-400 px-3 py-1 rounded"
+                      className="bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 px-3 py-1 rounded"
                     >
                       Delete
                     </button>
@@ -144,7 +144,7 @@ export default memo(function TransactionModal({
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setPendingDelete({ kind: 'extra', index: i })} 
-                      className="bg-red-500/15 text-red-400 px-3 py-1 rounded"
+                      className="bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 px-3 py-1 rounded"
                     >
                       Delete
                     </button>
