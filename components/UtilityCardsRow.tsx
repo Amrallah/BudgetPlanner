@@ -5,7 +5,6 @@ import WithdrawFromSavings from './cards/WithdrawFromSavings';
 import EmergencyBuffer from './cards/EmergencyBuffer';
 import EntertainmentBudgetCard from './cards/EntertainmentBudgetCard';
 import WhatIfCalculator from './cards/WhatIfCalculator';
-import ReservedCard from './cards/ReservedCard';
 
 interface WhatIfProjection {
   adjSalary: number;
@@ -64,7 +63,12 @@ export default function UtilityCardsRow({
   whatIfProjection,
 }: UtilityCardsRowProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="h-2 w-10 rounded-full bg-purple-500" aria-hidden />
+        <h3 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">Tools &amp; Insights</h3>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
       {/* Column 1: Withdraw from Savings & Emergency Buffer (stacked) */}
       <div className="flex flex-col gap-3 sm:gap-4">
         <WithdrawFromSavings
@@ -97,7 +101,7 @@ export default function UtilityCardsRow({
           onWhatIfGrocCutChange={onWhatIfGrocCutChange}
           whatIfProjection={whatIfProjection}
         />
-        <ReservedCard />
+      </div>
       </div>
     </div>
   );

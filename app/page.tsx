@@ -21,13 +21,14 @@ import { useConfirmAction } from "@/lib/hooks/useConfirmAction";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSelection";
 import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
-import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
+import BudgetSection, { type BudgetField, type BudgetType, type SavingsField } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import SetupSection from "@/components/SetupSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
 import AdditionalFeaturesSection from "@/components/AdditionalFeaturesSection";
 import UtilityCardsRow from "@/components/UtilityCardsRow";
+import { useBudgetsViewMode } from "@/lib/hooks/useBudgetsViewMode";
 import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
@@ -83,6 +84,8 @@ export default function FinancialPlanner() {
   const { months, sel, setSel, currentIndex } = useMonthSelection(
     planStartDate ? { startDate: planStartDate } : undefined
   );
+  // Budgets card layout preference (all 3 budgets side-by-side vs one at a time via tabs).
+  const { viewMode: budgetsViewMode, setViewMode: setBudgetsViewMode } = useBudgetsViewMode();
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0, duration: '' });
   const [adj, setAdj] = useState({ groc: 0, ent: 0, save: 0 });
@@ -640,7 +643,16 @@ export default function FinancialPlanner() {
       ? 'This month has already been processed.'
       : '';
 
-  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
+  // Income & Salary card: only the money coming IN this month. Savings/Previous moved to the
+  // consolidated Budgets card (savingsField below) so they live with the other budget buckets
+  // instead of looking like peers of Income.
+  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
+    { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: !isMonthLocked },
+    { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: !isMonthLocked }
+  ]), [data, isMonthLocked, sel]);
+
+  // Savings block for the Budgets card - the 3rd "bucket" alongside Groceries/Entertainment.
+  const savingsField: SavingsField = useMemo(() => {
     const saveExtra = data[sel].saveExtra || 0;
     const saveBonus = data[sel].saveBonus || 0;
     const saveBase = data[sel].save;
@@ -654,24 +666,16 @@ export default function FinancialPlanner() {
           : 'Savings')
       : 'Savings';
 
-    return ([
-      { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: !isMonthLocked },
-      { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: !isMonthLocked },
-      {
-        label: 'Previous',
-        value: cur.prev,
-        key: 'prev',
-        editable: editPrev && !isMonthLocked,
-        button: (
-          <button onClick={() => setEditPrev(!editPrev)} className="text-primary hover:text-primary">
-            <Edit2 size={14} />
-          </button>
-        )
-      },
-      { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
-      { label: savingsLabel, value: savingsTotal, key: 'save', editable: !isMonthLocked }
-    ]);
-  }, [cur.bal, cur.prev, data, editPrev, isMonthLocked, sel]);
+    return {
+      label: savingsLabel,
+      value: savingsTotal,
+      editable: !isMonthLocked,
+      savingEdited,
+      applyFuture,
+      previousValue: cur.prev,
+      previousEditable: editPrev && !isMonthLocked
+    };
+  }, [applyFuture, cur.prev, data, editPrev, isMonthLocked, savingEdited, sel]);
 
   const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
     {
@@ -1772,12 +1776,12 @@ return (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 w-full">
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-56 md:w-64">
-                    <span className="text-[11px] text-muted-foreground">Month</span>
+                  <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-72 md:w-80">
+                    <span className="text-[11px] text-muted-foreground shrink-0">Month</span>
                     <select
                       value={sel}
                       onChange={(e) => setSel(parseInt(e.target.value))}
-                      className="text-sm bg-transparent focus:outline-none w-full py-1"
+                      className="text-sm bg-transparent focus:outline-none w-full py-1 truncate"
                       aria-label="Quick month select"
                     >
                       {months.map((m, i) => {
@@ -1840,8 +1844,8 @@ return (
                     onClick={() => setAutoRollover(!autoRollover)}
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-semibold border shadow-sm transition-all ${autoRollover ? 'bg-primary text-white border-primary' : 'bg-muted/50 text-foreground/90 border-border hover:border-border'}`}
                   >
-                    <span>Auto-rollover</span>
-                    <span className="text-[11px] opacity-80">after 5 days</span>
+                    <span className="leading-none">Auto-rollover</span>
+                    <span className="text-[11px] opacity-80 leading-none">after 5 days</span>
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
@@ -1935,6 +1939,7 @@ return (
             <div className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-5">
               <MonthlySection
               monthLabel={cur.month}
+              title="Income & Salary"
               fields={monthlyFields}
               savingEdited={savingEdited}
               applyFuture={applyFuture}
@@ -3038,7 +3043,7 @@ return (
           )}
             </div>
 
-            {/* Variable Expenses */}
+            {/* Budgets: Groceries, Entertainment and Savings consolidated in one place */}
             <BudgetSection
               fields={budgetFields}
               onFocus={handleBudgetFocus}
@@ -3049,6 +3054,20 @@ return (
               onAddTransaction={handleAddTransaction}
               onTransactionInputChange={handleTransactionInputChange}
               onOpenHistory={handleOpenHistory}
+              savingsField={savingsField}
+              onSavingsFocus={() => handleMonthlyFocus('save')}
+              onSavingsChange={(value) => handleMonthlyChange('save', value)}
+              onSavingsBlur={(value) => handleMonthlyBlur('save', value)}
+              onToggleApplyFuture={(checked) => {
+                setApplyFuture(checked);
+                setApplySavingsForward(checked ? sel : null);
+              }}
+              onTogglePrevious={() => setEditPrev(!editPrev)}
+              onPreviousFocus={() => handleMonthlyFocus('prev')}
+              onPreviousChange={(value) => handleMonthlyChange('prev', value)}
+              onPreviousBlur={(value) => handleMonthlyBlur('prev', value)}
+              viewMode={budgetsViewMode}
+              onViewModeChange={setBudgetsViewMode}
             />
           </div>
 
@@ -3166,9 +3185,9 @@ return (
               const monthLocked = isMonthLocked;
               return (
                 <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border shadow-sm hover:shadow-md transition-all">
-                  <div className="flex-1 w-full">
+                  <div className="w-full lg:w-40 lg:shrink-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold text-foreground text-sm">{e.name}</span>
+                      <span className="font-semibold text-foreground text-sm break-words" title={e.name}>{e.name}</span>
                       <button
                         type="button"
                         onClick={() => {

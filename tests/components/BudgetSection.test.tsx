@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import BudgetSection, { BudgetField } from '@/components/BudgetSection';
+import BudgetSection, { BudgetField, SavingsField } from '@/components/BudgetSection';
 
 describe('BudgetSection', () => {
   const mockFields: BudgetField[] = [
@@ -33,6 +33,16 @@ describe('BudgetSection', () => {
     }
   ];
 
+  const mockSavingsField: SavingsField = {
+    label: 'Savings',
+    value: 1200,
+    editable: true,
+    savingEdited: false,
+    applyFuture: false,
+    previousValue: 300,
+    previousEditable: false
+  };
+
   const mockHandlers = {
     onFocus: vi.fn(),
     onChange: vi.fn(),
@@ -40,12 +50,23 @@ describe('BudgetSection', () => {
     onToggleEditSpent: vi.fn(),
     onSpentChange: vi.fn(),
     onAddTransaction: vi.fn(),
-    onOpenHistory: vi.fn()
+    onOpenHistory: vi.fn(),
+    savingsField: mockSavingsField,
+    onSavingsFocus: vi.fn(),
+    onSavingsChange: vi.fn(),
+    onSavingsBlur: vi.fn(),
+    onToggleApplyFuture: vi.fn(),
+    onTogglePrevious: vi.fn(),
+    onPreviousFocus: vi.fn(),
+    onPreviousChange: vi.fn(),
+    onPreviousBlur: vi.fn(),
+    viewMode: 'columns' as const,
+    onViewModeChange: vi.fn()
   };
 
   it('renders section heading', () => {
     render(<BudgetSection fields={mockFields} {...mockHandlers} />);
-    expect(screen.getByText('Variable Expenses')).toBeInTheDocument();
+    expect(screen.getByText('Budgets')).toBeInTheDocument();
   });
 
   it('displays all budget fields with labels', () => {
@@ -208,5 +229,83 @@ describe('BudgetSection', () => {
     render(<BudgetSection fields={fieldsWithTransactions} {...mockHandlers} />);
     expect(screen.getByText(/250 SEK/)).toBeInTheDocument();
     expect(screen.getByText(/500 SEK/)).toBeInTheDocument();
+  });
+
+  // --- Savings block (consolidated 3rd budget bucket) ---
+  it('renders the Savings block alongside Groceries and Entertainment', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    expect(screen.getAllByText(/Savings/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Total Savings')).toHaveValue(1200);
+    expect(screen.getByLabelText(/Previous \(carried over\)/)).toHaveValue(300);
+  });
+
+  it('calls savings handlers on focus/change/blur', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    const savingsInput = screen.getByLabelText('Total Savings');
+    fireEvent.focus(savingsInput);
+    expect(mockHandlers.onSavingsFocus).toHaveBeenCalled();
+    fireEvent.change(savingsInput, { target: { value: '1500' } });
+    expect(mockHandlers.onSavingsChange).toHaveBeenCalledWith(1500);
+    fireEvent.blur(savingsInput, { target: { value: '1500' } });
+    expect(mockHandlers.onSavingsBlur).toHaveBeenCalledWith(1500);
+  });
+
+  it('disables the Previous input until the edit toggle is clicked, and calls onTogglePrevious', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    const previousInput = screen.getByLabelText(/Previous \(carried over\)/);
+    expect(previousInput).toBeDisabled();
+    const toggleButton = screen.getByLabelText('Toggle editing previous savings');
+    fireEvent.click(toggleButton);
+    expect(mockHandlers.onTogglePrevious).toHaveBeenCalled();
+  });
+
+  it('shows the "Apply to future months" checkbox only when savingEdited is true', () => {
+    const { rerender } = render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    expect(screen.queryByText('Apply to future months')).not.toBeInTheDocument();
+    rerender(<BudgetSection fields={mockFields} {...mockHandlers} savingsField={{ ...mockSavingsField, savingEdited: true }} />);
+    expect(screen.getByText('Apply to future months')).toBeInTheDocument();
+  });
+
+  // --- Layout toggle (columns vs tabs) ---
+  it('shows all three budget blocks at once in columns mode', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} viewMode="columns" />);
+    expect(screen.getByText('🛒 Groceries')).toBeInTheDocument();
+    expect(screen.getByText('🎭 Entertainment')).toBeInTheDocument();
+    expect(screen.getByLabelText('Total Savings')).toBeInTheDocument();
+  });
+
+  it('shows only the active tab in tabs mode, switching on tab click', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} viewMode="tabs" />);
+    // Default active tab is groceries - entertainment/savings content should not be in the DOM
+    expect(screen.queryByLabelText('Total Savings')).not.toBeInTheDocument();
+    expect(screen.getAllByPlaceholderText('Add transaction amount').length).toBe(1);
+
+    const savingsTab = screen.getByRole('tab', { name: /Savings/ });
+    fireEvent.click(savingsTab);
+    expect(screen.getByLabelText('Total Savings')).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Add transaction amount')).not.toBeInTheDocument();
+  });
+
+  it('calls onViewModeChange when a layout button is clicked', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    fireEvent.click(screen.getByTitle('Show one budget at a time'));
+    expect(mockHandlers.onViewModeChange).toHaveBeenCalledWith('tabs');
+  });
+
+  // --- Transaction ordering (bug fix: newest was showing last/bottom) ---
+  it('shows the most recent transaction first', () => {
+    const fieldsWithTransactions = mockFields.map((f, idx) => ({
+      ...f,
+      recentTransactions: idx === 0 ? [
+        { amt: 100, ts: '2026-07-01T10:00:00.000Z' }, // oldest
+        { amt: 200, ts: '2026-07-01T11:00:00.000Z' },
+        { amt: 300, ts: '2026-07-01T12:00:00.000Z' } // newest
+      ] : []
+    }));
+    render(<BudgetSection fields={fieldsWithTransactions} {...mockHandlers} />);
+    const amounts = screen.getAllByText(/\d+ SEK/).map(el => el.textContent);
+    const grocAmounts = amounts.filter(a => a === '100 SEK' || a === '200 SEK' || a === '300 SEK');
+    expect(grocAmounts[0]).toBe('300 SEK'); // newest first
+    expect(grocAmounts[grocAmounts.length - 1]).toBe('100 SEK'); // oldest last
   });
 });
