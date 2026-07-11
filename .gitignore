@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# User-attached screenshots/docs used for UI review (not project assets)
+Screenshot*.png
+UI_Issues.docx

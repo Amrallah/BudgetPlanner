@@ -104,10 +104,18 @@ export default memo(function BudgetSection({
         <div className="grid grid-cols-1 @[420px]:grid-cols-3 gap-3 mb-3">
           {/* Total Budget Input */}
           <div>
-            <label className="text-[11px] font-semibold text-foreground/90 block mb-1">
-              Total Budget
+            {/* Fixed min-height reserves space for the optional "Base X +Y freed" breakdown
+                line (truncated to a single line so it can never wrap to 2 lines) so the
+                Total Budget input below always starts at the same y-position whether or not
+                this budget has a breakdown - keeps Groceries/Entertainment/Savings blocks
+                visually aligned with each other when shown side by side. */}
+            <label className="text-[11px] font-semibold text-foreground/90 block mb-1 min-h-[2.25em]">
+              <span className="block">Total Budget</span>
               {(field.bonus > 0 || field.extra > 0) && (
-                <span className="text-emerald-700 ml-1 block text-[11px]">
+                <span
+                  className="text-emerald-700 block text-[11px] truncate"
+                  title={`${field.baseBudget >= 0 ? `Base ${field.baseBudget.toFixed(0)}` : ''}${field.bonus > 0 ? ` +${field.bonus.toFixed(0)} freed` : ''}${field.extra > 0 ? ` +${field.extra.toFixed(0)} extra` : ''}`}
+                >
                   {/* Only show "Base X" when base is non-negative - once compensation/edits
                       have pulled more than the base itself (base goes negative), showing
                       "Base -100" is confusing. The total above is still exactly correct. */}
@@ -222,7 +230,10 @@ export default memo(function BudgetSection({
       <div className="font-semibold mb-2 text-foreground text-sm sm:text-base">💰 {savingsField.label}</div>
       <div className="grid grid-cols-1 @[300px]:grid-cols-2 gap-3 mb-3">
         <div>
-          <label htmlFor="savings-total-input" className="text-[11px] font-semibold text-foreground/90 block mb-1">Total Savings</label>
+          {/* Matches the min-h-[2.25em] reserved on Groceries/Entertainment's "Total Budget"
+              label so all 3 budget blocks' inputs start at the same y-position when shown
+              side by side, even though Savings never shows a breakdown line. */}
+          <label htmlFor="savings-total-input" className="text-[11px] font-semibold text-foreground/90 block mb-1 min-h-[2.25em]">Total Savings</label>
           <input
             id="savings-total-input"
             type="number"

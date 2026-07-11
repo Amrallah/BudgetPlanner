@@ -292,6 +292,20 @@ describe('BudgetSection', () => {
     expect(mockHandlers.onViewModeChange).toHaveBeenCalledWith('tabs');
   });
 
+  // --- Regression: vertical alignment across side-by-side blocks (bug fix - Groceries'
+  // "Base X +Y freed" breakdown line made its Total Budget input start lower than
+  // Entertainment/Savings, which never show that line). All 3 "Total Budget"/"Total Savings"
+  // labels reserve the same min-height regardless of whether a breakdown is shown. ---
+  it('reserves the same label height for budgets with and without a bonus/extra breakdown', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    // mockFields[0] (groceries) has bonus+extra (breakdown shown), mockFields[1] (entertainment) does not
+    const totalBudgetLabels = screen.getAllByText('Total Budget').map(el => el.closest('label'));
+    expect(totalBudgetLabels).toHaveLength(2);
+    totalBudgetLabels.forEach(label => expect(label?.className).toContain('min-h-[2.25em]'));
+    const savingsLabel = screen.getByText('Total Savings').closest('label');
+    expect(savingsLabel?.className).toContain('min-h-[2.25em]');
+  });
+
   // --- Transaction ordering (bug fix: newest was showing last/bottom) ---
   it('shows the most recent transaction first', () => {
     const fieldsWithTransactions = mockFields.map((f, idx) => ({

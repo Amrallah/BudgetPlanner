@@ -1931,8 +1931,12 @@ return (
           onCancelRollover={() => setShowRollover(false)}
         />
 
-        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed) */}
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 mb-6">
+        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed).
+            lg:items-start prevents the default flex "stretch" from force-equalizing both
+            columns' heights - without it, a long Fixed Expenses list (right column) stretched
+            the left column (and therefore made the Budgets card's own box) taller than its
+            actual content, leaving a large dead empty area under/inside the Budgets card. */}
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-5 mb-6">
           {/* Left column: Monthly + Variable Expenses stacked */}
           <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
             {/* Monthly */}
@@ -3186,7 +3190,10 @@ return (
               return (
                 <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border shadow-sm hover:shadow-md transition-all">
                   <div className="w-full lg:w-40 lg:shrink-0 min-w-0">
-                    <div className="flex flex-nowrap items-center gap-2 mb-1">
+                    {/* justify-between pins the paid/unpaid badge to the same fixed x-position
+                        (right edge of this fixed-width name column) on every row, instead of it
+                        sitting immediately after the name text (which varies with name length). */}
+                    <div className="flex flex-nowrap items-center justify-between gap-2 mb-1">
                       <span className="font-semibold text-foreground text-sm truncate min-w-0" title={e.name}>{e.name}</span>
                       <button
                         type="button"
