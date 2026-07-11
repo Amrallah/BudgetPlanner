@@ -647,8 +647,54 @@ export default function FinancialPlanner() {
   // consolidated Budgets card (savingsField below) so they live with the other budget buckets
   // instead of looking like peers of Income.
   const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
-    { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: !isMonthLocked },
-    { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: !isMonthLocked }
+    {
+      label: 'Income',
+      value: data[sel].baseSalary ?? data[sel].inc,
+      key: 'inc',
+      editable: !isMonthLocked,
+      // Explicit, discoverable entry point for changing salary (previously the only way to
+      // trigger the "Salary Changed" split modal was to notice that editing the Income field
+      // directly opens it on blur - that still works unchanged, this is just an additional,
+      // more obvious way in). Simply focuses+selects the Income input so the user can type
+      // straight over the current value.
+      button: !isMonthLocked ? (
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById('field-inc') as HTMLInputElement | null;
+            el?.focus();
+            el?.select();
+          }}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold normal-case text-primary hover:text-primary"
+          title="Update your salary"
+        >
+          <Edit2 size={12} /> Change
+        </button>
+      ) : undefined
+    },
+    {
+      label: 'Extra Income',
+      value: data[sel].extraInc,
+      key: 'extraInc',
+      editable: !isMonthLocked,
+      // Shortcut into the existing "Split Extra Income" flow - focuses+selects the Extra
+      // Income input so the user can type an amount, which still auto-opens the existing
+      // split popup on blur exactly as before.
+      button: !isMonthLocked ? (
+        <button
+          type="button"
+          onClick={() => {
+            const el = document.getElementById('field-extraInc') as HTMLInputElement | null;
+            el?.focus();
+            el?.select();
+          }}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold normal-case text-primary hover:text-primary"
+          title="Add extra income"
+        >
+          <Plus size={12} /> Add
+        </button>
+      ) : undefined
+    }
   ]), [data, isMonthLocked, sel]);
 
   // Savings block for the Budgets card - the 3rd "bucket" alongside Groceries/Entertainment.
