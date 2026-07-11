@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload, Lock } from "lucide-react";
+import { DollarSign, Plus, Trash2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload, Lock } from "lucide-react";
 import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
 import type { CompensationOption } from "@/components/CompensationModal";
 import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
@@ -20,7 +20,8 @@ import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
 import { useConfirmAction } from "@/lib/hooks/useConfirmAction";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSelection";
-import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
+import IncomeSection from "@/components/IncomeSection";
+import { type MonthlyFieldKey } from "@/components/MonthlySection";
 import BudgetSection, { type BudgetField, type BudgetType, type SavingsField } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -642,60 +643,6 @@ export default function FinancialPlanner() {
     : isProcessedMonth
       ? 'This month has already been processed.'
       : '';
-
-  // Income & Salary card: only the money coming IN this month. Savings/Previous moved to the
-  // consolidated Budgets card (savingsField below) so they live with the other budget buckets
-  // instead of looking like peers of Income.
-  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => ([
-    {
-      label: 'Income',
-      value: data[sel].baseSalary ?? data[sel].inc,
-      key: 'inc',
-      editable: !isMonthLocked,
-      // Explicit, discoverable entry point for changing salary (previously the only way to
-      // trigger the "Salary Changed" split modal was to notice that editing the Income field
-      // directly opens it on blur - that still works unchanged, this is just an additional,
-      // more obvious way in). Simply focuses+selects the Income input so the user can type
-      // straight over the current value.
-      button: !isMonthLocked ? (
-        <button
-          type="button"
-          onClick={() => {
-            const el = document.getElementById('field-inc') as HTMLInputElement | null;
-            el?.focus();
-            el?.select();
-          }}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 active:bg-primary/25 transition-all shrink-0"
-          title="Update your salary"
-        >
-          <Edit2 size={12} /> Change
-        </button>
-      ) : undefined
-    },
-    {
-      label: 'Extra Income',
-      value: data[sel].extraInc,
-      key: 'extraInc',
-      editable: !isMonthLocked,
-      // Shortcut into the existing "Split Extra Income" flow - focuses+selects the Extra
-      // Income input so the user can type an amount, which still auto-opens the existing
-      // split popup on blur exactly as before.
-      button: !isMonthLocked ? (
-        <button
-          type="button"
-          onClick={() => {
-            const el = document.getElementById('field-extraInc') as HTMLInputElement | null;
-            el?.focus();
-            el?.select();
-          }}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 active:bg-primary/25 transition-all shrink-0"
-          title="Add extra income"
-        >
-          <Plus size={12} /> Add
-        </button>
-      ) : undefined
-    }
-  ]), [data, isMonthLocked, sel]);
 
   // Savings block for the Budgets card - the 3rd "bucket" alongside Groceries/Entertainment.
   const savingsField: SavingsField = useMemo(() => {
@@ -1985,24 +1932,25 @@ return (
         <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-5 mb-6">
           {/* Left column: Monthly + Variable Expenses stacked */}
           <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
-            {/* Monthly */}
-            <div className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-5">
-              <MonthlySection
-              monthLabel={cur.month}
-              title="Income & Salary"
-              fields={monthlyFields}
-              savingEdited={savingEdited}
-              applyFuture={applyFuture}
-              wrapInCard={false}
+            {/* Income & Salary - compact card: read-only value + explicit action button per
+                row (the buttons are the ONE real way to change these values now, not a
+                redundant shortcut to an already-editable input). */}
+            <IncomeSection
+              income={data[sel].baseSalary ?? data[sel].inc}
+              extraIncome={data[sel].extraInc}
               locked={isMonthLocked}
-              onFocus={handleMonthlyFocus}
-              onChange={handleMonthlyChange}
-              onBlur={handleMonthlyBlur}
-              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
-              onToggleApplyFuture={(checked) => {
-                setApplyFuture(checked);
-                setApplySavingsForward(checked ? sel : null);
+              onChangeSalary={(newValue) => {
+                handleMonthlyFocus('inc');
+                handleMonthlyChange('inc', newValue);
+                handleMonthlyBlur('inc', newValue);
               }}
+              onAddExtraIncome={(amountToAdd) => {
+                const newTotal = data[sel].extraInc + amountToAdd;
+                handleMonthlyFocus('extraInc');
+                handleMonthlyChange('extraInc', newTotal);
+                handleMonthlyBlur('extraInc', newTotal);
+              }}
+              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
             />
             {salarySplitActive && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
@@ -3091,7 +3039,6 @@ return (
               </button>
             </div>
           )}
-            </div>
 
             {/* Budgets: Groceries, Entertainment and Savings consolidated in one place */}
             <BudgetSection

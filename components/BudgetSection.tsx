@@ -1,4 +1,4 @@
-import { Edit2, LayoutGrid, Rows3 } from "lucide-react";
+import { Check, Edit2, LayoutGrid, Rows3 } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { sanitizeNumberInput } from "@/lib/uiHelpers";
 
@@ -150,15 +150,22 @@ export default memo(function BudgetSection({
 
           {/* Spent Input */}
           <div>
-            <label className="text-[11px] flex gap-2 items-center font-semibold text-foreground/90 mb-1">
-              Spent
-              <button
-                onClick={() => !isLocked && onToggleEditSpent(field.type)}
-                disabled={isLocked}
-                className="text-emerald-700 hover:text-emerald-900"
-              >
-                <Edit2 size={12} />
-              </button>
+            {/* Same always-2-lines pattern as "Total Budget" (title line + invisible
+                placeholder line) so Total Budget/Spent/Remaining inputs all start at the
+                identical y-position within one budget's row - matters most in "tabs" mode,
+                where all 3 fields for one budget are shown side by side at full width. */}
+            <label className="text-[11px] font-semibold text-foreground/90 block mb-1">
+              <span className="flex gap-2 items-center leading-tight">
+                Spent
+                <button
+                  onClick={() => !isLocked && onToggleEditSpent(field.type)}
+                  disabled={isLocked}
+                  className="text-emerald-700 hover:text-emerald-900"
+                >
+                  <Edit2 size={12} />
+                </button>
+              </span>
+              <span className="block leading-tight text-[11px] invisible" aria-hidden="true">&nbsp;</span>
             </label>
             <input
               type="number"
@@ -174,7 +181,10 @@ export default memo(function BudgetSection({
 
           {/* Remaining (read-only) */}
           <div>
-            <label className="text-[11px] font-semibold text-foreground/90 block mb-1">Remaining</label>
+            <label className="text-[11px] font-semibold text-foreground/90 block mb-1">
+              <span className="block leading-tight">Remaining</span>
+              <span className="block leading-tight text-[11px] invisible" aria-hidden="true">&nbsp;</span>
+            </label>
             <input
               type="number"
               value={field.remaining.toFixed(0)}
@@ -273,7 +283,11 @@ export default memo(function BudgetSection({
           )}
         </div>
         <div>
-          <div className="flex items-center gap-2 mb-1">
+          {/* Same always-2-lines pattern as "Total Savings" (title/button row + invisible
+              placeholder line) so both fields in this block start their inputs at the same
+              y-position, matching Groceries/Entertainment's Total Budget/Spent/Remaining
+              alignment fix. */}
+          <div className="flex items-center gap-2 leading-tight">
             <label htmlFor="savings-previous-input" className="text-[11px] font-semibold text-foreground/90">
               Previous (carried over)
             </label>
@@ -285,6 +299,7 @@ export default memo(function BudgetSection({
               <Edit2 size={12} />
             </button>
           </div>
+          <span className="block leading-tight text-[11px] invisible mb-1" aria-hidden="true">&nbsp;</span>
           <input
             id="savings-previous-input"
             type="number"
@@ -347,8 +362,14 @@ export default memo(function BudgetSection({
                 role="tab"
                 aria-selected={activeTab === b.id}
                 onClick={() => setActiveTab(b.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border transition-all ${activeTab === b.id ? 'bg-primary text-white border-primary' : 'bg-muted/50 text-foreground/90 border-border hover:border-primary/40'}`}
+                // A checkmark icon marks the active tab explicitly - unlike relying on color
+                // alone, this stays unambiguous even where the primary accent color doesn't
+                // pop enough against a dark theme's already-high-contrast inactive tabs
+                // (bg-muted/50 + near-white text can otherwise make a medium-toned selected
+                // pill look comparatively washed out). border-2 + shadow-sm add further weight.
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold border-2 transition-all ${activeTab === b.id ? 'bg-primary text-white border-primary shadow-sm' : 'bg-muted/50 text-foreground/90 border-border hover:border-primary/40 font-semibold'}`}
               >
+                {activeTab === b.id && <Check size={14} className="shrink-0" />}
                 {b.label}
               </button>
             ))}

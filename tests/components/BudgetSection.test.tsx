@@ -319,6 +319,21 @@ describe('BudgetSection', () => {
     expect(savingsSpans?.[1].className).toContain('invisible');
   });
 
+  it('gives Spent, Remaining, and Previous labels the same invisible 2nd-line placeholder (bug fix: all fields in a budget row must align, not just Total Budget)', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    const spentLabel = screen.getAllByText('Spent')[0].closest('label');
+    expect(spentLabel?.querySelectorAll('span')).toHaveLength(2);
+    expect(spentLabel?.querySelectorAll('span')[1].className).toContain('invisible');
+
+    const remainingLabel = screen.getAllByText('Remaining')[0].closest('label');
+    expect(remainingLabel?.querySelectorAll('span')).toHaveLength(2);
+    expect(remainingLabel?.querySelectorAll('span')[1].className).toContain('invisible');
+
+    const previousLabel = screen.getByText('Previous (carried over)').closest('div');
+    const invisiblePlaceholder = previousLabel?.parentElement?.querySelector('span.invisible');
+    expect(invisiblePlaceholder).toBeTruthy();
+  });
+
   // --- Transaction ordering (bug fix: newest was showing last/bottom) ---
   it('shows the most recent transaction first', () => {
     const fieldsWithTransactions = mockFields.map((f, idx) => ({
