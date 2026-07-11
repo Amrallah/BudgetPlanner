@@ -145,7 +145,7 @@ Manages variable budget edits (groceries, entertainment).
 - Tracks user edits
 - Manages budget display state
 
-**Used By**: page.tsx (budget fields, MonthlySection, BudgetSection)
+**Used By**: page.tsx (budget fields, IncomeSection, BudgetSection)
 
 ---
 

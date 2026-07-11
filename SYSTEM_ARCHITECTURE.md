@@ -227,7 +227,7 @@ lib/
 └── firebase.ts (Firebase init)
 ```
 
-**Visual Layout (Responsive Grid, updated 2026-07-11 Budgets/Income IA rework):**
+**Visual Layout (Responsive Grid, updated 2026-07-11 Budgets/Income IA rework, rounds 1-5):**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Header: Month Nav | Pending Changes | Save Timestamp | Save │
@@ -235,12 +235,14 @@ lib/
 │                                                               │
 │  Left Column (lg: flex-1):      Right Column (lg: 480px):   │
 │  ├─ Income & Salary card        ├─ FixedExpenses Card      │
-│  │  (MonthlySection, title=     │  ├─ Expense List         │
-│  │   "Income & Salary")         │  │  ├─ Name/Amount       │
-│  │  ├─ Income (editable)        │  │  ├─ Payment Toggle    │
-│  │  └─ Extra Income (editable)  │  │  └─ Edit/Delete       │
-│  │                              │  │                        │
-│  ├─ Budgets card (BudgetSection)│  └─ Add Expense Form     │
+│  │  (IncomeSection - compact,   │  ├─ Expense List         │
+│  │   read-only stats, NOT       │  │  ├─ Name/Amount       │
+│  │   MonthlySection anymore)    │  │  ├─ Payment Toggle    │
+│  │  ├─ Income + "Change" button │  │  └─ Edit/Delete       │
+│  │  └─ Extra Income + "+ Add"   │  │                        │
+│  │     button (inline popovers) │  │                        │
+│  │                              │  └─ Add Expense Form     │
+│  ├─ Budgets card (BudgetSection)│                          │
 │  │  layout: columns | tabs      │                          │
 │  │  (user-toggled, persisted)   │                          │
 │  │  ├─ Groceries bucket         │                          │
@@ -249,16 +251,27 @@ lib/
 │  │     ├─ Total Savings         │                          │
 │  │     └─ Previous (carried     │                          │
 │  │        over, compact line)   │                          │
+│  │                              │                          │
+│  ├─ "Tools & Insights"          │                          │
+│  │  (UtilityCardsRow - moved    │                          │
+│  │   INTO this column below     │                          │
+│  │   Budgets to fill the space  │                          │
+│  │   that used to sit empty     │                          │
+│  │   next to a long Fixed       │                          │
+│  │   Expenses list): Withdraw,  │                          │
+│  │   Emergency Buffer, Ent %    │                          │
+│  │   calculator, What-if - all  │                          │
+│  │   stacked vertically         │                          │
 │                                                               │
-│  Below both columns: AdditionalFeaturesSection (rollover),  │
-│  then "Tools & Insights" (UtilityCardsRow): Withdraw from   │
-│  Savings, Emergency Buffer, Entertainment Budget (% of      │
-│  savings calculator - kept here, NOT merged into Budgets),  │
-│  What-if Calculator.                                        │
+│  Below both columns (full width): AdditionalFeaturesSection  │
+│  (overspend warning + rollover confirm UI) only - Tools &     │
+│  Insights is NOT here anymore, see left column above.        │
 │                                                               │
 │  Responsive Behavior:                                       │
 │  • Mobile: Full-width stack (flex-col)                     │
-│  • lg (1024px+): 2-column grid (flex-row)                  │
+│  • lg (1024px+): 2-column grid (flex-row), lg:items-start   │
+│    so a long Fixed Expenses list does NOT stretch the       │
+│    shorter left column's cards taller than their content    │
 │  • Left grows to available space (flex-1)                  │
 │  • Right fixed at 480px (w-[480px])                        │
 │  • Gap between sections: 16-20px (gap-4 lg:gap-5)          │
@@ -266,18 +279,20 @@ lib/
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Container Structure (app/page.tsx lines 1638+):**
+**Container Structure (app/page.tsx):**
 ```typescript
-// Main responsive grid container
-<div className="flex flex-col lg:flex-row gap-4 lg:gap-5">
+// Main responsive grid container - lg:items-start prevents the shorter left column from
+// being stretched to match a long Fixed Expenses list's height
+<div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-5">
   
-  // Left column: Monthly + Variable Expenses (stacked)
+  // Left column: Income & Salary + Budgets + Tools & Insights (all stacked)
   <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
-    <MonthlySection />        {/* Income, Previous, Savings, Balance */}
-    <BudgetSection />         {/* Groceries & Entertainment budgets */}
+    <IncomeSection />          {/* Income + Extra Income, read-only stats + popover buttons */}
+    <BudgetSection />          {/* Groceries, Entertainment, Savings - one consolidated card */}
+    <UtilityCardsRow />        {/* "Tools & Insights": Withdraw, Emergency Buffer, Ent %, What-if */}
   </div>
   
-  // Right column: Fixed Expenses (fixed width)
+  // Right column: Fixed Expenses (fixed width, predictable position always)
   <div className="w-full lg:w-[480px]">
     <FixedExpensesCard />      {/* Fixed expenses list & add form */}
   </div>
@@ -286,8 +301,9 @@ lib/
 ```
 
 **Component Responsibilities:**
-- **MonthlySection:** Display editable income, display previous savings, show calculated balance
-- **BudgetSection:** Manage grocery/entertainment budgets and transaction tracking
+- **IncomeSection:** Read-only Income/Extra Income display; "Change"/"+ Add" buttons open inline popovers that feed the existing salary-changed / split-extra-income flows
+- **BudgetSection:** Manage grocery/entertainment/savings budgets and transaction tracking, in one card with a columns/tabs layout toggle
+- **UtilityCardsRow ("Tools & Insights"):** Withdraw from Savings, Emergency Buffer, Entertainment-%-of-savings calculator, What-if Calculator - stacked vertically in the left column
 - **FixedExpensesCard:** Display and manage monthly recurring expenses with payment status tracking
 
 ---
@@ -1238,7 +1254,7 @@ const calculation = useMemo(() => {
 
 ### O2: Component Memoization
 ```typescript
-export const MonthlySection = React.memo(({...props}) => {
+export const IncomeSection = React.memo(({...props}) => {
   // Only re-renders if props change
 });
 ```

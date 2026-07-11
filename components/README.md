@@ -64,12 +64,19 @@ instead of three). Supports two layouts, toggled by the user and persisted via
 **Features**:
 - 3-bucket budget display (groceries, entertainment, savings) in one card
 - Shows: Total budget, Base budget, Bonuses/Freebies, Extra, Spent, Remaining (per category)
-- Recent transactions shown newest-first as a compact chip list (not oldest-first inline text)
+- Recent transactions shown newest-first (dd/mm date, not hh:mm:ss) as a compact chip list
 - Transaction input field with recent transaction history
 - Edit button for spent amount (toggle between view/edit mode)
 - Previous (carried-over) savings shown as a compact editable line, not a peer input box
 - Link to transaction history modal
-- Layout toggle: columns (grid) vs tabs (one budget visible at a time)
+- Layout toggle: columns (grid) vs tabs (one budget visible at a time), with the active tab
+  marked by an explicit checkmark icon (not color alone) for reliable contrast in dark mode
+- Every field's label (Total Budget/Spent/Remaining/Total Savings/Previous) always renders the
+  same 2-line DOM structure (title + an invisible-when-empty placeholder line) so all budgets'
+  inputs align pixel-perfectly whether or not a "Base X +Y freed" breakdown is shown
+- Each budget block is a CSS container-query root (`@container`); the inner Total/Spent/
+  Remaining fields only go 3-across once the block itself (not the viewport) is wide enough,
+  avoiding clipped values when squeezed into "columns" mode's 3-way split
 
 **Example**:
 ```tsx
@@ -89,48 +96,55 @@ instead of three). Supports two layouts, toggled by the user and persisted via
 
 ---
 
-### **MonthlySection** (renders the "Income & Salary" card)
-Displays and edits monthly income only (Income, Extra Income). Savings/Previous moved to
-`BudgetSection` in the 2026-07-11 IA rework so Income doesn't visually blend with Savings.
-Generic enough to accept a custom `title` (page.tsx passes `title="Income & Salary"`).
+### **IncomeSection** (renders the "Income & Salary" card)
+Compact card replacing the old always-editable Income/Extra Income input boxes (2026-07-11
+redesign, round 4 of the IA rework). Income and Extra Income are shown as READ-ONLY stat rows
+(label + bold value + action button) instead of editable inputs - the button is the ONE real
+way to change each value now, opening a small inline popover instead of a full modal.
 
 **Props**:
-- `monthLabel`: Display name (e.g., "Jan 2025")
-- `title`: Card heading (default `'Monthly'`; page.tsx overrides to `'Income & Salary'`)
-- `fields`: Array of MonthlyField (key, label, value, editable, button?) - page.tsx now only passes `inc`/`extraInc`
-- `savingEdited`: Whether user edited savings this month
-- `applyFuture`: Apply to future months checkbox state
-- `wrapInCard`: Wrap in white card? (default true)
-- `onFocus(key)`: Called when field focused
-- `onChange(key, value)`: Called when field value changes
-- `onBlur(key, value)`: Called when field loses focus
-- `onOpenExtraHistory()`: Show extra allocations modal
-- `onToggleApplyFuture(checked)`: Toggle apply to future
+- `income`: current committed salary (number, read-only display)
+- `extraIncome`: SUM of extra income already allocated this month (`grocExtra + entExtra + saveExtra`, NOT the transient `data[sel].extraInc` "pending split" queue value, which resets to 0 right after a split is applied)
+- `locked?`: disables both action buttons (e.g. month locked)
+- `onChangeSalary(newValue)`: called with the new salary as a REPLACEMENT value ("my new salary is X") when the "Change" popover is confirmed
+- `onAddExtraIncome(amountToAdd)`: called with just the entered amount as an ADDITIVE value ("I received another X") when the "+ Add" popover is confirmed
+- `onOpenExtraHistory()`: shows the extra allocations history modal
 
 **Features**:
-- Income/Extra Income only (2-field layout in the real app usage)
-- Extra Income history link
-- Editable/read-only field distinction
-- Responsive grid (1 col mobile, up to 4 col desktop)
-
-**Performance**: `React.memo` with deep fields comparison
-- Optimizes for frequent renders during data entry
-- Prevents re-renders when other fields change
+- "Change" button opens an inline popover pre-filled with the current salary; Confirm/Cancel
+- "+ Add" button opens an empty inline popover for a received amount; Add Amount is disabled until a positive number is entered
+- Only one popover open at a time (opening one closes the other)
+- Both popovers wire through to the app's EXISTING salary-changed / split-extra-income flows in `app/page.tsx` (via the same `handleMonthlyFocus`/`handleMonthlyChange`/`handleMonthlyBlur` sequence used before this redesign) - no new business logic, only the entry point changed
+- Both rows collapsed into ONE compact card instead of two separate boxes, saving vertical space
 
 **Example**:
 ```tsx
-<MonthlySection
-  monthLabel="Jan 2025"
-  title="Income & Salary"
-  fields={monthlyFields}
-  savingEdited={savingEdited}
-  applyFuture={applyFuture}
-  onFocus={(key) => handleMonthlyFocus(key)}
-  // ... other handlers
+<IncomeSection
+  income={data[sel].baseSalary ?? data[sel].inc}
+  extraIncome={(data[sel].grocExtra||0) + (data[sel].entExtra||0) + (data[sel].saveExtra||0)}
+  locked={isMonthLocked}
+  onChangeSalary={(v) => { handleMonthlyFocus('inc'); handleMonthlyChange('inc', v); handleMonthlyBlur('inc', v); }}
+  onAddExtraIncome={(amt) => { const total = data[sel].extraInc + amt; handleMonthlyFocus('extraInc'); handleMonthlyChange('extraInc', total); handleMonthlyBlur('extraInc', total); }}
+  onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
 />
 ```
 
-**Tests**: `tests/components/MonthlySection.test.tsx` (5 tests)
+**Tests**: `tests/components/IncomeSection.test.tsx` (8 tests)
+
+---
+
+### **MonthlySection** (kept, but NO LONGER RENDERED in the app)
+Generic field-editing component (previously rendered the Income & Salary card - see
+`IncomeSection` above, which replaced it in the 2026-07-11 redesign). The component and its
+test file are left in place unused because `app/page.tsx` still imports its exported
+`MonthlyFieldKey` type (consumed by `handleMonthlyFocus`/`handleMonthlyChange`/
+`handleMonthlyBlur`'s signatures) - relocating that type was deemed lower priority/higher risk
+than just leaving the otherwise-dead component file in place. Do not add new usages of this
+component without checking whether `IncomeSection`'s pattern (read-only stat + popover) fits
+better first.
+
+**Tests**: `tests/components/MonthlySection.test.tsx` (6 tests) - still exercises the
+component directly even though nothing in the app renders it anymore.
 
 ---
 
@@ -305,7 +319,7 @@ export default memo(function Component(props) {
 
 - **AnalyticsSection**: Prevents ~15-20 re-renders per month edit
 - **BudgetSection**: Prevents ~10-15 re-renders per budget change
-- **MonthlySection**: Prevents ~5-10 re-renders per month selection
+- **IncomeSection**: Prevents re-renders per month selection (replaces MonthlySection's role)
 - **SetupSection**: Prevents re-renders during setup wizard
 - **TransactionModal**: Prevents re-renders when closed
 
@@ -348,7 +362,7 @@ npm test  # All tests including components
 ```tsx
 import AnalyticsSection from '@/components/AnalyticsSection';
 import BudgetSection from '@/components/BudgetSection';
-import MonthlySection from '@/components/MonthlySection';
+import IncomeSection from '@/components/IncomeSection';
 import SetupSection from '@/components/SetupSection';
 import TransactionModal from '@/components/TransactionModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -359,7 +373,7 @@ export default function FinancialPlanner() {
   return (
     <>
       <AnalyticsSection {...analyticsProps} />
-      <MonthlySection {...monthlyProps} />
+      <IncomeSection {...incomeProps} />
       <BudgetSection {...budgetProps} />
       <TransactionModal {...transModalProps} />
       <SetupSection {...setupProps} />

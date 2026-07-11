@@ -163,7 +163,10 @@ The **Finance Dashboard** is a personal financial planning application that mode
 - **Cancel:** "Cancel & Revert Salary" always available — reverts `inc`/`baseSalary` back to the pre-change value and closes the popup. Never gets the user stuck.
 
 ### F8: Extra Income Split Modal
-- **Trigger:** User enters extraInc value > 0
+- **Trigger:** User enters extraInc value > 0 - either directly, or (2026-07-11 UX rework) via
+  the "+ Add" button on the Income & Salary card's Extra Income row, which opens a small inline
+  popover for an amount to add on top of the current pending total, then feeds that combined
+  value through the exact same focus/change/blur sequence as before (no new trigger logic).
 - **Modal Shows (centered popup overlay, see F6.1):**
   - Total extra income amount
   - Three input fields: Groceries, Entertainment, Savings
@@ -179,6 +182,12 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - Transaction recorded with timestamp
 - **Undo Capability:** "Undo Last Extra Split" button available after split (native confirm replaced by `ConfirmDialog`, see F6.1)
 - **Cancel:** "Cancel" button closes the popup, discards the draft split, AND reverts the "Extra Income" field itself back to its pre-edit value (fixed Jul 2026 - previously only the popup closed, leaving the input box showing the unresolved typed value).
+- **Displayed "Extra Income" stat (2026-07-11):** the Income & Salary card shows
+  `grocExtra + entExtra + saveExtra` (the sum already allocated this month), NOT the transient
+  `extraInc` queue value above - `extraInc` resets to 0 right after a split is applied, so
+  displaying it directly made allocated money look like it had vanished. `extraInc` is still
+  the field that actually drives this modal's trigger logic; only the user-facing stat changed
+  what it reads from.
 
 ### F9: Budget Rebalance Modal (Budget Change)
 - **Trigger:** User changes grocery/entertainment budget and difference detected
