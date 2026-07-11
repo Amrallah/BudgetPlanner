@@ -75,7 +75,10 @@ export default memo(function TransactionModal({
             transactions.length === 0 ? (
               <div className="text-sm text-muted-foreground">No transactions for this month.</div>
             ) : (
-              transactions.map((t, i) => (
+              // Show newest first - .map() captures each item's ORIGINAL array index (i)
+              // before reversing just the display order, so Edit/Delete still act on the
+              // correct underlying transaction.
+              transactions.map((t, i) => ({ t, i })).reverse().map(({ t, i }) => (
                 <div key={i} className="flex items-center justify-between border-b py-2">
                   <div className="flex items-center gap-4">
                     {editingIndex === i ? (
@@ -131,7 +134,8 @@ export default memo(function TransactionModal({
             )
           ) : (
             extraAllocations.length > 0 ? (
-              extraAllocations.map((ex, i) => (
+              // Newest first, same original-index-preservation approach as above.
+              extraAllocations.map((ex, i) => ({ ex, i })).reverse().map(({ ex, i }) => (
                 <div key={i} className="flex items-center justify-between border-b py-2">
                   <div className="flex items-center gap-4">
                     <div className="text-sm">
@@ -160,7 +164,9 @@ export default memo(function TransactionModal({
             <div className="mt-4">
               <h4 className="text-sm font-semibold mb-2">Extra Income Allocations</h4>
               {extraAllocations.length > 0 ? (
-                extraAllocations.map((ex, j) => (
+                // Newest first (display-only reorder, no index needed here - this sub-list
+                // is read-only, no edit/delete actions reference its position).
+                [...extraAllocations].reverse().map((ex, j) => (
                   <div key={j} className="flex items-center justify-between border-b py-2">
                     <div className="text-sm">
                       Groceries: <span className="font-medium">{ex.groc.toFixed(0)}</span> — 

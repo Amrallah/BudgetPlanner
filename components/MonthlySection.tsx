@@ -15,6 +15,7 @@ export type MonthlyField = {
 
 export type MonthlySectionProps = {
   monthLabel: string;
+  title?: string;
   fields: MonthlyField[];
   savingEdited: boolean;
   applyFuture: boolean;
@@ -30,6 +31,7 @@ export type MonthlySectionProps = {
 
 export default memo(function MonthlySection({
   monthLabel,
+  title = 'Monthly',
   fields,
   savingEdited,
   applyFuture,
@@ -46,15 +48,23 @@ export default memo(function MonthlySection({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-10 rounded-full bg-primary" aria-hidden />
-          <h2 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">Monthly · {monthLabel}</h2>
+          <h2 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">{title} · {monthLabel}</h2>
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {fields.filter(f => f.key !== 'bal').map((field) => (
           <div key={field.key}>
-            <label htmlFor={`field-${field.key}`} className="block text-xs font-semibold leading-snug mb-1.5 flex gap-2 text-foreground/90">
-              {field.label} {field.button}
-            </label>
+            {/* field.button is rendered as a SIBLING of <label>, never nested inside it - a
+                native <label for="..."> forwards clicks anywhere within it (including empty
+                gaps) to its associated input, so an action button nested inside the label
+                would make the WHOLE row seem to "do something" when clicked anywhere, not
+                just on the button itself. */}
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label htmlFor={`field-${field.key}`} className="block text-xs font-semibold leading-snug text-foreground/90">
+                {field.label}
+              </label>
+              {field.button}
+            </div>
             <input
               id={`field-${field.key}`}
               type="number"
@@ -130,6 +140,7 @@ export default memo(function MonthlySection({
   return (
     fieldsEqual &&
     prevProps.monthLabel === nextProps.monthLabel &&
+    prevProps.title === nextProps.title &&
     prevProps.savingEdited === nextProps.savingEdited &&
     prevProps.applyFuture === nextProps.applyFuture &&
     prevProps.wrapInCard === nextProps.wrapInCard &&

@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { DollarSign, Plus, Trash2, Edit2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload, Lock } from "lucide-react";
+import { DollarSign, Plus, Trash2, Save, Check, AlertTriangle, Clock, Wallet, PiggyBank, TrendingUp, Upload, Lock } from "lucide-react";
 import CompensationModal, { getCompensationSourceIcon, getCompensationSourceColor, getCompensationSourceLabel } from "@/components/CompensationModal";
 import type { CompensationOption } from "@/components/CompensationModal";
 import { checkTransactionOverspend, applyCompensation, reverseCompensation } from "@/lib/compensation";
@@ -20,14 +20,16 @@ import { useNewExpenseSplitModal } from "@/lib/hooks/useNewExpenseSplitModal";
 import { useConfirmAction } from "@/lib/hooks/useConfirmAction";
 import { useBudgetValidation } from "@/lib/hooks/useBudgetValidation";
 import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSelection";
-import MonthlySection, { type MonthlyField, type MonthlyFieldKey } from "@/components/MonthlySection";
-import BudgetSection, { type BudgetField, type BudgetType } from "@/components/BudgetSection";
+import IncomeSection from "@/components/IncomeSection";
+import { type MonthlyFieldKey } from "@/components/MonthlySection";
+import BudgetSection, { type BudgetField, type BudgetType, type SavingsField } from "@/components/BudgetSection";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import SetupSection from "@/components/SetupSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
 import AdditionalFeaturesSection from "@/components/AdditionalFeaturesSection";
 import UtilityCardsRow from "@/components/UtilityCardsRow";
+import { useBudgetsViewMode } from "@/lib/hooks/useBudgetsViewMode";
 import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
@@ -83,6 +85,8 @@ export default function FinancialPlanner() {
   const { months, sel, setSel, currentIndex } = useMonthSelection(
     planStartDate ? { startDate: planStartDate } : undefined
   );
+  // Budgets card layout preference (all 3 budgets side-by-side vs one at a time via tabs).
+  const { viewMode: budgetsViewMode, setViewMode: setBudgetsViewMode } = useBudgetsViewMode();
   const [showAdd, setShowAdd] = useState(false);
   const [newExp, setNewExp] = useState({ name: '', amt: 0, type: 'monthly', start: 0, duration: '' });
   const [adj, setAdj] = useState({ groc: 0, ent: 0, save: 0 });
@@ -640,7 +644,8 @@ export default function FinancialPlanner() {
       ? 'This month has already been processed.'
       : '';
 
-  const monthlyFields: MonthlyField[] = useMemo<MonthlyField[]>(() => {
+  // Savings block for the Budgets card - the 3rd "bucket" alongside Groceries/Entertainment.
+  const savingsField: SavingsField = useMemo(() => {
     const saveExtra = data[sel].saveExtra || 0;
     const saveBonus = data[sel].saveBonus || 0;
     const saveBase = data[sel].save;
@@ -654,24 +659,16 @@ export default function FinancialPlanner() {
           : 'Savings')
       : 'Savings';
 
-    return ([
-      { label: 'Income', value: data[sel].baseSalary ?? data[sel].inc, key: 'inc', editable: !isMonthLocked },
-      { label: 'Extra Income', value: data[sel].extraInc, key: 'extraInc', editable: !isMonthLocked },
-      {
-        label: 'Previous',
-        value: cur.prev,
-        key: 'prev',
-        editable: editPrev && !isMonthLocked,
-        button: (
-          <button onClick={() => setEditPrev(!editPrev)} className="text-primary hover:text-primary">
-            <Edit2 size={14} />
-          </button>
-        )
-      },
-      { label: 'Balance', value: cur.bal, key: 'bal', editable: false },
-      { label: savingsLabel, value: savingsTotal, key: 'save', editable: !isMonthLocked }
-    ]);
-  }, [cur.bal, cur.prev, data, editPrev, isMonthLocked, sel]);
+    return {
+      label: savingsLabel,
+      value: savingsTotal,
+      editable: !isMonthLocked,
+      savingEdited,
+      applyFuture,
+      previousValue: cur.prev,
+      previousEditable: editPrev && !isMonthLocked
+    };
+  }, [applyFuture, cur.prev, data, editPrev, isMonthLocked, savingEdited, sel]);
 
   const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
     {
@@ -1772,12 +1769,12 @@ return (
             <div className="flex flex-col gap-2">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 w-full">
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-56 md:w-64">
-                    <span className="text-[11px] text-muted-foreground">Month</span>
+                  <div className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2 shadow-sm text-sm w-full sm:w-72 md:w-80">
+                    <span className="text-[11px] text-muted-foreground shrink-0">Month</span>
                     <select
                       value={sel}
                       onChange={(e) => setSel(parseInt(e.target.value))}
-                      className="text-sm bg-transparent focus:outline-none w-full py-1"
+                      className="text-sm bg-transparent focus:outline-none w-full py-1 truncate"
                       aria-label="Quick month select"
                     >
                       {months.map((m, i) => {
@@ -1840,8 +1837,8 @@ return (
                     onClick={() => setAutoRollover(!autoRollover)}
                     className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs sm:text-sm font-semibold border shadow-sm transition-all ${autoRollover ? 'bg-primary text-white border-primary' : 'bg-muted/50 text-foreground/90 border-border hover:border-border'}`}
                   >
-                    <span>Auto-rollover</span>
-                    <span className="text-[11px] opacity-80">after 5 days</span>
+                    <span className="leading-none">Auto-rollover</span>
+                    <span className="text-[11px] opacity-80 leading-none">after 5 days</span>
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
@@ -1927,27 +1924,37 @@ return (
           onCancelRollover={() => setShowRollover(false)}
         />
 
-        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed) */}
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 mb-6">
+        {/* Responsive layout: Left column (Monthly + Variable), Right column (Fixed).
+            lg:items-start prevents the default flex "stretch" from force-equalizing both
+            columns' heights - without it, a long Fixed Expenses list (right column) stretched
+            the left column (and therefore made the Budgets card's own box) taller than its
+            actual content, leaving a large dead empty area under/inside the Budgets card. */}
+        <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-5 mb-6">
           {/* Left column: Monthly + Variable Expenses stacked */}
           <div className="w-full lg:flex-1 flex flex-col gap-4 lg:gap-5">
-            {/* Monthly */}
-            <div className="bg-card rounded-2xl border border-border shadow-sm p-4 sm:p-5">
-              <MonthlySection
-              monthLabel={cur.month}
-              fields={monthlyFields}
-              savingEdited={savingEdited}
-              applyFuture={applyFuture}
-              wrapInCard={false}
+            {/* Income & Salary - compact card: read-only value + explicit action button per
+                row (the buttons are the ONE real way to change these values now, not a
+                redundant shortcut to an already-editable input). */}
+            <IncomeSection
+              income={data[sel].baseSalary ?? data[sel].inc}
+              // Display the SUM of extra income already allocated this month (groc+ent+save
+              // extras), not the transient "not yet split" data[sel].extraInc queue value -
+              // that resets to 0 right after a split is applied, which made the stat look
+              // like the extra income "disappeared" even though it was fully allocated.
+              extraIncome={(data[sel].grocExtra || 0) + (data[sel].entExtra || 0) + (data[sel].saveExtra || 0)}
               locked={isMonthLocked}
-              onFocus={handleMonthlyFocus}
-              onChange={handleMonthlyChange}
-              onBlur={handleMonthlyBlur}
-              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
-              onToggleApplyFuture={(checked) => {
-                setApplyFuture(checked);
-                setApplySavingsForward(checked ? sel : null);
+              onChangeSalary={(newValue) => {
+                handleMonthlyFocus('inc');
+                handleMonthlyChange('inc', newValue);
+                handleMonthlyBlur('inc', newValue);
               }}
+              onAddExtraIncome={(amountToAdd) => {
+                const newTotal = data[sel].extraInc + amountToAdd;
+                handleMonthlyFocus('extraInc');
+                handleMonthlyChange('extraInc', newTotal);
+                handleMonthlyBlur('extraInc', newTotal);
+              }}
+              onOpenExtraHistory={() => setTransModal({ open: true, type: 'extra' })}
             />
             {salarySplitActive && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
@@ -3036,9 +3043,8 @@ return (
               </button>
             </div>
           )}
-            </div>
 
-            {/* Variable Expenses */}
+            {/* Budgets: Groceries, Entertainment and Savings consolidated in one place */}
             <BudgetSection
               fields={budgetFields}
               onFocus={handleBudgetFocus}
@@ -3049,6 +3055,56 @@ return (
               onAddTransaction={handleAddTransaction}
               onTransactionInputChange={handleTransactionInputChange}
               onOpenHistory={handleOpenHistory}
+              savingsField={savingsField}
+              onSavingsFocus={() => handleMonthlyFocus('save')}
+              onSavingsChange={(value) => handleMonthlyChange('save', value)}
+              onSavingsBlur={(value) => handleMonthlyBlur('save', value)}
+              onToggleApplyFuture={(checked) => {
+                setApplyFuture(checked);
+                setApplySavingsForward(checked ? sel : null);
+              }}
+              onTogglePrevious={() => setEditPrev(!editPrev)}
+              onPreviousFocus={() => handleMonthlyFocus('prev')}
+              onPreviousChange={(value) => handleMonthlyChange('prev', value)}
+              onPreviousBlur={(value) => handleMonthlyBlur('prev', value)}
+              viewMode={budgetsViewMode}
+              onViewModeChange={setBudgetsViewMode}
+            />
+
+            {/* Tools & Insights: moved into this (left) column, stacked below Budgets, so it
+                fills the space that used to sit empty next to a long Fixed Expenses list -
+                Fixed Expenses stays predictably in the right column always. */}
+            <UtilityCardsRow
+              totalSavings={cur.totSave}
+              previousSavings={cur.prev}
+              currentSavings={cur.save}
+              withdrawAmount={withdrawAmount}
+              onWithdrawAmountChange={setWithdrawAmount}
+              onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
+                const n = [...data];
+                if (amount <= prevSavings) {
+                  n[sel].prev = prevSavings - amount;
+                  n[sel].prevManual = true;
+                } else {
+                  const fromPrev = prevSavings;
+                  const fromCurrent = amount - fromPrev;
+                  n[sel].prev = 0;
+                  n[sel].prevManual = true;
+                  n[sel].save = Math.max(0, curSavings - fromCurrent);
+                }
+                setData(n);
+                setHasChanges(true);
+                onSuccess(n[sel].prev, n[sel].save);
+              }}
+              emergencyBufferMonths={emergencyBufferMonths}
+              monthlyExpenseBaseline={monthlyExpenseBaseline}
+              entSavingsPercent={entSavingsPercent}
+              onEntSavingsPercentChange={setEntSavingsPercent}
+              whatIfSalaryDelta={whatIfSalaryDelta}
+              onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
+              whatIfGrocCut={whatIfGrocCut}
+              onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
+              whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
             />
           </div>
 
@@ -3166,9 +3222,12 @@ return (
               const monthLocked = isMonthLocked;
               return (
                 <div key={e.id} className="flex flex-col lg:flex-row items-start lg:items-center gap-3 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border shadow-sm hover:shadow-md transition-all">
-                  <div className="flex-1 w-full">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold text-foreground text-sm">{e.name}</span>
+                  <div className="w-full lg:w-40 lg:shrink-0 min-w-0">
+                    {/* justify-between pins the paid/unpaid badge to the same fixed x-position
+                        (right edge of this fixed-width name column) on every row, instead of it
+                        sitting immediately after the name text (which varies with name length). */}
+                    <div className="flex flex-nowrap items-center justify-between gap-2 mb-1">
+                      <span className="font-semibold text-foreground text-sm truncate min-w-0" title={e.name}>{e.name}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -3181,7 +3240,7 @@ return (
                           setFixed(n);
                           setHasChanges(true);
                         }}
-                        className={`p-1 rounded-lg transition-all ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-500/10'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
+                        className={`p-1 rounded-lg transition-all shrink-0 ${isPaid ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-500/10'} ${monthLocked ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
                         title={isPaid ? 'Mark unpaid' : 'Mark paid'}
                         aria-label={isPaid ? 'Mark unpaid' : 'Mark paid'}
                       >
@@ -3614,39 +3673,6 @@ return (
           </div>
         )}
 
-        {/* Utility Cards Row with Withdraw, Emergency Buffer, Entertainment Budget, What-if */}
-        <UtilityCardsRow
-          totalSavings={cur.totSave}
-          previousSavings={cur.prev}
-          currentSavings={cur.save}
-          withdrawAmount={withdrawAmount}
-          onWithdrawAmountChange={setWithdrawAmount}
-          onWithdraw={(amount, prevSavings, curSavings, onSuccess) => {
-            const n = [...data];
-            if (amount <= prevSavings) {
-              n[sel].prev = prevSavings - amount;
-              n[sel].prevManual = true;
-            } else {
-              const fromPrev = prevSavings;
-              const fromCurrent = amount - fromPrev;
-              n[sel].prev = 0;
-              n[sel].prevManual = true;
-              n[sel].save = Math.max(0, curSavings - fromCurrent);
-            }
-            setData(n);
-            setHasChanges(true);
-            onSuccess(n[sel].prev, n[sel].save);
-          }}
-          emergencyBufferMonths={emergencyBufferMonths}
-          monthlyExpenseBaseline={monthlyExpenseBaseline}
-          entSavingsPercent={entSavingsPercent}
-          onEntSavingsPercentChange={setEntSavingsPercent}
-          whatIfSalaryDelta={whatIfSalaryDelta}
-          onWhatIfSalaryDeltaChange={(value) => setWhatIfSalaryDelta(value)}
-          whatIfGrocCut={whatIfGrocCut}
-          onWhatIfGrocCutChange={(checked) => setWhatIfGrocCut(checked)}
-          whatIfProjection={whatIfProjection ?? { adjSalary: 0, grocAdj: 0, projectedNet: 0, delta: 0 }}
-        />
 
         <div className="fixed bottom-4 right-4 z-40">
           <button

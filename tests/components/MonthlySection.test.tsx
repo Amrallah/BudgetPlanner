@@ -90,4 +90,38 @@ describe('MonthlySection', () => {
     fireEvent.click(checkbox);
     expect(onToggleApplyFuture).toHaveBeenCalledWith(false);
   });
+
+  // --- Regression: a field can carry an inline action button next to its label (used in
+  // app/page.tsx for the "Change Salary" button on Income and the "+" shortcut on Extra
+  // Income, both of which just focus/select their input to prompt the user to type a new
+  // value - the existing auto-triggered split modals still handle the rest on blur). ---
+  it('renders a custom action button next to a field label when provided, and it is clickable', () => {
+    const onButtonClick = vi.fn();
+    const fieldsWithButton = [
+      {
+        key: 'inc' as MonthlyFieldKey,
+        label: 'Income',
+        value: 1000,
+        editable: true,
+        button: <button onClick={onButtonClick}>Change Salary</button>
+      }
+    ];
+    render(
+      <MonthlySection
+        monthLabel="Jan 2025"
+        fields={fieldsWithButton}
+        savingEdited={false}
+        applyFuture={false}
+        onFocus={vi.fn()}
+        onChange={vi.fn()}
+        onBlur={vi.fn()}
+        onOpenExtraHistory={vi.fn()}
+        onToggleApplyFuture={vi.fn()}
+      />
+    );
+    const button = screen.getByText('Change Salary');
+    expect(button).toBeTruthy();
+    fireEvent.click(button);
+    expect(onButtonClick).toHaveBeenCalled();
+  });
 });

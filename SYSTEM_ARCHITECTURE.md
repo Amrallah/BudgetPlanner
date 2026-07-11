@@ -227,38 +227,34 @@ lib/
 └── firebase.ts (Firebase init)
 ```
 
-**Visual Layout (Responsive Grid):**
+**Visual Layout (Responsive Grid, updated 2026-07-11 Budgets/Income IA rework):**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Header: Month Nav | Pending Changes | Save Timestamp | Save │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
-│  Mobile (< lg):    Tablet/Desktop (≥ lg):                   │
-│  ┌─────────────┐   ┌──────────────────┬──────────────────┐ │
-│  │  Monthly    │   │  Monthly Section │                  │ │
-│  ├─────────────┤   │  (flex-1)        │  Fixed Expenses  │ │
-│  │  Variable   │   ├──────────────────┤  (w-[480px])     │ │
-│  │  Expenses   │   │  Variable Exp.   │                  │ │
-│  ├─────────────┤   │  (BudgetSection) │                  │ │
-│  │  Fixed      │   │                  │                  │ │
-│  │  Expenses   │   │                  │                  │ │
-│  └─────────────┘   └──────────────────┴──────────────────┘ │
-│                                                               │
 │  Left Column (lg: flex-1):      Right Column (lg: 480px):   │
-│  ├─ MonthlySection              ├─ FixedExpenses Card      │
-│  │  ├─ Income (editable)        │  ├─ Expense List         │
-│  │  ├─ Previous Savings         │  │  ├─ Name/Amount       │
-│  │  └─ Budget Display           │  │  ├─ Payment Toggle    │
-│  │                              │  │  └─ Edit/Delete       │
-│  ├─ BudgetSection               │  │                        │
-│  │  ├─ Groceries Card           │  └─ Add Expense Form     │
-│  │  │  ├─ Budget Display        │                          │
-│  │  │  ├─ Spent Tracking        │                          │
-│  │  │  └─ Transaction Input     │                          │
-│  │  └─ Entertainment Card       │                          │
-│  │     ├─ Budget Display        │                          │
-│  │     ├─ Spent Tracking        │                          │
-│  │     └─ Transaction Input     │                          │
+│  ├─ Income & Salary card        ├─ FixedExpenses Card      │
+│  │  (MonthlySection, title=     │  ├─ Expense List         │
+│  │   "Income & Salary")         │  │  ├─ Name/Amount       │
+│  │  ├─ Income (editable)        │  │  ├─ Payment Toggle    │
+│  │  └─ Extra Income (editable)  │  │  └─ Edit/Delete       │
+│  │                              │  │                        │
+│  ├─ Budgets card (BudgetSection)│  └─ Add Expense Form     │
+│  │  layout: columns | tabs      │                          │
+│  │  (user-toggled, persisted)   │                          │
+│  │  ├─ Groceries bucket         │                          │
+│  │  ├─ Entertainment bucket     │                          │
+│  │  └─ Savings bucket           │                          │
+│  │     ├─ Total Savings         │                          │
+│  │     └─ Previous (carried     │                          │
+│  │        over, compact line)   │                          │
+│                                                               │
+│  Below both columns: AdditionalFeaturesSection (rollover),  │
+│  then "Tools & Insights" (UtilityCardsRow): Withdraw from   │
+│  Savings, Emergency Buffer, Entertainment Budget (% of      │
+│  savings calculator - kept here, NOT merged into Budgets),  │
+│  What-if Calculator.                                        │
 │                                                               │
 │  Responsive Behavior:                                       │
 │  • Mobile: Full-width stack (flex-col)                     │

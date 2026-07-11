@@ -44,32 +44,32 @@ Displays financial analytics, summaries, and what-if calculator.
 
 ---
 
-### **BudgetSection** (166 lines)
-Displays variable expense budgets (groceries, entertainment) with transaction input.
+### **BudgetSection** ("Budgets" card)
+Consolidated card for ALL 3 budget buckets: Groceries, Entertainment, and Savings (moved here
+from MonthlySection in the 2026-07-11 IA rework so a user only has one place to manage budgets,
+instead of three). Supports two layouts, toggled by the user and persisted via
+`lib/hooks/useBudgetsViewMode.ts`: **columns** (all 3 side by side) or **tabs** (one at a time).
 
-**Props** (9 total):
-- `fields`: Array of BudgetField (type, label, totalBudget, baseBudget, bonus, extra, spent, remaining, isEditing, inputValue, editSpent, recentTransactions, newTransactionValue)
-- `onFocus(type)`: Called when budget field focused
-- `onChange(type, value)`: Called when budget value changes
-- `onBlur(type, value)`: Called when budget field loses focus
-- `onToggleEditSpent(type)`: Toggle edit mode for spent amount
-- `onSpentChange(type, value)`: Update spent amount
-- `onAddTransaction(type)`: Add transaction
-- `onTransactionInputChange(type, value)`: Update transaction input
-- `onOpenHistory(type)`: Show transaction history modal
+**Props**:
+- `fields`: Array of BudgetField for Groceries/Entertainment (type, label, totalBudget, baseBudget, bonus, extra, spent, remaining, isEditing, inputValue, editSpent, recentTransactions, newTransactionValue)
+- `onFocus(type)` / `onChange(type, value)` / `onBlur(type, value)`: Budget total handlers
+- `onToggleEditSpent(type)` / `onSpentChange(type, value)`: Spent amount handlers
+- `onAddTransaction(type)` / `onTransactionInputChange(type, value)` / `onOpenHistory(type)`: Transaction handlers
+- `savingsField`: `SavingsField` object (label, value, editable, savingEdited, applyFuture, previousValue, previousEditable) for the 3rd (Savings) bucket
+- `onSavingsFocus()` / `onSavingsChange(value)` / `onSavingsBlur(value)`: Savings total handlers
+- `onToggleApplyFuture(checked)`: "Apply to future months" checkbox
+- `onTogglePrevious()` / `onPreviousFocus()` / `onPreviousChange(value)` / `onPreviousBlur(value)`: Previous (carried-over) savings handlers
+- `viewMode`: `'columns' | 'tabs'`, `onViewModeChange(mode)`: layout toggle
 
 **Features**:
-- 2-category budget display (groceries, entertainment)
-- Shows: Total budget, Base budget, Bonuses/Freebies, Extra, Spent, Remaining
+- 3-bucket budget display (groceries, entertainment, savings) in one card
+- Shows: Total budget, Base budget, Bonuses/Freebies, Extra, Spent, Remaining (per category)
+- Recent transactions shown newest-first as a compact chip list (not oldest-first inline text)
 - Transaction input field with recent transaction history
 - Edit button for spent amount (toggle between view/edit mode)
+- Previous (carried-over) savings shown as a compact editable line, not a peer input box
 - Link to transaction history modal
-- Color-coded remaining display
-- Responsive grid layout (1 column on mobile, 3 on desktop)
-
-**Performance**: `React.memo` with JSON.stringify comparison
-- Compares fields array deeply
-- Prevents re-renders when parent updates but fields unchanged
+- Layout toggle: columns (grid) vs tabs (one budget visible at a time)
 
 **Example**:
 ```tsx
@@ -77,20 +77,27 @@ Displays variable expense budgets (groceries, entertainment) with transaction in
   fields={budgetFields}
   onFocus={(type) => handleBudgetFocus(type)}
   onChange={(type, value) => handleBudgetChange(type, value)}
+  savingsField={savingsField}
+  onSavingsFocus={() => handleMonthlyFocus('save')}
+  viewMode={budgetsViewMode}
+  onViewModeChange={setBudgetsViewMode}
   // ... other handlers
 />
 ```
 
-**Tests**: `tests/components/BudgetSection.test.tsx` (19 tests)
+**Tests**: `tests/components/BudgetSection.test.tsx` (28 tests)
 
 ---
 
-### **MonthlySection** (112 lines)
-Displays and edits monthly income, expenses, savings.
+### **MonthlySection** (renders the "Income & Salary" card)
+Displays and edits monthly income only (Income, Extra Income). Savings/Previous moved to
+`BudgetSection` in the 2026-07-11 IA rework so Income doesn't visually blend with Savings.
+Generic enough to accept a custom `title` (page.tsx passes `title="Income & Salary"`).
 
-**Props** (10 total):
+**Props**:
 - `monthLabel`: Display name (e.g., "Jan 2025")
-- `fields`: Array of MonthlyField (key, label, value, editable, button?)
+- `title`: Card heading (default `'Monthly'`; page.tsx overrides to `'Income & Salary'`)
+- `fields`: Array of MonthlyField (key, label, value, editable, button?) - page.tsx now only passes `inc`/`extraInc`
 - `savingEdited`: Whether user edited savings this month
 - `applyFuture`: Apply to future months checkbox state
 - `wrapInCard`: Wrap in white card? (default true)
@@ -101,12 +108,10 @@ Displays and edits monthly income, expenses, savings.
 - `onToggleApplyFuture(checked)`: Toggle apply to future
 
 **Features**:
-- 5-field layout: Income, Extra Income, Previous Savings, Balance, Current Savings, Actual (read-only)
-- Shows recent savings/actual values
+- Income/Extra Income only (2-field layout in the real app usage)
 - Extra Income history link
-- "Apply to future months" checkbox (only visible when savings edited)
 - Editable/read-only field distinction
-- Responsive grid (1 col mobile, up to 5 col desktop)
+- Responsive grid (1 col mobile, up to 4 col desktop)
 
 **Performance**: `React.memo` with deep fields comparison
 - Optimizes for frequent renders during data entry
@@ -116,6 +121,7 @@ Displays and edits monthly income, expenses, savings.
 ```tsx
 <MonthlySection
   monthLabel="Jan 2025"
+  title="Income & Salary"
   fields={monthlyFields}
   savingEdited={savingEdited}
   applyFuture={applyFuture}

@@ -96,6 +96,25 @@ describe('TransactionModal', () => {
     expect(screen.getByText('500 SEK')).toBeInTheDocument();
   });
 
+  it('shows the most recent transaction first (bug fix: was oldest-first)', () => {
+    render(
+      <TransactionModal
+        isOpen={true}
+        type="groc"
+        monthName="January 2025"
+        transactions={mockGrocTransactions}
+        extraAllocations={[]}
+        editingIndex={null}
+        editingValue=""
+        {...mockHandlers}
+      />
+    );
+    // mockGrocTransactions[0]=250 (10:00, oldest), [1]=500 (12:00, newest)
+    const amounts = screen.getAllByText(/\d+ SEK/).map(el => el.textContent);
+    expect(amounts[0]).toBe('500 SEK');
+    expect(amounts[1]).toBe('250 SEK');
+  });
+
   it('displays "no transactions" message when list is empty', () => {
     render(
       <TransactionModal
@@ -144,9 +163,11 @@ describe('TransactionModal', () => {
         {...mockHandlers}
       />
     );
+    // Newest first (bug fix): mockGrocTransactions[1] (amt 500, later timestamp) renders
+    // first, so the first Edit button acts on original index 1, not 0.
     const editButtons = screen.getAllByText('Edit');
     fireEvent.click(editButtons[0]);
-    expect(mockHandlers.onEdit).toHaveBeenCalledWith(0, '250');
+    expect(mockHandlers.onEdit).toHaveBeenCalledWith(1, '500');
   });
 
   it('shows a confirm popup (not a native browser dialog) when delete button clicked, and calls onDelete after confirming', () => {
@@ -169,7 +190,8 @@ describe('TransactionModal', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Delete transaction?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('dialog').querySelector('button')!);
-    expect(mockHandlers.onDelete).toHaveBeenCalledWith(0);
+    // Newest first (bug fix): the first rendered Delete button acts on original index 1.
+    expect(mockHandlers.onDelete).toHaveBeenCalledWith(1);
   });
 
   it('does not call onDelete when the confirm popup is cancelled (user never gets stuck)', () => {
