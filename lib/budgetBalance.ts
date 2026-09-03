@@ -8,6 +8,13 @@ export type BudgetBalanceResult = {
   totalBudgets: number;
 };
 
+/** Money available to split across the 3 budgets in a given month. */
+export function computeAvailableBudget(monthIdx: number, data: DataItem[], fixed: FixedExpense[]): number {
+  const monthData = data[monthIdx];
+  const rollover = monthData.rolloverIncome ?? 0;
+  return monthData.inc + monthData.extraInc + rollover - fixed.reduce((sum, f) => sum + (f.amts[monthIdx] || 0), 0);
+}
+
 export function validateBudgetBalance(params: {
   monthIdx: number;
   save: number;
@@ -18,9 +25,7 @@ export function validateBudgetBalance(params: {
   months: MonthItem[];
 }): BudgetBalanceResult {
   const { monthIdx, save, groc, ent, data, fixed, months } = params;
-  const monthData = data[monthIdx];
-  const rollover = monthData.rolloverIncome ?? 0;
-  const availableBudget = monthData.inc + monthData.extraInc + rollover - fixed.reduce((sum, f) => sum + f.amts[monthIdx], 0);
+  const availableBudget = computeAvailableBudget(monthIdx, data, fixed);
   const totalBudgets = save + groc + ent;
   // Allow small floating point wiggle room to avoid reopening the modal when values differ by pennies
   const tolerance = 0.5;

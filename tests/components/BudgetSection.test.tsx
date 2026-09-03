@@ -37,8 +37,6 @@ describe('BudgetSection', () => {
     label: 'Savings',
     value: 1200,
     editable: true,
-    savingEdited: false,
-    applyFuture: false,
     previousValue: 300,
     previousEditable: false
   };
@@ -55,7 +53,7 @@ describe('BudgetSection', () => {
     onSavingsFocus: vi.fn(),
     onSavingsChange: vi.fn(),
     onSavingsBlur: vi.fn(),
-    onToggleApplyFuture: vi.fn(),
+    onOpenSetBudgets: vi.fn(),
     onTogglePrevious: vi.fn(),
     onPreviousFocus: vi.fn(),
     onPreviousChange: vi.fn(),
@@ -274,11 +272,15 @@ describe('BudgetSection', () => {
     expect(mockHandlers.onTogglePrevious).toHaveBeenCalled();
   });
 
-  it('shows the "Apply to future months" checkbox only when savingEdited is true', () => {
-    const { rerender } = render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+  it('no longer offers the delta-based "Apply to future months" checkbox', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
     expect(screen.queryByText('Apply to future months')).not.toBeInTheDocument();
-    rerender(<BudgetSection fields={mockFields} {...mockHandlers} savingsField={{ ...mockSavingsField, savingEdited: true }} />);
-    expect(screen.getByText('Apply to future months')).toBeInTheDocument();
+  });
+
+  it('opens the Set Budgets modal from the card header', () => {
+    render(<BudgetSection fields={mockFields} {...mockHandlers} />);
+    fireEvent.click(screen.getByRole('button', { name: /Set Budgets/i }));
+    expect(mockHandlers.onOpenSetBudgets).toHaveBeenCalled();
   });
 
   // --- Layout toggle (columns vs tabs) ---

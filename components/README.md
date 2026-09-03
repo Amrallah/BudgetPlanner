@@ -55,9 +55,9 @@ instead of three). Supports two layouts, toggled by the user and persisted via
 - `onFocus(type)` / `onChange(type, value)` / `onBlur(type, value)`: Budget total handlers
 - `onToggleEditSpent(type)` / `onSpentChange(type, value)`: Spent amount handlers
 - `onAddTransaction(type)` / `onTransactionInputChange(type, value)` / `onOpenHistory(type)`: Transaction handlers
-- `savingsField`: `SavingsField` object (label, value, editable, savingEdited, applyFuture, previousValue, previousEditable) for the 3rd (Savings) bucket
+- `savingsField`: `SavingsField` object (label, value, editable, previousValue, previousEditable) for the 3rd (Savings) bucket
 - `onSavingsFocus()` / `onSavingsChange(value)` / `onSavingsBlur(value)`: Savings total handlers
-- `onToggleApplyFuture(checked)`: "Apply to future months" checkbox
+- `onOpenSetBudgets()`: opens the **Set Budgets** modal (see below). Replaces the old "Apply to future months" checkbox, which applied a *delta* to future months instead of setting them.
 - `onTogglePrevious()` / `onPreviousFocus()` / `onPreviousChange(value)` / `onPreviousBlur(value)`: Previous (carried-over) savings handlers
 - `viewMode`: `'columns' | 'tabs'`, `onViewModeChange(mode)`: layout toggle
 
@@ -68,6 +68,25 @@ instead of three). Supports two layouts, toggled by the user and persisted via
 - Transaction input field with recent transaction history
 - Edit button for spent amount (toggle between view/edit mode)
 - Previous (carried-over) savings shown as a compact editable line, not a peer input box
+
+---
+
+### **SetBudgetsModal** ("Set Budgets")
+Sets Groceries / Entertainment / Savings as **exact amounts** for the selected month and,
+optionally, in bulk for a range of months. Opened from the "Set Budgets" button in the
+Budgets card header. Pure logic lives in `lib/setBudgets.ts`.
+
+**Props**: `open`, `sel`, `months`, `data`, `fixed`, `current` (the month's current totals),
+`onApply(payload)`, `onCancel()`.
+
+**Features**:
+- Three absolute amount inputs, live-validated to equal the selected month's available balance
+  (with a one-click "put the remainder here" shortcut per bucket)
+- Range: this month only / this month + all upcoming / until a chosen month / next N months
+- For multi-month ranges, a percentage split decides where each month's *own* surplus or
+  shortfall goes (other months have different income / fixed expenses), defaulting to 100% Savings
+- Live preview of the resulting amounts per month, flagging any month that would go negative
+- Locked (view-only) months in the range are skipped and reported
 - Link to transaction history modal
 - Layout toggle: columns (grid) vs tabs (one budget visible at a time), with the active tab
   marked by an explicit checkmark icon (not color alone) for reliable contrast in dark mode

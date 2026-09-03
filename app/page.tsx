@@ -23,6 +23,7 @@ import { useMonthSelection, getPayPeriodLabelDate } from "@/lib/hooks/useMonthSe
 import IncomeSection from "@/components/IncomeSection";
 import { type MonthlyFieldKey } from "@/components/MonthlySection";
 import BudgetSection, { type BudgetField, type BudgetType, type SavingsField } from "@/components/BudgetSection";
+import SetBudgetsModal, { type SetBudgetsPayload } from "@/components/SetBudgetsModal";
 import TransactionModal, { type TransactionType } from "@/components/TransactionModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import SetupSection from "@/components/SetupSection";
@@ -33,6 +34,7 @@ import { useBudgetsViewMode } from "@/lib/hooks/useBudgetsViewMode";
 import { applyForceRebalanceAcrossMonths, extractIssueMonthIndices } from '@/lib/forceRebalance';
 import { applySaveChanges } from '@/lib/saveChanges';
 import { calculateMonthly } from "@/lib/calc";
+import { applySetBudgets } from "@/lib/setBudgets";
 import { advanceSalaryMonth, type RolloverChoice } from "@/lib/salaryRollover";
 import { sanitizeNumberInput, validateSplit, applyPendingToFixed } from '@/lib/uiHelpers';
 import { computeFixedExpenseAmts } from '@/lib/newExpenseAmts';
@@ -106,6 +108,9 @@ export default function FinancialPlanner() {
   const [applyFuture, setApplyFuture] = useState(false);
   const [savingEdited, setSavingEdited] = useState(false);
   const [applySavingsForward, setApplySavingsForward] = useState<number | null>(null);
+  // "Set Budgets" modal - the supported way to set the 3 budgets as exact amounts, for the
+  // selected month or in bulk across a range of months.
+  const [setBudgetsOpen, setSetBudgetsOpen] = useState(false);
   const [splitError, setSplitError] = useState('');
   const [entSavingsPercent, setEntSavingsPercent] = useState(10);
   const [withdrawAmount, setWithdrawAmount] = useState(0);
@@ -663,15 +668,37 @@ export default function FinancialPlanner() {
       label: savingsLabel,
       value: savingsTotal,
       editable: !isMonthLocked,
-      savingEdited,
-      applyFuture,
       previousValue: cur.prev,
       previousEditable: editPrev && !isMonthLocked
     };
-  }, [applyFuture, cur.prev, data, editPrev, isMonthLocked, savingEdited, sel]);
+  }, [cur.prev, data, editPrev, isMonthLocked, sel]);
 
-  const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([
-    {
+  // Current TOTALS (base + bonus + extra) for the selected month, used to seed the Set Budgets modal.
+  const currentBudgetTotals = useMemo(() => ({
+    groc: varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0),
+    ent: varExp.entBudg[sel] + data[sel].entBonus + (data[sel].entExtra || 0),
+    save: data[sel].save + (data[sel].saveBonus || 0) + (data[sel].saveExtra || 0)
+  }), [data, sel, varExp.entBudg, varExp.grocBudg]);
+
+  const handleApplySetBudgets = (payload: SetBudgetsPayload) => {
+    const { data: nextData, varExp: nextVar } = applySetBudgets({
+      months: payload.months,
+      targets: payload.targets,
+      distribution: payload.distribution,
+      data,
+      varExp,
+      fixed
+    });
+    setData(nextData);
+    setVarExp(nextVar);
+    // Any pending single-field rebalance prompt is now stale - the modal set exact amounts.
+    setBudgetRebalanceModal(null);
+    setBudgetRebalanceError('');
+    setSetBudgetsOpen(false);
+    setHasChanges(true);
+  };
+
+  const budgetFields: BudgetField[] = useMemo<BudgetField[]>(() => ([    {
       type: 'groc',
       label: '🛒 Groceries',
       totalBudget: varExp.grocBudg[sel] + data[sel].grocBonus + (data[sel].grocExtra || 0),
@@ -2416,16 +2443,9 @@ return (
                 </div>
               </div>
               
-              <div className="flex items-center gap-2 mt-3 p-3 bg-card rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={budgetRebalanceApplyFuture}
-                  onChange={(e) => setBudgetRebalanceApplyFuture(e.target.checked)}
-                  className="w-4 h-4 text-yellow-600 rounded"
-                />
-                <label className="text-sm text-foreground/90">
-                  Apply to future months (from this month onward)
-                </label>
+              <div className="mt-3 p-3 bg-card rounded-lg text-xs text-muted-foreground">
+                This only changes {months[sel]?.name ?? 'this month'}. To set exact amounts for
+                several months at once, use <span className="font-semibold text-foreground/90">Set Budgets</span> in the Budgets card.
               </div>
               
               <div className="flex gap-2 mt-4">
@@ -2439,8 +2459,10 @@ return (
                       }
                       
                       const multiplier = budgetRebalanceModal.newVal > budgetRebalanceModal.oldVal ? -1 : 1; // If budget increased, others decrease
-                      const diffVal = budgetRebalanceModal.newVal - budgetRebalanceModal.oldVal;
-                      const affectedMonths = budgetRebalanceApplyFuture ? Array.from({ length: 60 - sel }, (_, i) => sel + i) : [sel];
+                      // Single-month only. Multi-month editing lives in the Set Budgets modal, which
+                      // SETS exact amounts per month; copying this edit's delta into future months
+                      // was wrong (it shifted every later month by the delta instead of setting it).
+                      const affectedMonths = [sel];
                       // NOTE: bonus/extra are historical/analytics-only values and are never
                       // adjusted by rebalancing; the base absorbs the full delta (can go negative)
                       // so the effective total (base+bonus+extra) matches the target exactly.
@@ -2473,19 +2495,15 @@ return (
                         // historical values and the effective total matches the target exactly.
                         if (budgetRebalanceModal.type === 'save') {
                           const baseSaveTarget = budgetRebalanceModal.newVal - saveExtras;
-                          newSaveVal = idx === sel ? baseSaveTarget : tempData[idx].save + diffVal;
+                          newSaveVal = baseSaveTarget;
                           newGrocBase = newGrocBase + (multiplier * budgetRebalanceModal.split.a);
                           newEntBase = newEntBase + (multiplier * budgetRebalanceModal.split.b);
                         } else if (budgetRebalanceModal.type === 'groc') {
-                          newGrocBase = idx === sel
-                            ? budgetRebalanceModal.newVal - grocExtras
-                            : newGrocBase + diffVal;
+                          newGrocBase = budgetRebalanceModal.newVal - grocExtras;
                           newSaveVal = tempData[idx].save + (multiplier * budgetRebalanceModal.split.a);
                           newEntBase = newEntBase + (multiplier * budgetRebalanceModal.split.b);
                         } else {
-                          newEntBase = idx === sel
-                            ? budgetRebalanceModal.newVal - entExtras
-                            : newEntBase + diffVal;
+                          newEntBase = budgetRebalanceModal.newVal - entExtras;
                           newSaveVal = tempData[idx].save + (multiplier * budgetRebalanceModal.split.a);
                           newGrocBase = newGrocBase + (multiplier * budgetRebalanceModal.split.b);
                         }
@@ -3059,16 +3077,24 @@ return (
               onSavingsFocus={() => handleMonthlyFocus('save')}
               onSavingsChange={(value) => handleMonthlyChange('save', value)}
               onSavingsBlur={(value) => handleMonthlyBlur('save', value)}
-              onToggleApplyFuture={(checked) => {
-                setApplyFuture(checked);
-                setApplySavingsForward(checked ? sel : null);
-              }}
+              onOpenSetBudgets={() => setSetBudgetsOpen(true)}
               onTogglePrevious={() => setEditPrev(!editPrev)}
               onPreviousFocus={() => handleMonthlyFocus('prev')}
               onPreviousChange={(value) => handleMonthlyChange('prev', value)}
               onPreviousBlur={(value) => handleMonthlyBlur('prev', value)}
               viewMode={budgetsViewMode}
               onViewModeChange={setBudgetsViewMode}
+            />
+
+            <SetBudgetsModal
+              open={setBudgetsOpen}
+              sel={sel}
+              months={months}
+              data={data}
+              fixed={fixed}
+              current={currentBudgetTotals}
+              onApply={handleApplySetBudgets}
+              onCancel={() => setSetBudgetsOpen(false)}
             />
 
             {/* Tools & Insights: moved into this (left) column, stacked below Budgets, so it

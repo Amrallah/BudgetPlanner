@@ -195,9 +195,23 @@ The **Finance Dashboard** is a personal financial planning application that mode
   - Budget type and change amount
   - "Split freed amount" or "Allocate additional cost" message
   - Two input fields: allocation to other budgets
-  - "Apply to future months (from this month onward)" checkbox
+  - A note pointing at **Set Budgets** (F9.1) for multi-month changes
 - **Validation:** Total allocation must equal change amount
-- **Application:** System updates other budgets by multiplier (-1 if increase, +1 if decrease)
+- **Application:** System updates other budgets by multiplier (-1 if increase, +1 if decrease), **for the selected month only**
+
+### F9.1: Set Budgets Modal (absolute, multi-month) — added Sep 2026
+- **Bug it replaces:** the Budget Rebalance modal's "Apply to future months (from this month onward)" checkbox applied the *delta* of the edit to every later month. Reducing month X's groceries from 5500 to 5000 (-500) turned month X+1's 5000 into 4500, when the user meant "make it 5000 everywhere from month X onward".
+- **Fix:** the checkbox was removed (Budget Rebalance is now single-month only) and multi-month editing moved to a dedicated **Set Budgets** modal with SET semantics.
+- **Trigger:** "Set Budgets" button in the Budgets card header.
+- **Modal shows:**
+  - Three absolute amount inputs (Groceries / Entertainment / Savings) pre-filled with the selected month's current totals
+  - A live "Allocated X / Y available" balance line; Apply is blocked until the three amounts equal the selected month's available balance (0.5 SEK tolerance). Each bucket offers a one-click "put the remaining ±N here" shortcut.
+  - Range selection: **this month only** / **this month and all upcoming** / **until a chosen month** / **next N months (including this one)**
+  - For any range covering more than one month: a percentage split (Groceries % / Entertainment % / Savings %, must total 100, default 100% Savings) that decides where each month's **own** surplus or shortfall goes — other months have different income, extra income, rollover and fixed expenses, so a fixed SEK split cannot be copied across months
+  - A per-month preview of the resulting amounts, flagging months that would end up negative
+- **Application (`lib/setBudgets.ts`):** for every month in range, `difference = availableBudget(month) - (groc + ent + save entered)`; each bucket gets its entered amount plus its percentage of that difference. Bonus/extra stay untouched historical values and the base absorbs the target (`base = total - bonus - extra`, may go negative), consistent with F3.1.
+- **Locked months** (`monthLocked`) inside the range are skipped and reported in the range summary.
+- Regression tests: `tests/bugs/setBudgetsBulkApply.test.ts`, `tests/components/SetBudgetsModal.test.tsx`.
 
 ### F6.1: Popup/Modal Consistency & Cancel Guarantee (fixed Jul 2026)
 - **Bug:** Salary Split, Extra Income Split and New Fixed Expense Split were rendered as inline colored panels embedded in the normal page scroll flow (blue/purple/red gradients respectively) instead of centered popups, and Extra Income Split had no Cancel button at all (user could get stuck).

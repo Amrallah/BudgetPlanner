@@ -157,6 +157,14 @@ Use these for smoke testing before releases, or when automated coverage is insuf
 1. Change a grocery or entertainment budget value.
 2. Confirm the Budget Rebalance modal requires reallocating the exact freed/needed amount across the other two categories.
 3. Confirm negative resulting budgets are blocked or flagged.
+4. Confirm the change lands on the selected month only (multi-month editing lives in Set Budgets, Scenario D.1).
+
+### Scenario D.1 — Set Budgets (absolute, multi-month)
+1. In a month where Groceries = 5500 and the next month's Groceries = 5000, open **Set Budgets**, enter Groceries 5000 (rebalancing the remainder into another bucket so the month is balanced), pick "This month and all upcoming months" and Apply.
+2. Confirm **every** upcoming month's Groceries is now exactly 5000 — not reduced by the 500 delta.
+3. Repeat with months that have different income/fixed expenses and confirm the per-month difference goes where the percentage split says (default 100% Savings), while Groceries/Entertainment stay at the entered amounts.
+4. Confirm Apply is blocked while the three amounts don't add up to the selected month's available balance, and while the percentages don't total 100%.
+5. Confirm locked (rolled-over) months inside the range are skipped and reported.
 
 ### Scenario E — Fixed Expenses
 1. Add a new fixed expense; confirm the split-allocation modal requires the cost to be fully allocated.

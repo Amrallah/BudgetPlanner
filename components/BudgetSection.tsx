@@ -1,4 +1,4 @@
-import { Check, Edit2, LayoutGrid, Rows3 } from "lucide-react";
+import { Check, Edit2, LayoutGrid, Rows3, SlidersHorizontal } from "lucide-react";
 import { memo, useState, type ReactNode } from "react";
 import { sanitizeNumberInput } from "@/lib/uiHelpers";
 
@@ -45,8 +45,6 @@ export interface SavingsField {
   label: string;
   value: number;
   editable: boolean;
-  savingEdited: boolean;
-  applyFuture: boolean;
   // Carry-over balance from the previous month. Kept editable (same feature as before) but
   // shown as a compact line with an edit toggle, not a peer input box, since it's contextual
   // info about Savings rather than an independent field.
@@ -69,7 +67,8 @@ export interface BudgetSectionProps {
   onSavingsFocus: () => void;
   onSavingsChange: (value: number) => void;
   onSavingsBlur: (value: number) => void;
-  onToggleApplyFuture: (checked: boolean) => void;
+  /** Opens the "Set Budgets" modal (absolute amounts, optionally across many months). */
+  onOpenSetBudgets: () => void;
   onTogglePrevious: () => void;
   onPreviousFocus: () => void;
   onPreviousChange: (value: number) => void;
@@ -93,7 +92,7 @@ export default memo(function BudgetSection({
   onSavingsFocus,
   onSavingsChange,
   onSavingsBlur,
-  onToggleApplyFuture,
+  onOpenSetBudgets,
   onTogglePrevious,
   onPreviousFocus,
   onPreviousChange,
@@ -280,17 +279,6 @@ export default memo(function BudgetSection({
             disabled={!savingsField.editable}
             className="w-full h-9 px-3 text-sm border border-border rounded-lg disabled:bg-muted/50 focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all"
           />
-          {savingsField.savingEdited && (
-            <label className="flex items-center gap-2 mt-2 text-xs text-foreground/90">
-              <input
-                type="checkbox"
-                checked={savingsField.applyFuture}
-                onChange={(e) => onToggleApplyFuture(e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              Apply to future months
-            </label>
-          )}
         </div>
         <div>
           {/* Same always-2-lines pattern as "Total Savings" (title/button row + invisible
@@ -340,6 +328,16 @@ export default memo(function BudgetSection({
           <span className="h-2 w-10 rounded-full bg-emerald-600" aria-hidden />
           <h3 className="text-sm sm:text-base font-semibold tracking-tight text-foreground">Budgets</h3>
         </div>
+        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpenSetBudgets}
+          title="Set exact amounts for all 3 budgets, for this month or many months at once"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-border bg-muted/50 text-foreground/90 hover:border-primary/40 hover:bg-muted transition-all"
+        >
+          <SlidersHorizontal size={14} />
+          Set Budgets
+        </button>
         <div className="flex items-center gap-1 bg-muted/50 border border-border rounded-lg p-1" role="group" aria-label="Budgets layout">
           <button
             type="button"
@@ -359,6 +357,7 @@ export default memo(function BudgetSection({
           >
             <Rows3 size={14} />
           </button>
+        </div>
         </div>
       </div>
 
