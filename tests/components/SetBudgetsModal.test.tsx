@@ -80,12 +80,13 @@ describe('SetBudgetsModal', () => {
     expect(screen.getByTestId('set-budgets-balance')).toHaveTextContent('balanced');
   });
 
-  it('blocks Apply when the three budgets do not add up to the available money', () => {
+  it('applies an unbalanced entry by auto-distributing the difference (default 100% Savings), not by blocking', () => {
     renderModal();
     fireEvent.change(screen.getByLabelText('🛒 Groceries'), { target: { value: '4500' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(onApply).not.toHaveBeenCalled();
-    expect(screen.getByText(/must add up to this month's available balance/i)).toBeInTheDocument();
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ targets: { groc: 4500, ent: 2000, save: 3000 }, months: [0] })
+    );
   });
 
   it('offers a one-click way to put the unallocated remainder into a bucket', () => {
@@ -170,6 +171,25 @@ describe('SetBudgetsModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({ distribution: { groc: 0, ent: 40, save: 60 } })
+    );
+  });
+
+  it('regression: adjusting groc/ent for "this month and all upcoming", 100% to Savings, applies without a false balance error', () => {
+    // Reported bug: user adjusted Groceries/Entertainment, picked "this month and all upcoming
+    // months", left the default 100% Savings split, and got a false "budgets don't add up" error
+    // that blocked Apply entirely - the distribution should absorb the difference instead.
+    renderModal();
+    fireEvent.change(screen.getByLabelText('🛒 Groceries'), { target: { value: '4600' } });
+    fireEvent.change(screen.getByLabelText('🎭 Entertainment'), { target: { value: '1800' } });
+    fireEvent.click(screen.getByLabelText('This month and all upcoming months'));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByText(/must add up/i)).not.toBeInTheDocument();
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: { groc: 4600, ent: 1800, save: 3000 },
+        distribution: { groc: 0, ent: 0, save: 100 },
+        months: [0, 1, 2, 3, 4, 5]
+      })
     );
   });
 

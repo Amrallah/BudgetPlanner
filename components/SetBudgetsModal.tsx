@@ -85,6 +85,10 @@ export default function SetBudgetsModal({
     [range.months, targets, distribution, data, fixed]
   );
 
+  // The distribution (default 100% Savings) always absorbs the difference between what's
+  // entered here and the month's real available balance - for every month in range, including
+  // the selected one - so entered amounts are a starting point, not something the user must
+  // hand-balance themselves before Apply is allowed.
   const selRow = preview.find((r) => r.idx === sel);
   const availableForSel = selRow?.available ?? 0;
   const enteredTotal = targets.groc + targets.ent + targets.save;
@@ -115,12 +119,9 @@ export default function SetBudgetsModal({
   const handleApply = () => {
     const targetCheck = validateTargets(targets);
     if (!targetCheck.valid) return setError(targetCheck.message);
-    if (!selBalanced) {
-      return setError(
-        `The 3 budgets must add up to this month's available balance (${availableForSel.toFixed(0)} SEK). Currently ${enteredTotal.toFixed(0)} SEK.`
-      );
-    }
-    if (isBulk && !distributionCheck.valid) return setError(distributionCheck.message);
+    // Distribution always applies (default 100% Savings), so it must always be valid, not only
+    // when the distribution fieldset is visible for multi-month ranges.
+    if (!distributionCheck.valid) return setError(distributionCheck.message);
     if (range.months.length === 0) return setError('No editable months in the selected range.');
     onApply({ targets, distribution, months: range.months, skippedLocked: range.skippedLocked });
   };
@@ -188,12 +189,14 @@ export default function SetBudgetsModal({
           className={`mb-4 p-3 rounded-lg text-sm border ${
             selBalanced
               ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
-              : 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-300 dark:border-yellow-500/30 text-yellow-800 dark:text-yellow-300'
+              : 'bg-muted/50 border-border text-muted-foreground'
           }`}
           data-testid="set-budgets-balance"
         >
-          Allocated {enteredTotal.toFixed(0)} / {availableForSel.toFixed(0)} SEK available
-          {selBalanced ? ' — balanced' : ` — ${selDifference > 0 ? 'unallocated' : 'over budget by'} ${Math.abs(selDifference).toFixed(0)} SEK`}
+          Entered {enteredTotal.toFixed(0)} / {availableForSel.toFixed(0)} SEK available
+          {selBalanced
+            ? ' — balanced'
+            : ` — the ${Math.abs(selDifference).toFixed(0)} SEK ${selDifference > 0 ? 'left over' : 'shortfall'} will be applied per the split below`}
         </div>
 
         <fieldset className="mb-4">
